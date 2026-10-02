@@ -1,0 +1,63 @@
+# Operating systems and editors
+.DS_Store
+.AppleDouble
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.template
+*.private.*
+*.key
+*.pem
+*.p8
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+credentials*.json
+secrets*.json
+
+# Dependencies, generated files, and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+node_modules/
+.build/
+build/
+dist/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.egg-info/
+
+# Private working material; not an app storage layout
+/private/
+/local-data/
+/photos/
+/uploads/
+/logs/
+/outputs/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+*.tmp
+
+# Local review history
+/.brooks-lint-history.json

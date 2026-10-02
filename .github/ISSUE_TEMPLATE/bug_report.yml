@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible problem with repository tooling or an implemented feature.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Second Look is currently at repository setup stage. Use synthetic examples; do not share household photos, addresses, reviewer identities, or credentials. Report vulnerabilities through the private Security link.
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include a minimal setup and the commands or actions that reproduce the problem.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment and version
+      description: Include OS, commit or release, and relevant tool versions; omit private paths and device identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include only sanitized logs or synthetic screenshots you can publish.

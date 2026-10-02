@@ -8,7 +8,7 @@ The handoff asks for a runnable private iPhone foundation before selecting a bac
 
 ## Decision
 
-Use SwiftUI with a provisional iOS 17 minimum and a checked-in Xcode project. Put checklist models, state transitions, and versioned atomic JSON persistence in the dependency-free `SecondLookCore` Swift package; compose them in the iPhone app. Store app state in Application Support and surface read/write failures. Inject a clock for time-dependent rules and tests.
+Use SwiftUI with a provisional iOS 17 minimum and a checked-in Xcode project. Put checklist models, state transitions, and versioned atomic JSON persistence in the dependency-free `SecondLookCore` Swift package; compose them in the iPhone app. Store app state in Application Support and surface read/write failures. Pass time explicitly to time-dependent commands and use fixed timestamps in tests.
 
 Compile synthetic identities, evidence, retry, and cleanup demonstrations only under `SECONDLOOK_DEMO` in Debug, with a separate demo data location. Release excludes those controls and has no claim of shared use. Sample routine/media references are invented. Add no real photo bytes, camera/library access, backend configuration, push, or cleanup guarantee in this milestone. Keep reminder and timeout choices as persisted models; timeout defaults Off and no scheduler acts on them.
 

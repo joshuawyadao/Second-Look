@@ -1,31 +1,92 @@
 # Verification
 
-## Run locally
+## Commands and requirements
 
-Prerequisites: Git, Python 3.10 or newer, and a POSIX shell. Run from the repository root on macOS, Linux, or WSL:
+Repository checks require Git, Python 3.10+, and a POSIX shell. The package requires Swift 6. Native checks require macOS, Xcode 16+, and an installed iOS Simulator runtime. The app provisionally targets iOS 17; no device signing or service credentials are needed for a simulator.
 
 ```sh
 ./scripts/verify-repository.sh
+swift test
+./scripts/verify-native.sh
 ```
 
-The wrapper checks the repository, runs the verifier's regression tests, and checks staged and unstaged diffs for whitespace errors. It requires no third-party Python packages.
+The native script runs the package suite, discovers the newest available iPhone simulator, executes the Debug UI suite, builds Release, and checks its bundle identity and absence of the development adapter/role picker. Override `SECONDLOOK_SIMULATOR_ID` for a particular installed device or `SECONDLOOK_DERIVED_DATA` for output. It does not install a runtime or enroll a developer account.
 
-## Current coverage
+To inspect destinations or launch manually:
 
-- Required public repository documents and configuration files exist and are nonempty.
-- Tracked and unignored files stay inside the repository; escaping symlinks fail.
-- Common private-data paths, credential filenames, and generated caches are rejected when included in the Git inventory, even if force-added.
-- Relative inline Markdown links point to existing paths inside the repository.
-- Focused regression tests exercise valid documents, missing documents, broken links, accidentally tracked private files, and escaping symlinks.
+```sh
+xcrun simctl list devices available
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -showdestinations
+```
 
-The verifier inspects filenames and local links. It is not a complete secret scanner, does not inspect photo contents, and does not validate external URLs, Markdown anchors, or every Markdown syntax variant. Review the staged diff before publishing.
+Open `SecondLook.xcodeproj` and Run the **SecondLook** scheme on a simulator. Debug uses `com.joshuawyadao.SecondLook.demo` and Application Support/SecondLookDemo/state-v1.json. Release uses `com.joshuawyadao.SecondLook.local` and SecondLookLocal/state-v1.json. UI tests use a separate SecondLookUITests document; only Debug test launches accept `-ui-testing -reset-demo`. A normal launch never resets existing data.
 
-## Continuous integration
+## Observed validation — October 2, 2026
 
-[CI Verify](https://github.com/joshuawyadao/Second-Look/actions/workflows/ci.yml) runs the same command on pushes to `main`, pull requests, and manual dispatch. It uses Ubuntu 24.04, a commit-pinned checkout action, read-only repository permissions, and no stored checkout credentials. Dependabot checks GitHub Actions updates weekly.
+Environment: Xcode 27.0 (27A266a), Swift 6.4, iOS 27 simulator **iPhone 18 Pro**, discovered UUID `ADD1A583-C6C6-4937-A00D-B1112054D521`. This is evidence for that environment, not a claim that every supported iOS/device combination was tested.
 
-Repository rules require a pull request, resolved review conversations, and the `CI Verify` status for `main`, and block deletion and force pushes. No additional human approval is required for this solo-maintainer baseline. Squash merging is enabled and merged branches are deleted automatically.
+- Repository verification: all seven Python regression tests pass, required files/local Markdown paths pass, shell syntax and whitespace checks pass.
+- Core: 15 XCTest cases pass, with fixed timestamps including fractional seconds. Exact executed package command:
 
-## Application coverage
+```sh
+CLANG_MODULE_CACHE_PATH=/tmp/second-look-clang-cache \
+SWIFTPM_MODULECACHE_OVERRIDE=/tmp/second-look-swiftpm-cache \
+swift test --scratch-path /tmp/second-look-core-build
+```
 
-There is no application to build or test yet. When the platform and first feature are chosen, add the relevant build, lint, and application tests to this workflow. Future tests should cover reviewer authorization, photo access, review state changes, and failure or retry behavior once those contracts are defined. Repository checks do not validate those planned behaviors.
+- Native Debug build succeeded with this discovered destination:
+
+```sh
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug \
+  -destination 'platform=iOS Simulator,id=ADD1A583-C6C6-4937-A00D-B1112054D521' \
+  -derivedDataPath /private/tmp/second-look-derived CODE_SIGNING_ALLOWED=NO build
+```
+
+- Release simulator build and binary boundary check succeeded:
+
+```sh
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Release \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /private/tmp/second-look-release CODE_SIGNING_ALLOWED=NO build
+python3 scripts/verify-release-boundary.py \
+  /private/tmp/second-look-release/Build/Products/Release-iphonesimulator/SecondLook.app
+```
+
+The final native verification script passed: **15 core tests, 4 simulator UI tests, Debug test build/run, Release build, and Release boundary check**. Exact combined command:
+
+```sh
+SECONDLOOK_SIMULATOR_ID=ADD1A583-C6C6-4937-A00D-B1112054D521 \
+SECONDLOOK_DERIVED_DATA=/private/tmp/second-look-derived \
+./scripts/verify-native.sh
+```
+
+The UI suite verifies independent runs and process relaunch, one-off cancellation/repeat, simulated failure/retry/review/history, and visible invalid-setting errors without dismissing the editor. Earlier runs exposed a demo-banner/Back-button overlap and hidden sheet errors; both were corrected and the full suite now passes. Test selectors were also made scroll-aware for native list virtualization.
+
+Manual visual checks covered the Routines screen in light appearance and dark appearance at the largest accessibility text size. The demo banner was compacted at accessibility sizes while retaining its complete accessibility label, then the Debug app was rebuilt and the layout checked again. Simulator display settings were restored. This is a limited visual check, not full VoiceOver acceptance.
+
+The execution sandbox initially blocked SwiftPM compiler caches and CoreSimulator services. The commands above were rerun with host permission and temporary build/cache paths. No signing, membership enrollment, real-device install, or service provisioning was performed. A nonfatal AppIntents metadata warning is expected because Shortcuts are not implemented.
+
+## Meaningful coverage
+
+The core suite covers empty and standard completion; distinct reviewer/actor checks; independent snapshots; routine edits/deletion; one-off/save-as-routine/repeat structure; undo while open; required review notes; exact-version replacement and stale approvals; preserved approval when a preview is discarded; failed-send retry without version duplication; both sequential closure orderings; text-only archive and cleanup separation; settings validation and Off defaults; atomic persistence across relaunch; malformed/unsupported and selected inconsistent saved documents; failed-write rollback.
+
+The UI suite covers creation, independent runs, progress after process relaunch, one-off cancellation/repeat, synthetic submission failure/retry/reviewer approval/history, and editor error recovery. Assertions exercise native accessible controls. Synthetic tests do not establish real authentication, upload reliability, notification delivery, or deletion.
+
+## Manual local acceptance
+
+- Create/edit/reorder a routine, and create a one-off. Save and relaunch; definitions remain.
+- Start the same routine twice using Resume or start → Start another run. Checking one run must not check the other. Edit/delete its routine; open runs keep their snapshots.
+- Preview a high-priority synthetic sample, save a local draft, relaunch, and resume it. Send and choose the simulated response. A failed send can retry; an accepted submission appears only for its assigned reviewer.
+- Request another photo with a note. Discard a replacement preview and verify the old evidence/note remains. Send a replacement and require a fresh review.
+- Close by completion or confirmed cancellation; history shows the correct outcome and no evidence image. A simulated cleanup acknowledgment must never claim real deletion.
+- Try large text, light/dark appearance, and VoiceOver; all actions should remain reachable and state must be described with text. Test an invalid timing value in an editor and verify the error appears without losing entered text.
+
+## Limits and future checks
+
+No real camera/library permissions, media bytes, uploads, pairing/accounts, scheduler, expiry, push, or deletion jobs exist. No physical-device Photos-library, backup exclusion, storage protection, offline two-device reconciliation, network race, or notification check can pass at this milestone. iOS 17 runtime and full VoiceOver-on-device acceptance remain unverified. Quiet-hours values are saved preferences only; timezone/DST scheduling is Milestone 5. The JSON loader checks its schema and selected invariants, not arbitrary hostile or hand-edited state; this is an app-owned local document, not an import format.
+
+The repository verifier checks required files, common private filenames, escaping symlinks, local inline Markdown paths, and whitespace. It does not inspect photo contents or all possible secret patterns, and does not validate external links or Markdown anchors. Review staged content before publishing.
+
+## CI
+
+`CI Verify` runs on `main`, `codex/**`, pull requests, and manual dispatch. Ubuntu runs repository checks; macOS runs the native script. The final **CI Verify** job requires both jobs to succeed. Checkout is pinned, permissions are read-only, and checkout credentials are not persisted. Dependabot checks GitHub Actions weekly. Branch rules require a pull request, resolved conversations, and passing CI for `main`; this assignment only pushes its feature branch.

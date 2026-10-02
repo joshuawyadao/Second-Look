@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Second Look is currently at repository setup stage. Use synthetic examples; do not share household photos, addresses, reviewer identities, or credentials. Report vulnerabilities through the private Security link.
+        Second Look is a native local foundation; Debug photo/reviewer/upload/cleanup flows are simulated. Use synthetic examples; do not share household photos, addresses, reviewer identities, or credentials. Report vulnerabilities through the private Security link.
   - type: textarea
     id: observed
     attributes:

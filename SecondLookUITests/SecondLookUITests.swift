@@ -4,7 +4,9 @@ import XCTest
 final class SecondLookUITests: XCTestCase {
     var app: XCUIApplication!
 
-    override func setUpWithError() throws {
+    // XCTest's synchronous setup override is nonisolated in Xcode 16.
+    // Keep UI setup on the main actor with the test methods on every toolchain.
+    private func launchFreshDemo() {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-ui-testing", "-reset-demo"]
@@ -33,6 +35,7 @@ final class SecondLookUITests: XCTestCase {
     }
 
     func testCreateRoutineIndependentRunsAndRelaunch() {
+        launchFreshDemo()
         tap("createRoutine")
         XCTAssertFalse(app.buttons["saveRoutine"].isEnabled)
         enter("routineTitle", text: "Morning check")
@@ -70,6 +73,7 @@ final class SecondLookUITests: XCTestCase {
     }
 
     func testSimulatedReviewRetryAndTextHistory() {
+        launchFreshDemo()
         tap("startRoutine-Packages brought inside")
         tap("check-Bring packages inside")
         tap("check-Put keys away")
@@ -98,6 +102,7 @@ final class SecondLookUITests: XCTestCase {
     }
 
     func testInvalidSettingsShowsRecoverableErrorAboveEditor() {
+        launchFreshDemo()
         tap("createRoutine")
         enter("routineTitle", text: "Preferences check")
         enter("stepTitle-0", text: "Check bag")
@@ -111,6 +116,7 @@ final class SecondLookUITests: XCTestCase {
     }
 
     func testOneOffCancellationIsNotCompletion() {
+        launchFreshDemo()
         tap("Create one-off checklist")
         enter("routineTitle", text: "Quick check")
         enter("stepTitle-0", text: "Close window")

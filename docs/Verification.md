@@ -90,3 +90,5 @@ The repository verifier checks required files, common private filenames, escapin
 ## CI
 
 `CI Verify` runs on `main`, `codex/**`, pull requests, and manual dispatch. Ubuntu runs repository checks; macOS runs the native script. The final **CI Verify** job requires both jobs to succeed. Checkout is pinned, permissions are read-only, and checkout credentials are not persisted. Dependabot checks GitHub Actions weekly. Branch rules require a pull request, resolved conversations, and passing CI for `main`; this assignment only pushes its feature branch.
+
+The initial hosted run selected Xcode 16.4 and exposed a UI test harness compatibility issue: its synchronous XCTest setup override is nonisolated, unlike the local toolchain's behavior. UI launch setup now runs in an explicit main-actor helper called by each test, preserving all four scenarios and their assertions. The final remote CI outcome is reported with the branch handoff.

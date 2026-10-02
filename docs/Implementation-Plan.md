@@ -16,8 +16,9 @@ Complete Milestones 0 and 1 from the October 2 Second Look handoff: preserve its
 [x] Add a reproducible checked-in Xcode project/scheme, relevant CI checks, and scripts; checkpoint coherent core, app, and documentation slices locally after appropriate checks.
 [x] Run repository verification, focused and complete Swift tests, discovered-destination simulator build/run and UI smoke checks, plus a Release build to check demo exclusion. Record exact commands/results and genuine gaps in Verification.md.
 [x] Review important invariants and accessibility/recovery paths, complete the verification record, and prepare the final save of task-owned files to the existing origin without opening a PR.
+[x] Fix the UI harness setup isolation exposed by GitHub's Xcode 16.4, retain all assertions, and rerun the four local UI tests successfully. Publish the correction and report the final remote CI outcome with the handoff.
 
-Local checkpoints: `703583b` (resolved plan), `2df83f1` (domain/storage and canonical docs), and `f0ba968` (native app, tests, and CI). The final documentation checkpoint and branch push complete the save workflow; remote CI status is reported after publication.
+Local checkpoints: `703583b` (resolved plan), `2df83f1` (domain/storage and canonical docs), `f0ba968` (native app, tests, and CI), and `c5d50bb` (verification documentation). The UI harness compatibility correction completes the save workflow; remote CI status is reported after publication.
 
 Validation: 15 Swift core tests, 4 native UI tests, and 7 repository-tooling tests pass. Debug simulator test/build, Release simulator build, and the Release demo-exclusion check passed on Xcode 27 / iOS 27. Code and documentation reviews informed fixes for settings validation, timestamp persistence, cleanup status, navigation overlap, and sheet error recovery. Real services/media and device distribution remain deferred.
 

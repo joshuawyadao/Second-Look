@@ -1,23 +1,21 @@
 # Plan
 
-Initialize the public Second Look repository using the established BoardBot repository conventions. Record the owner's initial task-list and photo-review concept, add contributor tooling, and connect this workspace to GitHub without choosing an application stack before the fuller brief arrives.
+Complete Milestones 0 and 1 from the October 2 Second Look handoff: preserve its product contracts in canonical documentation and build a runnable native iPhone local foundation. Use SwiftUI, a dependency-free Swift package for rules and persistence, a checked-in Xcode project, and clearly isolated Debug-only simulated services.
 
 ## Scope
-- In: Git setup on the GitHub default branch `main`, MIT license, starter product and verification docs, contributor guidance and templates, repository checks, CI, dependency alerts, security reporting, and pull-request protection.
-- Out: Application implementation, platform or framework selection, accounts, photo storage, notifications, deployment, and a pull request for this initial bootstrap.
+- In: iOS 17+ local app, editable routines and one-offs, independent snapshot runs, standard progress, exact-version photo/review fixtures, replacement and closure rules, configurable settings models, text-only history, durable local storage, meaningful tests, simulator validation, and a pushed feature branch.
+- Out: Real camera/library media, backend/auth/pairing, remote uploads, push or durable scheduled jobs, real media deletion guarantees, paid services, signing/distribution, Milestones 2–6, pull requests, and merges.
 
 ## Action items
-[x] Inspect the empty GitHub repository, local folder, and existing repository conventions; confirm there are no application docs or tests to preserve.
-[x] Commit this resolved plan as the first local checkpoint on `main` (`b0ed6d9`).
-[x] Add `README.md`, `docs/Product-Brief.md`, and `docs/Verification.md` with clear planning status and pending product decisions.
-[x] Add MIT licensing, contribution and agent guidance, a code of conduct, security reporting instructions, editor settings, and ignore rules for private photos, local data, and credentials.
-[x] Adapt the existing repository verifier and focused regression tests; add issue/PR templates, pinned GitHub Actions CI, and weekly action updates.
-[x] Verify required files, relative Markdown links, rejected private files, escaping symlinks, whitespace, and ignore rules; no app tests apply because no app is being implemented.
-[x] Configure GitHub metadata, squash merging, merged-branch deletion, private vulnerability reporting, Dependabot alerts, and security updates.
-[x] Commit and push the completed bootstrap and verify GitHub CI (`48eb64a`; successful initial `CI Verify` run).
-[x] Prepare the final documentation checkpoint and `main` rules requiring pull requests, resolved conversations, and successful `CI Verify`, with deletion and force pushes blocked. Activate the rules after the final bootstrap push.
-
-Validation: repository verification and all seven tooling regression tests pass; shell syntax, YAML parsing, workflow triggers, ignore rules, and whitespace checks pass. The initial GitHub CI run passed. Public visibility, private vulnerability reporting, Dependabot alerts and security updates, secret scanning, and push protection were verified through GitHub. Branch rules are the final administrative activation after this documentation checkpoint is published.
+[x] Read the complete handoff, applicable guidance, repository docs/tests, Git state, and installed tools; confirm a clean `main`, existing origin, Xcode 27/Swift 6.4, and available iOS 26.5/27 simulators.
+[ ] Create `codex/second-look-foundation` from the current checkout and checkpoint this resolved plan; repository rules require feature branches, overriding the handoff's generic current-branch default.
+[ ] Update README, contributor/agent/security guidance, Product-Brief, and canonical Product-Spec, Roadmap, Architecture, and native workflow decision docs; distinguish confirmed requirements, reversible assumptions, simulated behavior, and deferred work.
+[ ] Implement a framework-independent value model and local state transitions with fixed run roles, immutable snapshots, exact submission versions, review notes, approval invalidation, terminal closure, text-only archives, and cleanup status separate from completion.
+[ ] Add atomic versioned persistence with recoverable error reporting and tests for relaunch, failed saves, malformed data, run isolation, defaults, authorization checks, stale actions, and closure order using an injected clock.
+[ ] Build native Routines, Review, History, editors, checklist, preview, and settings views; confine synthetic identities/evidence/retry/cleanup controls to Debug demo builds and persist local progress without production credentials.
+[ ] Add a reproducible checked-in Xcode project/scheme, relevant CI checks, and scripts; checkpoint coherent core, app, and documentation slices locally after appropriate checks.
+[ ] Run repository verification, focused and complete Swift tests, discovered-destination simulator build/run and UI smoke checks, plus a Release build to check demo exclusion. Record exact commands/results and genuine gaps in Verification.md.
+[ ] Review important invariants and accessibility/recovery paths, update completed plan status, then use save-branch to commit and push only task-owned files to origin without opening a PR.
 
 ## Open questions
-- None block repository setup. Product, platform, storage, reviewer permissions, and notification decisions remain explicitly pending in `docs/Product-Brief.md` for the owner's later brief.
+- None block Milestones 0–1. iOS 17 is a reversible development target pending the real devices; backend/vendor, notification cadence, optional timeout duration, signing, paid services, and distribution remain deferred.

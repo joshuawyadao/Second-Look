@@ -39,11 +39,15 @@ coverage/
 htmlcov/
 node_modules/
 .build/
+.swiftpm/
 build/
 dist/
 DerivedData/
 xcuserdata/
 *.xcuserstate
+*.xcresult/
+*.xcarchive/
+*.dSYM/
 *.egg-info/
 
 # Private working material; not an app storage layout

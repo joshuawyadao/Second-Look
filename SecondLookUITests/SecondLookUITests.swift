@@ -1,0 +1,125 @@
+import XCTest
+
+@MainActor
+final class SecondLookUITests: XCTestCase {
+    var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-reset-demo"]
+        app.launch()
+        XCTAssertTrue(app.buttons["createRoutine"].waitForExistence(timeout: 10))
+    }
+
+    func tap(_ identifier: String, file: StaticString = #filePath, line: UInt = #line) {
+        let element = app.buttons[identifier].firstMatch
+        for _ in 0..<6 {
+            if element.exists && element.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.exists, "Missing button: \(identifier)", file: file, line: line)
+        XCTAssertTrue(element.isHittable, "Unreachable button: \(identifier)", file: file, line: line)
+        element.tap()
+    }
+
+    func enter(_ identifier: String, text: String) {
+        let field = app.textFields[identifier].firstMatch
+        let area = app.textViews[identifier].firstMatch
+        let element = field.exists ? field : area
+        XCTAssertTrue(element.waitForExistence(timeout: 5))
+        element.tap()
+        element.typeText(text)
+    }
+
+    func testCreateRoutineIndependentRunsAndRelaunch() {
+        tap("createRoutine")
+        XCTAssertFalse(app.buttons["saveRoutine"].isEnabled)
+        enter("routineTitle", text: "Morning check")
+        enter("stepTitle-0", text: "Pack keys")
+        tap("Add step")
+        enter("stepTitle-1", text: "Check desk")
+        tap("saveRoutine")
+        tap("startRoutine-Morning check")
+        tap("check-Pack keys")
+        XCTAssertEqual(app.buttons["check-Pack keys"].value as? String, "Checked")
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        tap("resume-Morning check")
+        XCTAssertEqual(app.buttons["check-Pack keys"].value as? String, "Checked")
+        XCTAssertEqual(app.buttons["check-Check desk"].value as? String, "Not checked")
+        app.navigationBars.buttons["Routines"].tap()
+        tap("startRoutine-Morning check")
+        tap("Start another run")
+        XCTAssertEqual(app.buttons["check-Pack keys"].value as? String, "Not checked")
+        tap("check-Pack keys")
+        tap("check-Check desk")
+        XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons["Routines"].tap()
+        tap("resume-Morning check")
+        XCTAssertEqual(app.buttons["check-Pack keys"].value as? String, "Checked")
+        XCTAssertEqual(app.buttons["check-Check desk"].value as? String, "Not checked")
+    }
+
+    func setRole(_ name: String) {
+        tap("Local settings")
+        tap(name)
+        tap("Done")
+    }
+
+    func testSimulatedReviewRetryAndTextHistory() {
+        tap("startRoutine-Packages brought inside")
+        tap("check-Bring packages inside")
+        tap("check-Put keys away")
+        tap("Preview sample evidence")
+        XCTAssertTrue(app.staticTexts["Development sample · not a real photo"].exists)
+        tap("sendSample")
+        tap("Simulate upload failure")
+        XCTAssertTrue(app.staticTexts["Upload failed (simulated)"].exists)
+        tap("Retry sending (simulated)")
+        tap("Simulate delivery")
+        XCTAssertTrue(app.staticTexts["Waiting for review (simulated)"].exists)
+        setRole("Demo Sam")
+        app.tabBars.buttons["Review"].tap()
+        tap("review-Lock the front door")
+        tap("approveSample")
+        XCTAssertTrue(app.staticTexts["No reviews waiting"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["History"].tap()
+        tap("history-Packages brought inside")
+        XCTAssertTrue(app.staticTexts["Completed"].exists)
+        let pending = app.staticTexts["Cleanup pending (simulated)"]
+        for _ in 0..<5 where !pending.exists { app.swipeUp() }
+        XCTAssertTrue(pending.exists)
+        XCTAssertFalse(app.staticTexts["Synthetic lock illustration"].exists)
+        tap("Simulate cleanup acknowledgment")
+        XCTAssertTrue(app.staticTexts["Cleanup acknowledged (simulated)"].exists)
+    }
+
+    func testInvalidSettingsShowsRecoverableErrorAboveEditor() {
+        tap("createRoutine")
+        enter("routineTitle", text: "Preferences check")
+        enter("stepTitle-0", text: "Check bag")
+        for _ in 0..<6 where !app.textFields["timeoutMinutes"].isHittable { app.swipeUp() }
+        enter("timeoutMinutes", text: "0")
+        tap("saveRoutine")
+        XCTAssertTrue(app.alerts["Change not saved"].waitForExistence(timeout: 5))
+        app.alerts.buttons["OK"].tap()
+        XCTAssertTrue(app.buttons["saveRoutine"].exists)
+        XCTAssertTrue(app.textFields["timeoutMinutes"].exists)
+    }
+
+    func testOneOffCancellationIsNotCompletion() {
+        tap("Create one-off checklist")
+        enter("routineTitle", text: "Quick check")
+        enter("stepTitle-0", text: "Close window")
+        tap("saveRoutine")
+        tap("Cancel checklist")
+        app.sheets.buttons["Cancel checklist"].tap()
+        XCTAssertTrue(app.staticTexts["Canceled"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Completed"].exists)
+        tap("Start new run")
+        XCTAssertEqual(app.buttons["check-Close window"].value as? String, "Not checked")
+    }
+}

@@ -14,9 +14,10 @@ Initialize the public Second Look repository using the established BoardBot repo
 [x] Adapt the existing repository verifier and focused regression tests; add issue/PR templates, pinned GitHub Actions CI, and weekly action updates.
 [x] Verify required files, relative Markdown links, rejected private files, escaping symlinks, whitespace, and ignore rules; no app tests apply because no app is being implemented.
 [x] Configure GitHub metadata, squash merging, merged-branch deletion, private vulnerability reporting, Dependabot alerts, and security updates.
-[ ] Commit and push the completed bootstrap, verify GitHub CI, and activate pull-request rules for `main` after the initial push.
+[x] Commit and push the completed bootstrap and verify GitHub CI (`48eb64a`; successful initial `CI Verify` run).
+[x] Prepare the final documentation checkpoint and `main` rules requiring pull requests, resolved conversations, and successful `CI Verify`, with deletion and force pushes blocked. Activate the rules after the final bootstrap push.
 
-Validation at this checkpoint: repository verification and all seven tooling regression tests pass; shell syntax, YAML parsing, workflow triggers, ignore rules, and whitespace checks pass. GitHub publishing and branch protection are the remaining rollout steps.
+Validation: repository verification and all seven tooling regression tests pass; shell syntax, YAML parsing, workflow triggers, ignore rules, and whitespace checks pass. The initial GitHub CI run passed. Public visibility, private vulnerability reporting, Dependabot alerts and security updates, secret scanning, and push protection were verified through GitHub. Branch rules are the final administrative activation after this documentation checkpoint is published.
 
 ## Open questions
 - None block repository setup. Product, platform, storage, reviewer permissions, and notification decisions remain explicitly pending in `docs/Product-Brief.md` for the owner's later brief.

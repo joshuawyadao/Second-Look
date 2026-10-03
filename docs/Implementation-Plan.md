@@ -3,7 +3,7 @@
 Address actionable Codex comments and observed PR CI failures without widening Milestones 0–1. Preserve versioned local evidence and unsent work, validate restored review decisions, make snooze preferences usable, cover modal presentations when inactive, and prevent generated Xcode bundles from entering the public repository.
 
 ## Scope
-- In: Exact-version withdrawal and retained replacement drafts; restored submission/decision consistency; future snooze picker initialization; a privacy shield above native sheets and portable UI-test taps for its separate windows; Xcode artifact verifier rules; focused regression tests, canonical documentation, item-specific commits/pushes/reactions, and final PR checks.
+- In: Exact-version withdrawal and retained replacement drafts; restored submission/decision consistency; future snooze picker initialization; a privacy shield above native sheets and a gated cross-process signal for deterministic UI tests; Xcode artifact verifier rules; focused regression tests, canonical documentation, item-specific commits/pushes/reactions, and final PR checks.
 - Out: Backend/authentication, real photos/uploads/deletion, scheduling, paid services, distribution, changing protection/bypass rules, resolving review threads without authorization, and merging.
 
 ## Action items
@@ -15,7 +15,7 @@ Address actionable Codex comments and observed PR CI failures without widening M
 [x] Reject tracked/force-added Xcode result/archive/dSYM bundles and generated build/cache directories in the verifier; add temporary-repository forced-add and safe-path regression cases. Repository verification and all 9 tooling tests pass.
 [x] Update Product-Spec/Architecture and Verification with changed contracts, sample defaults, exact checks, and remaining device/service limits. Repository 9/core 17 tests pass; 7 UI tests passed in the combined run and the corrected snooze test passes on focused rerun. Debug tests, Release build, and expanded Release boundary check pass. Hosted CI must still validate the full final suite.
 [x] Follow-up Codex comment `4174673339`: reject restored current evidence with an unauthorized/stale/missing decision or mismatched verdict/status, and preserve valid approved/requested/sending/failed/draft records. Two disk/repository regressions bring the core suite to 19 passing tests; malformed approvals cannot become editable state or complete a run. Architecture/Verification record the schema-v1 contract without a migration.
-[ ] Hosted CI run `37150206853`: correct only the overlay test-control taps that Xcode 16.4 cannot scroll into view. Preserve every coverage assertion, validate the privacy tests locally, document the failure/correction, and wait for a new full hosted CI result.
+[x] Hosted CI run `37150206853`: replace the small test-control window that Xcode 16.4 could not tap with gated Debug Darwin show/hide hooks. All three privacy regressions and a new both-flags gate test pass; Release excludes the names and hooks. Preserve every UI visibility/restoration assertion and production scene/window behavior. Document the failure and correction; new hosted full-suite confirmation remains the final PR gate.
 [ ] Save each validated feedback cluster separately, push and react after each save, inspect fresh review/CI/mergeability, and finish with the PR unmerged. Any addressed but unresolved threads remain a final authorization step.
 
 ## Open questions

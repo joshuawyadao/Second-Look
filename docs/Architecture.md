@@ -29,7 +29,7 @@ The shared native preference fields initialize an enabled snooze one hour ahead,
 
 Each scene owns an opaque privacy window above its presented sheets and alerts. Scene/app deactivation shows the cover; activation removes it. The cover does not become the key window or replace editor state. Scene attachment and disconnection manage its lifetime independently of sheet navigation. This protects local checklist content as well as future media; it is not an access-control mechanism.
 
-Only `SECONDLOOK_DEMO` launches with both `-ui-testing` and `-privacy-testing` expose cover/restore controls for deterministic UI tests. Release compilation excludes those controls, and the built-binary boundary check rejects their markers. Tests cover the root screen, routine editor, and Local settings sheet. OS snapshot timing and keyboard behavior still require device/runtime acceptance; observed simulator evidence is in [Verification.md](Verification.md).
+Only `SECONDLOOK_DEMO` launches with both `-ui-testing` and `-privacy-testing` register show/hide Darwin notification hooks for deterministic UI tests. These test signals invoke the same cover controller as scene activation; observers are removed on disconnection. Release compilation excludes the hooks, and the built-binary boundary check rejects their markers. Tests cover the root screen, routine editor, and Local settings sheet. OS snapshot timing and keyboard behavior still require device/runtime acceptance; observed simulator evidence is in [Verification.md](Verification.md).
 
 ## Later connected boundary
 

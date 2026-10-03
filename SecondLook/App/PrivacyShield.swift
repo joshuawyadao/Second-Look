@@ -1,5 +1,8 @@
 import SwiftUI
 import UIKit
+#if SECONDLOOK_DEMO
+import CoreFoundation
+#endif
 
 /// Owns a cover for one scene. A separate window also covers SwiftUI sheets and alerts.
 struct PrivacyShieldHost: View {
@@ -41,9 +44,12 @@ private final class PrivacyShieldController {
     private var coverWindow: UIWindow?
     private var protected = false
     #if SECONDLOOK_DEMO
-    private var testControlWindow: UIWindow?
     private let privacyTesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
         && ProcessInfo.processInfo.arguments.contains("-privacy-testing")
+    private struct WeakTestController { weak var value: PrivacyShieldController? }
+    private static var testControllers: [UInt: WeakTestController] = [:]
+    private static var nextTestObserverID: UInt = 1
+    private var testObserver: UnsafeMutableRawPointer?
     #endif
 
     var isSceneActive: Bool { scene?.activationState == .foregroundActive }
@@ -59,7 +65,7 @@ private final class PrivacyShieldController {
         disconnect()
         scene = nextScene
         #if SECONDLOOK_DEMO
-        if privacyTesting { makeTestControl(in: nextScene) }
+        if privacyTesting { installTestObserver() }
         #endif
         if protected { showCover(in: nextScene) }
     }
@@ -78,8 +84,7 @@ private final class PrivacyShieldController {
         coverWindow?.isHidden = true
         coverWindow = nil
         #if SECONDLOOK_DEMO
-        testControlWindow?.isHidden = true
-        testControlWindow = nil
+        removeTestObserver()
         #endif
         scene = nil
     }
@@ -90,14 +95,7 @@ private final class PrivacyShieldController {
         window.windowLevel = UIWindow.Level(rawValue: UIWindow.Level.alert.rawValue + 2)
         window.backgroundColor = .systemBackground
         window.isOpaque = true
-        #if SECONDLOOK_DEMO
-        let content = UIHostingController(rootView: PrivacyCoverView(
-            testRestore: privacyTesting,
-            restore: { [weak self] in self?.setProtected(false) }
-        ))
-        #else
         let content = UIHostingController(rootView: PrivacyCoverView())
-        #endif
         content.view.backgroundColor = .systemBackground
         content.view.accessibilityViewIsModal = true
         window.rootViewController = content
@@ -107,36 +105,40 @@ private final class PrivacyShieldController {
     }
 
     #if SECONDLOOK_DEMO
-    private func makeTestControl(in scene: UIWindowScene) {
-        let bounds = scene.coordinateSpace.bounds
-        let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: max(0, bounds.maxX - 86), y: 110, width: 76, height: 52)
-        window.windowLevel = UIWindow.Level(rawValue: UIWindow.Level.alert.rawValue + 1)
-        window.backgroundColor = .clear
-        let content = UIHostingController(rootView: Button { [weak self] in
-            self?.setProtected(true)
-        } label: {
-            Image(systemName: "eye.slash.fill")
-                .font(.title3)
-                .padding(12)
-                .background(.regularMaterial, in: Capsule())
+    private func installTestObserver() {
+        let id = Self.nextTestObserverID
+        Self.nextTestObserverID += 1
+        // Core Foundation treats this token as opaque; no pointer is dereferenced.
+        guard let token = UnsafeMutableRawPointer(bitPattern: id) else { return }
+        testObserver = token
+        Self.testControllers[id] = WeakTestController(value: self)
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterAddObserver(center, token, { _, observer, _, _, _ in
+            PrivacyShieldController.routeTestSignal(observer: observer, protected: true)
+        }, "com.secondlook.ui-tests.privacy.show" as CFString, nil, .deliverImmediately)
+        CFNotificationCenterAddObserver(center, token, { _, observer, _, _, _ in
+            PrivacyShieldController.routeTestSignal(observer: observer, protected: false)
+        }, "com.secondlook.ui-tests.privacy.hide" as CFString, nil, .deliverImmediately)
+    }
+
+    private func removeTestObserver() {
+        guard let testObserver else { return }
+        CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(), testObserver, nil, nil)
+        Self.testControllers.removeValue(forKey: UInt(bitPattern: testObserver))
+        self.testObserver = nil
+    }
+
+    nonisolated private static func routeTestSignal(observer: UnsafeMutableRawPointer?, protected: Bool) {
+        guard let observer else { return }
+        let id = UInt(bitPattern: observer)
+        Task { @MainActor in
+            testControllers[id]?.value?.setProtected(protected)
         }
-        .accessibilityLabel("Show privacy shield")
-        .accessibilityIdentifier("testShowPrivacyShield"))
-        content.view.backgroundColor = .clear
-        window.rootViewController = content
-        testControlWindow = window
-        window.isHidden = false
     }
     #endif
 }
 
 private struct PrivacyCoverView: View {
-    #if SECONDLOOK_DEMO
-    let testRestore: Bool
-    let restore: @MainActor () -> Void
-    #endif
-
     var body: some View {
         ZStack {
             Color(uiColor: .systemBackground).ignoresSafeArea()
@@ -145,12 +147,6 @@ private struct PrivacyCoverView: View {
                     .font(.title2)
                 Text("Content hidden")
                     .accessibilityIdentifier("privacyShieldVisible")
-                #if SECONDLOOK_DEMO
-                if testRestore {
-                    Button("Restore app for test", action: restore)
-                        .accessibilityIdentifier("testRestoreApp")
-                }
-                #endif
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

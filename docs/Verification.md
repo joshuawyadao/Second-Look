@@ -84,11 +84,30 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug
   CODE_SIGNING_ALLOWED=NO test
 ```
 
-All three new privacy UI tests passed in the combined run: the opaque window prevents root/editor/Local settings controls from being hit, restoration makes them usable again, and entered routine text remains. Test controls require both Debug test flags and are absent in Release. The separate Release simulator build and expanded binary boundary command above passed, checking the local identity and absence of demo/role-picker/privacy-test markers.
+All three new privacy UI tests initially passed locally: the opaque window prevents root/editor/Local settings controls from being hit, restoration makes them usable again, and entered routine text remains. The test hooks require both Debug test flags and are absent in Release. The separate Release simulator build and expanded binary boundary command above passed, checking the local identity and absence of demo/role-picker/privacy-test markers.
 
 Manual Device Hub inspection on the same iOS 27 simulator showed the open routine editor covered in the app-switcher snapshot. Returning to the app restored the sheet and its entered synthetic name. The simulator used a hardware keyboard; software-keyboard/prediction-strip pixels were not checked. This single snapshot observation and deterministic cover tests do not establish timing on every supported runtime or physical device.
 
-A follow-up Codex finding added two restoration regressions, bringing the core suite to **19 passing tests** in both the explicit cache/scratch-path command above and a combined native rerun. Malformed current decisions (self/unassigned actor, stale/future version, missing decision, verdict/status mismatch, missing acceptance, and invalid request notes) fail both disk loading and repository initialization without overwriting the file. Valid waiting/requested evidence, a replacement draft, a later approved version, and its terminal text-only archive still restore; historical decisions remain attached to their original versions. Hosted Xcode 16.4 failed to tap the privacy test overlay window; its test interaction correction is still being validated. No passing full hosted run is claimed for these follow-up changes yet.
+A follow-up Codex finding added two restoration regressions, bringing the core suite to **19 passing tests** in both the explicit cache/scratch-path command above and a combined native rerun. Malformed current decisions (self/unassigned actor, stale/future version, missing decision, verdict/status mismatch, missing acceptance, and invalid request notes) fail both disk loading and repository initialization without overwriting the file. Valid waiting/requested evidence, a replacement draft, a later approved version, and its terminal text-only archive still restore; historical decisions remain attached to their original versions.
+
+Hosted run `37150206853` on Xcode 16.4 passed all five routine/checklist/snooze UI tests but failed the three privacy tests because XCTest could not scroll to the separate small test-control window. Two local coordinate-tap attempts also missed that window. The test-only trigger now uses Darwin show/hide notifications, gated by both test flags, with observers removed at disconnect and no ordinary-launch listener. It invokes the same privacy controller as scene lifecycle notifications; every visibility, restoration, and preserved-input assertion remains. All three privacy scenarios pass on focused rerun, and a fourth regression proves the show signal is ignored when `-privacy-testing` is absent. The suite now contains **9 UI tests**; the other five also passed in the restored-core combined native run. New hosted full-suite confirmation remains a PR gate.
+
+The focused privacy command passed three tests; the gate command passed one test (not merely a successful build):
+
+```sh
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug \
+  -destination 'platform=iOS Simulator,id=ADD1A583-C6C6-4937-A00D-B1112054D521' \
+  -derivedDataPath /private/tmp/second-look-derived -parallel-testing-enabled NO \
+  -only-testing:SecondLookUITests/PrivacyShieldUITests CODE_SIGNING_ALLOWED=NO test
+# The separate new gate case:
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug \
+  -destination 'platform=iOS Simulator,id=ADD1A583-C6C6-4937-A00D-B1112054D521' \
+  -derivedDataPath /private/tmp/second-look-derived -parallel-testing-enabled NO \
+  -only-testing:SecondLookUITests/PrivacyShieldUITests/testPrivacySignalRequiresBothTestFlags \
+  CODE_SIGNING_ALLOWED=NO test
+```
+
+After integrating the signal hook, the Release build and expanded binary boundary check passed again. The built Release app excludes both Darwin names as well as demo/role-picker/test-launch markers.
 
 The core suite covers empty and standard completion; distinct reviewer/actor checks; independent snapshots; routine edits/deletion; one-off/save-as-routine/repeat structure; undo while open; required review notes; exact-version replacement and stale approvals; preserved approval when a preview is discarded; failed-send retry without version duplication; both sequential closure orderings; text-only archive and cleanup separation; settings validation and Off defaults; atomic persistence across relaunch; malformed/unsupported and selected inconsistent saved documents; failed-write rollback.
 

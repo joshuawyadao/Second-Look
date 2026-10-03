@@ -1,3 +1,4 @@
+import CoreFoundation
 import XCTest
 
 @MainActor
@@ -10,18 +11,48 @@ final class PrivacyShieldUITests: XCTestCase {
         app.launchArguments = ["-ui-testing", "-privacy-testing", "-reset-demo"]
         app.launch()
         XCTAssertTrue(app.buttons["createRoutine"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["testShowPrivacyShield"].waitForExistence(timeout: 5))
     }
 
     private func verifyCoverAndRestore(over element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.isHittable, file: file, line: line)
-        app.buttons["testShowPrivacyShield"].tap()
+        postPrivacySignal("com.secondlook.ui-tests.privacy.show")
         let cover = app.staticTexts["privacyShieldVisible"]
         XCTAssertTrue(cover.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertFalse(element.isHittable, "The shield must cover the active presentation", file: file, line: line)
-        app.buttons["testRestoreApp"].tap()
-        XCTAssertFalse(cover.exists, file: file, line: line)
+        postPrivacySignal("com.secondlook.ui-tests.privacy.hide")
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: cover)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, file: file, line: line)
         XCTAssertTrue(element.isHittable, "The previous presentation must remain usable", file: file, line: line)
+    }
+
+    private func postPrivacySignal(_ name: String) {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(rawValue: name as CFString),
+            nil,
+            nil,
+            true
+        )
+    }
+
+    func testPrivacySignalRequiresBothTestFlags() {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-reset-demo"]
+        app.launch()
+        XCTAssertTrue(app.buttons["createRoutine"].waitForExistence(timeout: 10))
+
+        postPrivacySignal("com.secondlook.ui-tests.privacy.show")
+        let cover = app.staticTexts["privacyShieldVisible"]
+        let unexpectedCover = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true"),
+            object: cover
+        )
+        unexpectedCover.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [unexpectedCover], timeout: 2), .completed)
+
+        app.buttons["createRoutine"].tap()
+        XCTAssertTrue(app.textFields["routineTitle"].waitForExistence(timeout: 5))
     }
 
     func testPrivacyCoverHidesRootAndRestoresIt() {

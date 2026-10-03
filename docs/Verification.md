@@ -72,6 +72,8 @@ The execution sandbox initially blocked SwiftPM compiler caches and CoreSimulato
 
 The withdrawal regressions raise the core suite to 17 tests. The same explicit cache/scratch-path package command above passed all 17: stale and unauthorized withdrawal preserve state, closed runs reject withdrawal, and removing current evidence retains a replacement draft through JSON relaunch and resend. Full native verification of the combined review corrections is recorded after integration.
 
+`./scripts/verify-repository.sh` passes 9 tooling tests after adding force-added Xcode result/archive/dSYM bundle and build/cache regressions. Synthetic ignored contents are force-added in temporary Git repositories; both nested/case-varied artifacts and safe similarly named source/document paths are checked.
+
 The core suite covers empty and standard completion; distinct reviewer/actor checks; independent snapshots; routine edits/deletion; one-off/save-as-routine/repeat structure; undo while open; required review notes; exact-version replacement and stale approvals; preserved approval when a preview is discarded; failed-send retry without version duplication; both sequential closure orderings; text-only archive and cleanup separation; settings validation and Off defaults; atomic persistence across relaunch; malformed/unsupported and selected inconsistent saved documents; failed-write rollback.
 
 The UI suite covers creation, independent runs, progress after process relaunch, one-off cancellation/repeat, synthetic submission failure/retry/reviewer approval/history, and editor error recovery. Assertions exercise native accessible controls. Synthetic tests do not establish real authentication, upload reliability, notification delivery, or deletion.

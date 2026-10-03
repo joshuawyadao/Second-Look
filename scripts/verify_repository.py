@@ -47,9 +47,13 @@ REQUIRED_FILES = (
 )
 
 PRIVATE_DIRS = {"private", "local-data", "photos", "uploads", "logs", "outputs"}
-CACHE_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".venv", "node_modules"}
+CACHE_DIRS = {
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".venv",
+    "node_modules", ".build", ".swiftpm", "build", "deriveddata", "xcuserdata",
+}
 PRIVATE_SUFFIXES = {".key", ".pem", ".p8", ".p12", ".pfx", ".mobileprovision"}
 GENERATED_SUFFIXES = {".pyc", ".pyo"}
+GENERATED_BUNDLE_SUFFIXES = (".xcresult", ".xcarchive", ".dsym")
 LINK = re.compile(r"!?\[[^\]]*\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+[^)]*)?\)")
 
 
@@ -72,11 +76,15 @@ def is_within(path: Path, root: Path) -> bool:
 
 
 def unsafe_reason(path: Path) -> str | None:
-    parts = {part.lower() for part in path.parts[:-1]}
+    directory_parts = [part.lower() for part in path.parts[:-1]]
+    parts = set(directory_parts)
     name = path.name.lower()
     if parts & PRIVATE_DIRS:
         return "private local data"
-    if parts & CACHE_DIRS or name in {".ds_store", ".coverage"} or path.suffix.lower() in GENERATED_SUFFIXES:
+    if (parts & CACHE_DIRS
+            or any(part.endswith(GENERATED_BUNDLE_SUFFIXES) for part in directory_parts)
+            or name in {".ds_store", ".coverage"}
+            or path.suffix.lower() in GENERATED_SUFFIXES):
         return "generated cache"
     if name == ".env" or (name.startswith(".env.") and name not in {".env.example", ".env.template"}):
         return "private credential"

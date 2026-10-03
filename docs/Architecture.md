@@ -23,6 +23,12 @@ Withdrawal takes an expected submission version through the core and native conf
 
 The shared native preference fields initialize an enabled snooze one hour ahead, constrain new selections to the future, and show an expired saved value without renewing it. This editable example is saved with the routine/run settings; it does not create a reminder scheduler or an agreed cadence.
 
+## Native privacy cover
+
+Each scene owns an opaque privacy window above its presented sheets and alerts. Scene/app deactivation shows the cover; activation removes it. The cover does not become the key window or replace editor state. Scene attachment and disconnection manage its lifetime independently of sheet navigation. This protects local checklist content as well as future media; it is not an access-control mechanism.
+
+Only `SECONDLOOK_DEMO` launches with both `-ui-testing` and `-privacy-testing` expose cover/restore controls for deterministic UI tests. Release compilation excludes those controls, and the built-binary boundary check rejects their markers. Tests cover the root screen, routine editor, and Local settings sheet. OS snapshot timing and keyboard behavior still require device/runtime acceptance; observed simulator evidence is in [Verification.md](Verification.md).
+
 ## Later connected boundary
 
 Before Milestone 2, compare providers using current official docs for two-user authentication, participant authorization, transactional reviews/closure, private media, durable jobs while phones are closed, APNs integration, operational load, and cost. No vendor or credentials are selected merely to run M1.

@@ -70,7 +70,7 @@ The execution sandbox initially blocked SwiftPM compiler caches and CoreSimulato
 
 ### PR review corrections — October 3, 2026
 
-The withdrawal regressions raise the core suite to 17 tests. The same explicit cache/scratch-path package command above passed all 17: stale and unauthorized withdrawal preserve state, closed runs reject withdrawal, and removing current evidence retains a replacement draft through JSON relaunch and resend. Full native verification of the combined review corrections is recorded after integration.
+The withdrawal regressions raise the core suite to 17 tests. Both the explicit cache/scratch-path package command above and the combined native script passed all 17: stale and unauthorized withdrawal preserve state, closed runs reject withdrawal, and removing current evidence retains a replacement draft through JSON relaunch and resend.
 
 `./scripts/verify-repository.sh` passes 9 tooling tests after adding force-added Xcode result/archive/dSYM bundle and build/cache regressions. Synthetic ignored contents are force-added in temporary Git repositories; both nested/case-varied artifacts and safe similarly named source/document paths are checked.
 
@@ -83,6 +83,10 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug
   -only-testing:SecondLookUITests/SecondLookUITests/testSnoozeStartsInFutureAndPersistsWithRoutine \
   CODE_SIGNING_ALLOWED=NO test
 ```
+
+All three new privacy UI tests passed in the combined run: the opaque window prevents root/editor/Local settings controls from being hit, restoration makes them usable again, and entered routine text remains. Test controls require both Debug test flags and are absent in Release. The separate Release simulator build and expanded binary boundary command above passed, checking the local identity and absence of demo/role-picker/privacy-test markers.
+
+Manual Device Hub inspection on the same iOS 27 simulator showed the open routine editor covered in the app-switcher snapshot. Returning to the app restored the sheet and its entered synthetic name. The simulator used a hardware keyboard; software-keyboard/prediction-strip pixels were not checked. This single snapshot observation and deterministic cover tests do not establish timing on every supported runtime or physical device.
 
 The core suite covers empty and standard completion; distinct reviewer/actor checks; independent snapshots; routine edits/deletion; one-off/save-as-routine/repeat structure; undo while open; required review notes; exact-version replacement and stale approvals; preserved approval when a preview is discarded; failed-send retry without version duplication; both sequential closure orderings; text-only archive and cleanup separation; settings validation and Off defaults; atomic persistence across relaunch; malformed/unsupported and selected inconsistent saved documents; failed-write rollback.
 

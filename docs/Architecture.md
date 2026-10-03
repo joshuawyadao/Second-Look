@@ -21,6 +21,8 @@ Withdrawal takes an expected submission version through the core and native conf
 
 `ReminderPreferences` and review-timeout settings are separate models; timeout starts Off and no M1 scheduler runs. M1 stores one run-level snooze/mute/quiet-hours set; recipient-specific controls and timezone-aware scheduling still need modeling before Milestone 5. `CleanupStatus` is separate from run outcome: not needed without evidence, pending for synthetic evidence at closure, or a simulated acknowledgment. Durable `CleanupWork` jobs remain later work. Pending or failed cleanup cannot be displayed as confirmed deletion. The local adapter models transitions without real image bytes. No app-managed image or live URL belongs in the archive.
 
+The shared native preference fields initialize an enabled snooze one hour ahead, constrain new selections to the future, and show an expired saved value without renewing it. This editable example is saved with the routine/run settings; it does not create a reminder scheduler or an agreed cadence.
+
 ## Later connected boundary
 
 Before Milestone 2, compare providers using current official docs for two-user authentication, participant authorization, transactional reviews/closure, private media, durable jobs while phones are closed, APNs integration, operational load, and cost. No vendor or credentials are selected merely to run M1.

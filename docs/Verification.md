@@ -74,6 +74,16 @@ The withdrawal regressions raise the core suite to 17 tests. The same explicit c
 
 `./scripts/verify-repository.sh` passes 9 tooling tests after adding force-added Xcode result/archive/dSYM bundle and build/cache regressions. Synthetic ignored contents are force-added in temporary Git repositories; both nested/case-varied artifacts and safe similarly named source/document paths are checked.
 
+The combined native run passed 17 core tests and 7 of 8 UI tests, then failed the new snooze test because its row-center tap did not enable the trailing switch. Manual inspection confirmed the editor displays a future deadline. The test now taps the switch itself and asserts it is enabled before checking the deadline. The focused rerun passed, verifying a future date survives routine save/reopen:
+
+```sh
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug \
+  -destination 'platform=iOS Simulator,id=ADD1A583-C6C6-4937-A00D-B1112054D521' \
+  -derivedDataPath /private/tmp/second-look-derived -parallel-testing-enabled NO \
+  -only-testing:SecondLookUITests/SecondLookUITests/testSnoozeStartsInFutureAndPersistsWithRoutine \
+  CODE_SIGNING_ALLOWED=NO test
+```
+
 The core suite covers empty and standard completion; distinct reviewer/actor checks; independent snapshots; routine edits/deletion; one-off/save-as-routine/repeat structure; undo while open; required review notes; exact-version replacement and stale approvals; preserved approval when a preview is discarded; failed-send retry without version duplication; both sequential closure orderings; text-only archive and cleanup separation; settings validation and Off defaults; atomic persistence across relaunch; malformed/unsupported and selected inconsistent saved documents; failed-write rollback.
 
 The UI suite covers creation, independent runs, progress after process relaunch, one-off cancellation/repeat, synthetic submission failure/retry/reviewer approval/history, and editor error recovery. Assertions exercise native accessible controls. Synthetic tests do not establish real authentication, upload reliability, notification delivery, or deletion.

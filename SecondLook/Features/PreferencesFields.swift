@@ -23,13 +23,27 @@ struct PreferencesFields: View {
             Toggle("Mute reminders", isOn: $settings.reminders.muted)
             Toggle("Snooze", isOn: Binding(
                 get: { settings.reminders.snoozedUntil != nil },
-                set: { settings.reminders.snoozedUntil = $0 ? Date() : nil }
+                set: { settings.reminders.snoozedUntil = $0 ? Date().addingTimeInterval(3600) : nil }
             ))
-            if settings.reminders.snoozedUntil != nil {
-                DatePicker("Snooze until", selection: Binding(
-                    get: { settings.reminders.snoozedUntil ?? Date() },
-                    set: { settings.reminders.snoozedUntil = $0 }
-                ))
+            .accessibilityIdentifier("snoozeToggle")
+            if let deadline = settings.reminders.snoozedUntil {
+                if deadline > Date() {
+                    DatePicker("Snooze until", selection: Binding(
+                        get: { settings.reminders.snoozedUntil ?? Date().addingTimeInterval(3600) },
+                        set: { settings.reminders.snoozedUntil = max($0, Date().addingTimeInterval(60)) }
+                    ), in: Date()...)
+                    .accessibilityIdentifier("snoozedUntilPicker")
+                    Text(DateFormatter.localizedString(from: deadline, dateStyle: .medium, timeStyle: .short))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("snoozeDeadline")
+                } else {
+                    Text("This snooze has ended. Choose another future time to snooze again.")
+                        .font(.caption)
+                    Button("Snooze another hour") {
+                        settings.reminders.snoozedUntil = Date().addingTimeInterval(3600)
+                    }
+                }
             }
             Toggle("Quiet hours", isOn: Binding(
                 get: { settings.reminders.quietHours != nil },
@@ -41,7 +55,7 @@ struct PreferencesFields: View {
                 Text("22:00–07:00 is an editable sample, not an active schedule.").font(.caption)
             }
         } header: { Text("Reminder preferences") } footer: {
-            Text("Saved preferences only. No notifications are sent. Timing has no default cadence; configured delays must be greater than zero.")
+            Text("Saved preferences only. No notifications are sent. Timing has no default cadence; configured delays must be greater than zero. Snooze starts with an editable one-hour example.")
         }
         Section {
             LabeledContent("Unreviewed timeout (minutes)") {

@@ -115,6 +115,40 @@ final class SecondLookUITests: XCTestCase {
         XCTAssertTrue(app.textFields["timeoutMinutes"].exists)
     }
 
+    func testSnoozeStartsInFutureAndPersistsWithRoutine() throws {
+        launchFreshDemo()
+        tap("createRoutine")
+        enter("routineTitle", text: "Snooze check")
+        enter("stepTitle-0", text: "Pack lunch")
+
+        let snooze = app.switches["snoozeToggle"]
+        for _ in 0..<6 where !snooze.isHittable || snooze.frame.maxY > app.frame.maxY - 100 {
+            app.swipeUp()
+        }
+        XCTAssertTrue(snooze.isHittable)
+        // SwiftUI exposes the whole row as a switch; tap its trailing control.
+        snooze.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        XCTAssertEqual(snooze.value as? String, "1")
+
+        let deadline = app.staticTexts["snoozeDeadline"]
+        for _ in 0..<6 where !deadline.exists { app.swipeUp() }
+        XCTAssertTrue(deadline.waitForExistence(timeout: 5))
+        let displayedDeadline = deadline.label
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        let savedDate = try XCTUnwrap(formatter.date(from: displayedDeadline))
+        XCTAssertGreaterThan(savedDate, Date(), "Enabling Snooze must set a future deadline")
+
+        tap("saveRoutine")
+        tap("Edit Snooze check")
+        let reopenedDeadline = app.staticTexts["snoozeDeadline"]
+        for _ in 0..<6 where !reopenedDeadline.exists { app.swipeUp() }
+        XCTAssertTrue(reopenedDeadline.waitForExistence(timeout: 5))
+        XCTAssertEqual(reopenedDeadline.label, displayedDeadline)
+        XCTAssertGreaterThan(try XCTUnwrap(formatter.date(from: reopenedDeadline.label)), Date())
+    }
+
     func testOneOffCancellationIsNotCompletion() {
         launchFreshDemo()
         tap("Create one-off checklist")

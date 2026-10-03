@@ -42,8 +42,9 @@ extension AppModel {
     func retrySample(runID: UUID, itemID: UUID, version: Int) {
         perform { try $0.retrySend(runID: runID, itemID: itemID, actorID: actorID, expectedVersion: version, now: Date()) }
     }
-    func withdrawSample(runID: UUID, itemID: UUID) {
-        perform { try $0.withdraw(runID: runID, itemID: itemID, actorID: actorID, now: Date()) }
+    func withdrawSample(runID: UUID, itemID: UUID, version: Int) {
+        perform { try $0.withdraw(runID: runID, itemID: itemID, actorID: actorID,
+                                  expectedVersion: version, now: Date()) }
     }
     func reviewSample(runID: UUID, itemID: UUID, version: Int, note: String?) -> Bool {
         perform {

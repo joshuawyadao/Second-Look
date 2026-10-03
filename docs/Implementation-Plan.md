@@ -8,8 +8,8 @@ Address the five actionable Codex comments on PR #1 without widening Milestones 
 
 ## Action items
 [x] Read current PR threads, confirm the five P2 findings against core/UI/verifier code, and inspect Product-Spec, Architecture, Verification, tests, and the clean feature branch at `342764c`.
-[ ] Checkpoint this resolved plan before implementation; keep Git operations sequential and assign disjoint worker ownership.
-[ ] Require the observed submission version for withdrawal, preserve separate drafts, update the confirmation caller, and test stale/current/unauthorized/closed withdrawal plus retained draft persistence and resend.
+[x] Checkpoint this resolved plan before implementation (`7ef4426`); keep Git operations sequential and assign disjoint worker ownership.
+[x] Require the observed submission version for withdrawal, preserve separate drafts, update the confirmation caller, and test stale/current/unauthorized/closed withdrawal plus retained draft persistence and resend. All 17 core tests pass.
 [ ] Initialize enabled snooze to an editable future picker value with clear sample language; constrain date choice and add a UI regression for saving/reopening a future deadline. No scheduling or agreed cadence is introduced.
 [ ] Replace the root-only privacy overlay with a scene/window-level shield that covers sheets; add focused native regression evidence for modal shielding and restored presentation after activation, with actual app-switcher timing limitations recorded.
 [ ] Reject tracked/force-added Xcode result/archive/dSYM bundles and generated build/cache directories in the verifier; add temporary-repository forced-add and safe-path regression cases.

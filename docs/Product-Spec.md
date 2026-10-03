@@ -16,6 +16,8 @@ The assigned reviewer may approve the exact current submission version or reques
 
 ## Closure, history, and cleanup
 
+Withdrawal names the submission version shown when the action was created. A stale withdrawal cannot remove replacement evidence. It removes only that current submission and its approval; any separately saved replacement draft remains available to send or explicitly discard.
+
 Only all checked standard items plus all currently approved high-priority submissions complete a mixed run. **Completed** and **Canceled** are distinct terminal outcomes; neither reopens. Performer cancellation needs confirmation and never counts as success. Repeating an archive creates a new run. Final approval racing cancellation yields one terminal outcome; late uploads/actions cannot resurrect it.
 
 History is text-only: item descriptions, participant attribution, decisions/notes, and relevant timestamps. It has no image bytes, thumbnails, or live photo links. Run closure initiates cleanup for all app-managed current and superseded media, including derivatives and failed-upload references. **Cleanup pending** can coexist with Completed/Canceled; deletion is reported as confirmed only after the affected store confirms it. Repeat requests must have one logical effect even though network delivery and cleanup attempts may repeat. Milestone 1 has synthetic media references and simulated cleanup status only; it cannot establish real deletion.

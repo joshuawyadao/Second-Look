@@ -181,6 +181,69 @@ final class SecondLookCoreTests: XCTestCase {
         XCTAssertEqual(second, first + 1)
     }
 
+    func testWithdrawalRejectsStaleUnauthorizedAndClosedActionsWithoutMutation() throws {
+        var state = SecondLookState()
+        let id = try state.startOneOff(title: "Mixed", items: mixed().items,
+                                       performerID: performer, reviewerID: reviewer, now: now)
+        let high = runItem(state, id, index: 1).id
+        let first = try submit(&state, runID: id, itemID: high)
+        let second = try submit(&state, runID: id, itemID: high, fixture: "replacement")
+        try state.approve(runID: id, itemID: high, actorID: reviewer, expectedVersion: second, now: now)
+        let before = state
+
+        XCTAssertThrowsError(try state.withdraw(runID: id, itemID: high, actorID: performer,
+                                               expectedVersion: first, now: now)) {
+            XCTAssertEqual($0 as? SecondLookError, .staleVersion)
+        }
+        XCTAssertEqual(state, before, "A stale withdrawal must preserve replacement evidence and its approval")
+        XCTAssertThrowsError(try state.withdraw(runID: id, itemID: high, actorID: reviewer,
+                                               expectedVersion: second, now: now)) {
+            XCTAssertEqual($0 as? SecondLookError, .unauthorized)
+        }
+        XCTAssertEqual(state, before, "The reviewer cannot withdraw the performer's evidence")
+        try state.cancel(runID: id, actorID: performer, now: now)
+        let closed = state
+        XCTAssertThrowsError(try state.withdraw(runID: id, itemID: high, actorID: performer,
+                                               expectedVersion: second, now: now)) {
+            XCTAssertEqual($0 as? SecondLookError, .closed)
+        }
+        XCTAssertEqual(state, closed, "Withdrawal cannot change a terminal run or its archive")
+    }
+
+    func testWithdrawalRetainsReplacementDraftAcrossRelaunchAndResend() throws {
+        var state = SecondLookState()
+        let id = try state.startOneOff(title: "Mixed", items: mixed().items,
+                                       performerID: performer, reviewerID: reviewer, now: now)
+        let high = runItem(state, id, index: 1).id
+        let first = try submit(&state, runID: id, itemID: high)
+        try state.approve(runID: id, itemID: high, actorID: reviewer, expectedVersion: first, now: now)
+        try state.prepareDraft(runID: id, itemID: high, actorID: performer,
+                               fixtureID: "unsent-replacement", source: .simulatedLibrary, now: now)
+        let draft = try XCTUnwrap(runItem(state, id, index: 1).preview)
+        try state.withdraw(runID: id, itemID: high, actorID: performer, expectedVersion: first, now: now)
+        XCTAssertNil(runItem(state, id, index: 1).submission)
+        XCTAssertEqual(runItem(state, id, index: 1).preview, draft, "Withdrawal must not discard independently saved work")
+        XCTAssertFalse(runItem(state, id, index: 1).isSatisfied)
+        XCTAssertEqual(runItem(state, id, index: 1).priorDecisions.first?.submissionVersion, first)
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = JSONStateStore(url: directory.appendingPathComponent("state.json"))
+        try store.save(state)
+        var restored = try store.load()
+        XCTAssertEqual(restored, state, "The unsent replacement must survive process relaunch")
+        let second = try restored.beginSend(runID: id, itemID: high, actorID: performer, now: now)
+        XCTAssertEqual(second, first + 1, "Withdrawing cannot reuse an earlier submission version")
+        XCTAssertEqual(runItem(restored, id, index: 1).submission?.fixtureID, draft.fixtureID)
+        XCTAssertNil(runItem(restored, id, index: 1).preview)
+        try restored.acceptSend(runID: id, itemID: high, actorID: performer, expectedVersion: second, now: now)
+        try restored.approve(runID: id, itemID: high, actorID: reviewer, expectedVersion: second, now: now)
+        try restored.setStandardChecked(runID: id, itemID: runItem(restored, id, index: 0).id,
+                                        checked: true, actorID: performer, now: now)
+        XCTAssertEqual(restored.archives[0].items[1].decisions.map(\.submissionVersion), [first, second])
+        XCTAssertEqual(restored.runs[0].outcome, .completed)
+    }
+
     func testRequestedChangeNeedsNoteAndRetryRetainsVersion() throws {
         var state = SecondLookState()
         let id = try state.startOneOff(title: "High", items: [RoutineItem(title: "Photo", priority: .high)],

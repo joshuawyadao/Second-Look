@@ -162,12 +162,13 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         }
     }
 
-    public mutating func withdraw(runID: UUID, itemID: UUID, actorID: UUID, now: Date = Date()) throws {
+    public mutating func withdraw(runID: UUID, itemID: UUID, actorID: UUID,
+                                 expectedVersion: Int, now: Date = Date()) throws {
         try updateItem(runID: runID, itemID: itemID, actorID: actorID, role: .performer, now: now) { item, _ in
             guard item.priority == .high, let current = item.submission else { throw SecondLookError.invalidTransition }
+            guard current.version == expectedVersion else { throw SecondLookError.staleVersion }
             if let decision = current.decision { item.priorDecisions.append(decision) }
             item.submission = nil
-            item.preview = nil
         }
     }
 

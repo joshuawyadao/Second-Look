@@ -71,10 +71,12 @@ struct ChecklistView: View {
                     .confirmationDialog("Withdraw this evidence?", isPresented: Binding(
                         get: { withdrawing != nil }, set: { if !$0 { withdrawing = nil } }
                     ), titleVisibility: .visible) {
-                        if let item = withdrawing {
-                            Button("Withdraw evidence", role: .destructive) { model.withdrawSample(runID: runID, itemID: item.id) }
+                        if let item = withdrawing, let version = item.submission?.version {
+                            Button("Withdraw evidence", role: .destructive) {
+                                model.withdrawSample(runID: runID, itemID: item.id, version: version)
+                            }
                         }
-                    } message: { Text("Its approval will no longer count. Another submission and review will be needed.") }
+                    } message: { Text("Its approval will no longer count. Another submission and review will be needed. A saved replacement draft stays available.") }
                     #endif
                 }
             } else { ContentUnavailableView("Checklist unavailable", systemImage: "checklist") }

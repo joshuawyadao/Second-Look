@@ -371,6 +371,98 @@ final class SecondLookCoreTests: XCTestCase {
         XCTAssertThrowsError(try store.load()) { XCTAssertEqual($0 as? SecondLookError, .corruptDocument) }
     }
 
+    @MainActor func testRestorationRejectsInvalidCurrentReviewDecisions() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = JSONStateStore(url: directory.appendingPathComponent("state.json"))
+        var state = SecondLookState()
+        let id = try state.startOneOff(title: "Restored review", items: mixed().items,
+                                      performerID: performer, reviewerID: reviewer, now: now)
+        let highID = runItem(state, id, index: 1).id
+        _ = try submit(&state, runID: id, itemID: highID)
+        let version = try submit(&state, runID: id, itemID: highID, fixture: "replacement")
+        try state.approve(runID: id, itemID: highID, actorID: reviewer, expectedVersion: version, now: now)
+        try store.save(state)
+        XCTAssertEqual(try store.load(), state)
+
+        func reject(_ label: String, _ mutate: (inout PhotoSubmission) -> Void) throws {
+            var run = state.runs[0]
+            var submission = try XCTUnwrap(run.items[1].submission)
+            mutate(&submission)
+            run.items[1].submission = submission
+            try store.save(SecondLookState(runs: [run]))
+            let originalBytes = try Data(contentsOf: store.url)
+            XCTAssertThrowsError(try store.load(), label) {
+                XCTAssertEqual($0 as? SecondLookError, .corruptDocument, label)
+            }
+            // The bad decision never becomes editable state that can complete the run.
+            XCTAssertThrowsError(try LocalStateRepository(store: store), label) {
+                XCTAssertEqual($0 as? SecondLookError, .corruptDocument, label)
+            }
+            XCTAssertEqual(try Data(contentsOf: store.url), originalBytes, label)
+        }
+        try reject("Self approval") { $0.decision?.actorID = performer }
+        try reject("Unassigned actor") { $0.decision?.actorID = UUID() }
+        try reject("Stale decision") { $0.decision?.submissionVersion = version - 1 }
+        try reject("Future decision") { $0.decision?.submissionVersion = version + 1 }
+        try reject("Missing approval") { $0.decision = nil }
+        try reject("Wrong approval verdict") { $0.decision?.verdict = .requestedAnother }
+        try reject("Unaccepted approval") { $0.acceptedAt = nil }
+        try reject("Wrong current version") { $0.version = version - 1 }
+        for status in [SubmissionStatus.localDraft, .sending, .uploadFailed, .waitingForReview, .needsAnotherLook] {
+            try reject("Approval on \(status)") { $0.status = status }
+        }
+        try reject("Blank request note") {
+            $0.status = .needsAnotherLook
+            $0.decision?.verdict = .requestedAnother
+            $0.decision?.note = " \n "
+        }
+        try reject("Missing request note") {
+            $0.status = .needsAnotherLook
+            $0.decision?.verdict = .requestedAnother
+            $0.decision?.note = nil
+        }
+    }
+
+    func testRelaunchPreservesValidReviewStatesAndCompletesOnlyCurrentApproval() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = JSONStateStore(url: directory.appendingPathComponent("state.json"))
+        var state = SecondLookState()
+        let id = try state.startOneOff(title: "Restored review", items: mixed().items,
+                                      performerID: performer, reviewerID: reviewer, now: now)
+        let standardID = runItem(state, id, index: 0).id
+        let highID = runItem(state, id, index: 1).id
+        let first = try submit(&state, runID: id, itemID: highID)
+        try store.save(state)
+        state = try store.load()
+        XCTAssertEqual(runItem(state, id, index: 1).submission?.status, .waitingForReview)
+        try state.requestAnother(runID: id, itemID: highID, actorID: reviewer,
+                                 expectedVersion: first, note: "Show the other side", now: now)
+        try state.prepareDraft(runID: id, itemID: highID, actorID: performer,
+                               fixtureID: "replacement", source: .simulatedLibrary, now: now)
+        try store.save(state)
+        XCTAssertEqual(try store.load(), state)
+        state = try store.load()
+        XCTAssertFalse(state.runs[0].isSatisfied)
+        XCTAssertEqual(runItem(state, id, index: 1).submission?.status, .needsAnotherLook)
+        XCTAssertEqual(runItem(state, id, index: 1).preview?.status, .localDraft)
+        let second = try state.beginSend(runID: id, itemID: highID, actorID: performer, now: now)
+        try state.acceptSend(runID: id, itemID: highID, actorID: performer, expectedVersion: second, now: now)
+        try state.approve(runID: id, itemID: highID, actorID: reviewer, expectedVersion: second, now: now)
+        try store.save(state)
+        XCTAssertEqual(try store.load(), state)
+        state = try store.load()
+        XCTAssertTrue(state.runs[0].isOpen)
+        XCTAssertEqual(runItem(state, id, index: 1).priorDecisions[0].submissionVersion, first)
+        try state.setStandardChecked(runID: id, itemID: standardID, checked: true, actorID: performer, now: now)
+        XCTAssertEqual(state.runs[0].outcome, .completed)
+        XCTAssertEqual(state.archives[0].items[1].decisions.last?.submissionVersion, second)
+        XCTAssertEqual(state.archives[0].items[1].decisions.last?.actorID, reviewer)
+        try store.save(state)
+        XCTAssertEqual(try store.load(), state)
+    }
+
     func testRelaunchRestoresCheckmarksAndApprovedEvidenceWithPreview() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

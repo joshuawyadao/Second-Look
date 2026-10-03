@@ -254,6 +254,9 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                     throw SecondLookError.corruptDocument
                 }
             }
+            for item in run.items {
+                try Self.validateRestoredEvidence(item, reviewerID: run.reviewerID)
+            }
             let archive = archives.first(where: { $0.id == run.id })
             if run.isOpen {
                 guard run.closedAt == nil, run.cleanupStatus == nil, archive == nil else {
@@ -270,6 +273,54 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         }
         guard archives.allSatisfy({ archive in runs.contains { $0.id == archive.id && !$0.isOpen } }) else {
             throw SecondLookError.corruptDocument
+        }
+    }
+
+    private static func validateRestoredEvidence(_ item: RunItem, reviewerID: UUID?) throws {
+        guard item.lastVersion >= 0 else { throw SecondLookError.corruptDocument }
+        if item.priority == .standard {
+            guard item.submission == nil, item.preview == nil else { throw SecondLookError.corruptDocument }
+            return
+        }
+        if let submission = item.submission {
+            guard submission.version > 0, submission.version == item.lastVersion else {
+                throw SecondLookError.corruptDocument
+            }
+            switch submission.status {
+            case .localDraft:
+                // Unsent work belongs to preview and cannot satisfy current evidence.
+                throw SecondLookError.corruptDocument
+            case .sending, .uploadFailed:
+                guard submission.acceptedAt == nil, submission.decision == nil else {
+                    throw SecondLookError.corruptDocument
+                }
+            case .waitingForReview:
+                guard submission.acceptedAt != nil, submission.decision == nil else {
+                    throw SecondLookError.corruptDocument
+                }
+            case .approved, .needsAnotherLook:
+                guard submission.acceptedAt != nil, let reviewerID,
+                      let decision = submission.decision,
+                      decision.actorID == reviewerID,
+                      decision.submissionVersion == submission.version else {
+                    throw SecondLookError.corruptDocument
+                }
+                if submission.status == .approved {
+                    guard decision.verdict == .approved else { throw SecondLookError.corruptDocument }
+                } else {
+                    guard decision.verdict == .requestedAnother,
+                          let note = decision.note,
+                          !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        throw SecondLookError.corruptDocument
+                    }
+                }
+            }
+        }
+        if let preview = item.preview {
+            guard preview.version > 0, preview.version - 1 == item.lastVersion,
+                  preview.status == .localDraft, preview.acceptedAt == nil, preview.decision == nil else {
+                throw SecondLookError.corruptDocument
+            }
         }
     }
 

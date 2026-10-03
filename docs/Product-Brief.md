@@ -1,36 +1,24 @@
 # Product brief
 
-## Status
+## Purpose and status
 
-This document records the owner's initial concept. The repository contains documentation and development tooling; no app, account system, photo sharing, or approval workflow exists yet. The owner will provide a fuller brief before application development.
+Second Look helps two people complete important everyday tasks and verify selected steps together. It aims to reduce the mental load of wondering whether a task was done and the photo-library clutter of sending evidence through Messages. A locked front door after bringing packages inside is a motivating example, not a product restriction.
 
-## Confirmed idea
+Milestones 0 and 1 establish documentation and a **local native iPhone foundation**. Any role switching, photo submission, review, retry, or cleanup shown there is **simulated with synthetic data**. Real two-person sharing, authentication, camera/library evidence, notifications, media deletion, and device distribution are later milestones. See [Product-Spec.md](Product-Spec.md), [Roadmap.md](Roadmap.md), and [Verification.md](Verification.md) for the detailed contracts, delivery sequence, and verified status.
 
-Second Look is a task-list app intended to help someone who wants another person to double-check things before they leave. A user can designate a partner or another trusted person as a reviewer, send photos, and ask that person to check and approve the list.
+## Confirmed product direction
 
-A motivating example is checking that the house has been locked up before going out. The same idea could support other checklist items once their scope is defined. Review is performed by a designated person; automated image assessment has not been requested.
+- The first version is a private iPhone app for the owner and their girlfriend, with two distinct identities in one shared space. Public signup and multiple households are outside initial scope.
+- Reusable routines are the main path; occasional one-off checklists use the same flow. Runs begin manually. Each item is standard or high priority.
+- A standard item is completed by checking it. A high-priority item requires a photo and approval from the assigned **other** person. A run completes only when all standard items are checked and all high-priority items have valid approval.
+- Camera capture is the primary evidence action; choosing a library photo is also supported. In-app capture must not automatically save into either person's Photos library, and importing must leave the original untouched.
+- A completed run archives automatically as a text-only record. App-managed photos must be deleted through a reliable cleanup process; completion and confirmed cleanup are separate facts.
+- An open run's age does not expire its photos. An optional timeout applies only to submitted, unreviewed photos and defaults **Off**. Review reminders and photo retention settings are independent. Reminders are needed for pending reviewers and performers who need to add, replace, or retry a photo.
 
-## Initial experience to explore
+## Reversible working assumptions
 
-1. Make a list of things to check.
-2. Complete the checks and take relevant photos.
-3. Send the photos to the designated reviewer.
-4. Receive the reviewer's response before heading out.
+The handoff proposes these details for a coherent initial model; they are implementation assumptions rather than separately approved choices: active runs fix performer/reviewer roles; a run snapshots its routine; a one-off has no routine reference; multiple runs of one routine may remain open; an item has one current, versioned submission; canceling is terminal and distinct from completion; a request for another photo carries a note; and current evidence remains until replacement, withdrawal, closure, or an enabled unreviewed timeout. The [specification](Product-Spec.md) records the precise state and privacy rules for review.
 
-This is a concept flow, not a finalized specification. In particular, approval of individual items versus the entire list is undecided.
+The iOS 17 minimum, SwiftUI, portable Swift core, and checked-in Xcode project are reversible engineering choices for the local foundation. They do not settle supported devices, backend, vendor, reminder cadence, timeout duration, signing, or distribution.
 
-## Decisions for the fuller brief
-
-- Initial platform, devices, and whether both participants need the app.
-- One-time lists, reusable checklists, and reminders.
-- Reviewer invitations, consent, number of reviewers, and access revocation.
-- Photo capture versus existing uploads, item association, and the timing or freshness of evidence.
-- Approval states, requests for another photo, edits after approval, and what happens when a reviewer is unavailable.
-- Accounts, authentication, photo storage, retention, deletion, and access controls.
-- Notifications, offline behavior, accessibility, visual design, and release scope.
-
-## Development boundaries
-
-Use invented data and synthetic images for public development. Real household photos and personal reviewer details do not belong in commits or public issues. Before implementing sharing, define who can see each photo and how access and deletion work. These are design requirements to resolve, not claims about protections already implemented.
-
-Keep this document as the durable source of product direction. Use [Implementation-Plan.md](Implementation-Plan.md) for individual implementation tasks; replacing a task plan should not discard agreed product decisions.
+Do not introduce chat, social feeds, streak penalties, AI image verification, location tracking, monetization, public signup, or App Store launch work in this phase. A human reviewer can assess an image; the app cannot prove that a physical task happened or remains true afterward. Use invented names and synthetic images in public development; never commit personal photos, household details, or credentials.

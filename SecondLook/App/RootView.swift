@@ -67,6 +67,7 @@ struct LocalSettingsView: View {
             Form {
                 Section("Local foundation") {
                     Text("Lists and progress are stored on this device. Authentication, pairing, real photos, notifications, and shared synchronization are not connected.")
+                        .accessibilityIdentifier("localStorageSummary")
                     Text("Reminder and timeout preferences are saved only. No reminders are delivered and no evidence expires in this milestone.")
                 }
                 #if SECONDLOOK_DEMO

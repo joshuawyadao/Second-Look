@@ -109,6 +109,18 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug
 
 After integrating the signal hook, the Release build and expanded binary boundary check passed again. The built Release app excludes both Darwin names as well as demo/role-picker/test-launch markers.
 
+Hosted run `37152259568` passed all 19 core tests and eight of nine UI cases. The Local settings privacy case passed its cover visibility, blocked-control, hide, and restored-control assertions, then failed a display-text lookup of the section header. The existing local-storage summary now has the stable accessibility identifier `localStorageSummary`; the test checks that same content before and after protection while retaining all privacy and dismissal assertions. The focused case passed locally:
+
+```sh
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug \
+  -destination 'platform=iOS Simulator,id=ADD1A583-C6C6-4937-A00D-B1112054D521' \
+  -derivedDataPath /private/tmp/second-look-derived -parallel-testing-enabled NO \
+  -only-testing:SecondLookUITests/PrivacyShieldUITests/testPrivacyCoverHidesLocalSettingsSheetAndRestoresIt \
+  CODE_SIGNING_ALLOWED=NO test
+```
+
+After this selector correction, the complete `./scripts/verify-native.sh` command above passed in one run: **19 core tests, all 9 UI tests, the Release build, and the binary exclusion check**. `./scripts/verify-repository.sh` also passed all 9 tooling tests. Hosted confirmation is reported with the PR handoff.
+
 The core suite covers empty and standard completion; distinct reviewer/actor checks; independent snapshots; routine edits/deletion; one-off/save-as-routine/repeat structure; undo while open; required review notes; exact-version replacement and stale approvals; preserved approval when a preview is discarded; failed-send retry without version duplication; both sequential closure orderings; text-only archive and cleanup separation; settings validation and Off defaults; atomic persistence across relaunch; malformed/unsupported and selected inconsistent saved documents; failed-write rollback.
 
 The UI suite covers creation, independent runs, progress after process relaunch, one-off cancellation/repeat, synthetic submission failure/retry/reviewer approval/history, and editor error recovery. Assertions exercise native accessible controls. Synthetic tests do not establish real authentication, upload reliability, notification delivery, or deletion.

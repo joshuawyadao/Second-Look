@@ -76,8 +76,10 @@ final class PrivacyShieldUITests: XCTestCase {
         app.buttons["Local settings"].tap()
         let done = app.buttons["Done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
+        let summary = app.staticTexts["localStorageSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
         verifyCoverAndRestore(over: done)
-        XCTAssertTrue(app.staticTexts["Local foundation"].exists)
+        XCTAssertTrue(summary.exists)
         done.tap()
         XCTAssertTrue(app.buttons["createRoutine"].isHittable)
     }

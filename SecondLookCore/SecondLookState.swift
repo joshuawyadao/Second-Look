@@ -228,7 +228,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
     }
 
     /// Rejects structurally inconsistent local documents before they become editable state.
-    func validateForLoad() throws {
+    public func validateForLoad() throws {
         guard Set(routines.map(\.id)).count == routines.count,
               Set(runs.map(\.id)).count == runs.count,
               Set(archives.map(\.id)).count == archives.count else {

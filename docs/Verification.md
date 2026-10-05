@@ -171,6 +171,8 @@ The repository verifier checks required files, common private filenames, escapin
 
 ## CI
 
+The first M2 push was rejected before jobs started because `runner.temp` was used at job-level `env`. It now appears only in step-level `env`, where [GitHub’s context reference](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability) permits `runner`. Both server steps still share the same scratch path. Final branch CI is reported with the handoff.
+
 `CI Verify` runs on `main`, `codex/**`, pull requests, and manual dispatch. Ubuntu runs repository checks; macOS runs the native script. A separate Ubuntu job installs Swift 6.2.4 and exercises server boundaries plus actual localhost Auth/Postgres/HTTP and restart acceptance. The final **CI Verify** job requires all three jobs to succeed. Connected native tests skip without their private fixture; the ordinary macOS job checks the local native suite and Release boundary. Checkout is pinned, permissions are read-only, and checkout credentials are not persisted. Dependabot checks GitHub Actions weekly. Branch rules require a pull request, resolved conversations, and passing CI for `main`; this assignment only pushes its feature branch.
 
 The initial hosted run selected Xcode 16.4 and exposed a UI test harness compatibility issue: its synchronous XCTest setup override is nonisolated, unlike the local toolchain's behavior. UI launch setup now runs in an explicit main-actor helper called by each test, preserving all four scenarios and their assertions. The final remote CI outcome is reported with the branch handoff.

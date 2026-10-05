@@ -1,22 +1,22 @@
 # Roadmap and acceptance
 
-The first assignment covers Milestones **0–1**. “Local” means a native app and durable device state; “simulated” means synthetic identities, evidence, service responses, retry, or cleanup. A fixture cannot prove server authorization, camera behavior, push delivery, or media deletion. [Verification.md](Verification.md) records actual commands and outcomes.
+Milestones **0–1** established the local foundation. Milestone **2 is in progress** with a provisional Supabase Auth/Postgres and Swift command-service design. “Local” means a native app or local Auth/Postgres/HTTP stack; “simulated” means synthetic identities, evidence, service responses, retry, or cleanup. A local stack can exercise real authentication and database transactions but does not prove hosted operation, two-device behavior, camera behavior, push delivery, or media deletion. [Verification.md](Verification.md) records actual commands and outcomes.
 
 | Milestone | Deliverable and exit condition |
 | --- | --- |
 | 0 — Repository and documentation | Canonical product, architecture, roadmap, verification, and implementation plan; reproducible project/test workflow; no invented credentials, backend, or completed-feature claims. |
 | 1 — Native local foundation | SwiftUI navigation, editable routines and one-offs, independent snapshot runs, standard progress, settings models, text-only history, local approval/replace/closure rules, durable relaunch, and isolated Debug fixtures. Meaningful core/persistence tests and an available-simulator build/run. Real sharing remains unimplemented. |
-| 2 — Private shared state | Choose backend/auth against privacy, transaction, jobs, APNs, cost, and operation needs. Pair two authenticated identities; enforce access and versions on the server; converge clients. A third account and performer self-approval fail. Provider accounts and secrets are prerequisites. |
+| 2 — Private shared state **(in progress)** | Choose backend/auth against privacy, transaction, jobs, APNs, cost, and operation needs. Pair two authenticated identities; enforce access and versions on the server; converge clients. A third account and performer self-approval fail. Hosted provider accounts and secrets are prerequisites to hosted acceptance. Local synthetic-account tests do not close this gate. |
 | 3 — Real photos and cleanup | Native camera/library, private upload/retry, versioned review, notes, replacements, text-only archive, tracked deletion. Prove no in-app capture enters Photos and verified cleanup reports only confirmed scope. |
 | 4 — Recovery and concurrency | Handle interrupted/unknown uploads, duplicate actions, restart, cancellation races, stale notifications, offline devices, unpairing, and access rechecks. Closed runs stay closed and disconnected clients reconcile. |
 | 5 — Reminders and optional expiry | Add durable state-aware push/scheduling, grouping, repeat/snooze/quiet hours, time-zone/DST behavior, and explicitly enabled unreviewed timeout. Off retains open evidence; expiry never completes a run. |
 | 6 — Device acceptance and daily trial | Resolve signing/distribution for both real iPhones, exercise the full acceptance matrix including Photos, accessibility, denied permissions, and unreliable connections, then document limits and operating steps. |
 
-Shortcuts and automatic starts, broader release, more users, and other platforms are later considerations, not commitments. Backend vendor, paid services, Apple enrollment, and distribution remain deferred until their milestones.
+Shortcuts and automatic starts, broader release, more users, and other platforms are later considerations, not commitments. The [backend comparison](Backend-Comparison.md) and [ADR 002](decisions/002-private-shared-state.md) record the provisional vendor/service choice; hosted provisioning, paid services, Apple enrollment, and distribution remain deferred.
 
 ## Acceptance matrix
 
-“M1 model” means domain/persistence tests or synthetic UI demonstration, not production enforcement. “Later” identifies when the full behavior must be proven.
+“M1 model” means domain/persistence tests or synthetic UI demonstration, not production enforcement. “Later” identifies when the full behavior must be proven. Milestone 2's server/client work is tracked in [Verification.md](Verification.md); do not treat the matrix's local model column as evidence of hosted acceptance.
 
 | # | Scenario | M1 evidence | Later full proof |
 | --- | --- | --- | --- |

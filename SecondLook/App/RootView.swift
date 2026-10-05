@@ -3,19 +3,23 @@ import SecondLookCore
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(ConnectedAppModel.self) private var connected
     @State private var showingSettings = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         @Bindable var model = model
         Group {
-            if model.loadFailure != nil {
+            if connected.selected {
+                ConnectedRootView().id(connected.generation)
+            } else if model.loadFailure != nil {
                 ContentUnavailableView {
                     Label("Your lists could not be opened", systemImage: "exclamationmark.folder")
                 } description: {
                     Text("The saved file has been preserved. No new changes will overwrite it. \(model.loadFailure ?? "")")
                 } actions: {
                     Button("Try again") { model.load() }
+                    Button("Connect private space") { connected.activate() }
                 }
             } else {
                 VStack(spacing: 0) {
@@ -50,7 +54,7 @@ struct RootView: View {
         }
         .tint(.teal)
         .alert("Change not saved", isPresented: Binding(
-            get: { model.errorMessage != nil && !model.sheetHandlesErrors },
+            get: { !connected.selected && model.errorMessage != nil && !model.sheetHandlesErrors },
             set: { if !$0 && !model.sheetHandlesErrors { model.errorMessage = nil } }
         )) {
             Button("OK", role: .cancel) { model.errorMessage = nil }
@@ -60,6 +64,7 @@ struct RootView: View {
 
 struct LocalSettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(ConnectedAppModel.self) private var connected
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -69,6 +74,17 @@ struct LocalSettingsView: View {
                     Text("Lists and progress are stored on this device. Authentication, pairing, real photos, notifications, and shared synchronization are not connected.")
                         .accessibilityIdentifier("localStorageSummary")
                     Text("Reminder and timeout preferences are saved only. No reminders are delivered and no evidence expires in this milestone.")
+                }
+                Section("Private shared space") {
+                    Button("Connect a private space") {
+                        dismiss()
+                        model.errorMessage = nil
+                        model.sheetHandlesErrors = false
+                        connected.activate()
+                    }
+                    .accessibilityIdentifier("connectPrivateSpace")
+                    Text("This opens separate authenticated state. Existing local lists stay on this device and are not imported.")
+                        .font(.footnote)
                 }
                 #if SECONDLOOK_DEMO
                 Section("Development simulation") {

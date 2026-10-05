@@ -1,10 +1,12 @@
 # Product specification
 
-This is the durable behavior contract from the October 2, 2026 handoff. **Confirmed** requirements are identified in [Product-Brief.md](Product-Brief.md). Detailed rules below are **reversible working defaults** unless that brief says otherwise. Milestone 1 models them locally with synthetic evidence; backend enforcement, real media, and notifications follow in [Roadmap.md](Roadmap.md).
+This is the durable behavior contract from the October 2, 2026 handoff. **Confirmed** requirements are identified in [Product-Brief.md](Product-Brief.md). Detailed rules below are **reversible working defaults** unless that brief says otherwise. Milestone 1 models them locally with synthetic evidence. Milestone 2 is implementing authenticated shared state; real media, notifications, and full device acceptance follow in [Roadmap.md](Roadmap.md). See [Verification.md](Verification.md) for what has actually been proven.
 
 ## Participants, definitions, and runs
 
 Two distinct participants belong to one private shared space. Either may create a reusable routine. A high-priority run needs a joined, distinct reviewer, though its routine may be drafted earlier. An all-standard run can finish without a reviewer. Performer and reviewer are fixed for the life of a run; neither an unavailable reviewer nor a role picker permits self-approval. Connected access must be limited to current authorized participants; changing accounts must purge or isolate prior cached data.
+
+For the initial connected space, an operator explicitly allows two Supabase Auth account IDs. The owner creates or reissues a short-lived, one-use invitation targeted to the other account; the other account joins. Password sign-in and token refresh establish a session, but the command server validates each access token with Auth and derives the actor from that result. Client-selected roles and account IDs never authorize a command. The server checks current membership, the expected shared revision, relevant routine/run/submission versions, and terminal state before a connected mutation. A command ID and request-bound receipt make a committed retry return the current snapshot and original created ID without applying the action twice. Hosted provider provisioning and connected acceptance remain unverified Milestone 2 work; physical two-device acceptance remains on the roadmap.
 
 A routine is a reusable, ordered definition. A run is an independent attempt with its own identity, progress, timestamps, evidence, and decisions. Starting a run snapshots item text, priority, photo instructions, participants, and settings. Editing/deleting the routine cannot change it. A one-off run has no required routine reference; saving it as a routine copies only structure. Empty checklists cannot start. If a routine has an open run, offer Resume first and allow an explicit Start another run; never merge or replace work. Standard checks may be undone while open. Required items cannot be removed or downgraded mid-run to bypass review; cancel and start a corrected run. An all-standard run completes when its last item is checked.
 
@@ -14,6 +16,8 @@ Each high-priority item has one current submission version. Optional instruction
 
 The assigned reviewer may approve the exact current submission version or request another photo with a required explanatory note. That request retains the note and old image until explicit replacement/removal or run closure; its unreviewed timer stops. Discarding a replacement preview preserves the prior submission and approval. Committing a replacement or withdrawing the current submission invalidates approval. A decision against an old, expired, withdrawn, or closed version fails. In a connected app the server, not UI visibility, validates actor, membership, expected version, and open state. Milestone 1 applies the corresponding rules to synthetic local records only.
 
+Milestone 2 uses synthetic submission metadata only in a Debug localhost test path. That path has no image bytes and does not make production high-priority review usable. Real capture, private upload, replacement, and cleanup belong to Milestone 3; the production connected command API cannot invent or submit an image.
+
 ## Closure, history, and cleanup
 
 Withdrawal names the submission version shown when the action was created. A stale withdrawal cannot remove replacement evidence. It removes only that current submission and its approval; any separately saved replacement draft remains available to send or explicitly discard.
@@ -22,7 +26,9 @@ Only all checked standard items plus all currently approved high-priority submis
 
 History is text-only: item descriptions, participant attribution, decisions/notes, and relevant timestamps. It has no image bytes, thumbnails, or live photo links. Run closure initiates cleanup for all app-managed current and superseded media, including derivatives and failed-upload references. **Cleanup pending** can coexist with Completed/Canceled; deletion is reported as confirmed only after the affected store confirms it. Repeat requests must have one logical effect even though network delivery and cleanup attempts may repeat. Milestone 1 has synthetic media references and simulated cleanup status only; it cannot establish real deletion.
 
-Proposed unpairing behavior for the connected phase: explain the consequence, cancel open shared runs, revoke access, begin cleanup, and retain text-only records for the original participants. A later partner must not inherit history. Confirm this default before implementation.
+In Milestone 2, the server processes a command against the current shared snapshot and commits the new state, revision, and receipt together. This preserves one logical text archive and terminal closure for shared state. No real app-managed media or cleanup worker exists yet, so connected closure cannot claim physical deletion.
+
+Proposed unpairing behavior for Milestone 4: explain the consequence, cancel open shared runs, revoke access, begin cleanup, and retain text-only records for the original participants. A later partner must not inherit history. Confirm this default before implementation; Milestone 2 does not offer unpairing.
 
 ## Photo lifecycle and privacy
 
@@ -42,7 +48,7 @@ In the local editor, enabling Snooze initializes an editable deadline one hour i
 
 Missing photo or requested replacement routes to performer. Upload failed routes to performer with Retry sending. Successfully accepted evidence awaiting review routes to reviewer. Approval stops that submission's review reminders; completion/cancellation stops all run reminders. Scheduling rechecks state/access, groups by run and recipient, avoids duplicate local/remote sends, respects snooze/quiet hours/time-zone changes, and loads fresh state when an old notification opens. Lock-screen previews default to no private photo/task detail. Notifications do not authorize or define checklist state, and delivery/attention cannot be guaranteed. Milestone 1 stores preference models but sends no reminders.
 
-An existing connected run should permit local checks and photo capture offline, preserving drafts/upload intent through restart. Shared-run creation and final review initially require connection. Reconnection checks membership and run/submission versions before replay, discards attachments for closed runs, and reconciles unknown upload outcomes before retrying. Reminders, enabled expiry, and shared cleanup must work while phones are closed. Milestone 1 proves only local progress persistence and synthetic retry states; connected behavior is later acceptance work.
+An existing connected run should eventually permit local checks and photo capture offline, preserving drafts/upload intent through restart. Shared-run creation and final review initially require connection. Reconnection checks membership and run/submission versions before replay, discards attachments for closed runs, and reconciles unknown upload outcomes before retrying. Reminders, enabled expiry, and shared cleanup must work while phones are closed. Milestone 1 proves local progress persistence and synthetic retry states. Milestone 2 keeps connected shared state in memory, refetches it after session restoration, and discards it on account change; durable offline intent and media recovery remain Milestone 3–4 acceptance work.
 
 ## Intended screens and language
 

@@ -3,6 +3,7 @@ import SecondLookCore
 
 struct PreferencesFields: View {
     @Binding var settings: RunSettings
+    var connected = false
 
     private func minutes(_ path: WritableKeyPath<RunSettings, TimeInterval?>) -> Binding<Double?> {
         Binding(get: { settings[keyPath: path].map { $0 / 60 } },
@@ -55,7 +56,9 @@ struct PreferencesFields: View {
                 Text("22:00–07:00 is an editable sample, not an active schedule.").font(.caption)
             }
         } header: { Text("Reminder preferences") } footer: {
-            Text("Saved preferences only. No notifications are sent. Timing has no default cadence; configured delays must be greater than zero. Snooze starts with an editable one-hour example.")
+            Text(connected
+                 ? "Preferences are saved in the private space; notification delivery is not available yet. Timing has no default cadence. Snooze starts with an editable one-hour example."
+                 : "Saved preferences only. No notifications are sent. Timing has no default cadence; configured delays must be greater than zero. Snooze starts with an editable one-hour example.")
         }
         Section {
             LabeledContent("Unreviewed timeout (minutes)") {
@@ -67,7 +70,9 @@ struct PreferencesFields: View {
                 Button("Turn timeout off") { settings.unreviewedTimeoutSeconds = nil }
             }
         } header: { Text("Photo retention · separate from reminders") } footer: {
-            Text("Off by default. No expiry runs in this local milestone. A later service will apply an enabled timeout to future accepted, unreviewed submissions; changes must not silently delete existing evidence. Open photos have no blanket age limit.")
+            Text(connected
+                 ? "Off by default. Automatic expiry and real media cleanup are not available yet. Settings must not silently delete existing evidence."
+                 : "Off by default. No expiry runs in this local milestone. A later service will apply an enabled timeout to future accepted, unreviewed submissions; changes must not silently delete existing evidence. Open photos have no blanket age limit.")
         }
     }
 

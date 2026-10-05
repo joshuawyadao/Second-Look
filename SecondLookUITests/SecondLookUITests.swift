@@ -162,4 +162,15 @@ final class SecondLookUITests: XCTestCase {
         tap("Start new run")
         XCTAssertEqual(app.buttons["check-Close window"].value as? String, "Not checked")
     }
+
+    func testConnectedEntryKeepsLocalDemoSeparate() {
+        launchFreshDemo()
+        tap("Local settings")
+        tap("connectPrivateSpace")
+        XCTAssertTrue(app.staticTexts["PRIVATE SHARED SPACE"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["sharedSignIn"].exists)
+        XCTAssertFalse(app.buttons["demoRole"].exists)
+        tap("Use local lists")
+        XCTAssertTrue(app.buttons["startRoutine-Packages brought inside"].waitForExistence(timeout: 5))
+    }
 }

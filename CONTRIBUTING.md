@@ -1,6 +1,6 @@
 # Contributing to Second Look
 
-Read the [README](README.md) and [product brief](docs/Product-Brief.md) first. Second Look currently contains repository tooling and an initial concept. Platform, architecture, and feature details await the owner's fuller brief.
+Read the [README](README.md) and [product brief](docs/Product-Brief.md) first. Second Look contains the native local foundation. Read the [product specification](docs/Product-Spec.md) and [roadmap](docs/Roadmap.md) for the confirmed scope and later connected milestones. Debug roles, evidence, upload responses, and cleanup are simulated.
 
 ## Propose a change
 
@@ -11,8 +11,8 @@ Search existing issues and use the bug or feature request form for a focused pro
 1. Create a descriptive feature branch from `main`, using a fork if needed.
 2. Keep changes focused and preserve unrelated work.
 3. Add or update meaningful tests when executable behavior changes.
-4. Update relevant documentation, keeping durable requirements in the product brief and task tracking in `docs/Implementation-Plan.md`.
-5. Run `./scripts/verify-repository.sh` and any future component checks documented in [Verification.md](docs/Verification.md).
+4. Update relevant documentation, keeping durable requirements in the product brief and specification and task tracking in `docs/Implementation-Plan.md`.
+5. Run `./scripts/verify-repository.sh`, `swift test`, and `./scripts/verify-native.sh` for relevant application changes. See [Verification.md](docs/Verification.md) for requirements and coverage.
 6. Open a pull request using the template. Resolve feedback and wait for `CI Verify` before merging.
 
 ## Public examples and reporting

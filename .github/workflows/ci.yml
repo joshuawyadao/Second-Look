@@ -2,7 +2,7 @@ name: CI Verify
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
   pull_request:
   workflow_dispatch:
 
@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: CI Verify
+  repository:
+    name: Repository checks
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -25,3 +25,28 @@ jobs:
           persist-credentials: false
       - name: Verify repository and tooling tests
         run: ./scripts/verify-repository.sh
+  native:
+    name: Native foundation
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Report selected toolchain
+        run: xcodebuild -version && swift --version
+      - name: Test domain, simulator flow, and Release boundary
+        run: ./scripts/verify-native.sh
+  verify:
+    name: CI Verify
+    if: always()
+    needs: [repository, native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every verification job
+        env:
+          REPOSITORY_RESULT: ${{ needs.repository.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+        run: test "$REPOSITORY_RESULT" = success && test "$NATIVE_RESULT" = success

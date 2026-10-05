@@ -1,0 +1,51 @@
+# Product specification
+
+This is the durable behavior contract from the October 2, 2026 handoff. **Confirmed** requirements are identified in [Product-Brief.md](Product-Brief.md). Detailed rules below are **reversible working defaults** unless that brief says otherwise. Milestone 1 models them locally with synthetic evidence; backend enforcement, real media, and notifications follow in [Roadmap.md](Roadmap.md).
+
+## Participants, definitions, and runs
+
+Two distinct participants belong to one private shared space. Either may create a reusable routine. A high-priority run needs a joined, distinct reviewer, though its routine may be drafted earlier. An all-standard run can finish without a reviewer. Performer and reviewer are fixed for the life of a run; neither an unavailable reviewer nor a role picker permits self-approval. Connected access must be limited to current authorized participants; changing accounts must purge or isolate prior cached data.
+
+A routine is a reusable, ordered definition. A run is an independent attempt with its own identity, progress, timestamps, evidence, and decisions. Starting a run snapshots item text, priority, photo instructions, participants, and settings. Editing/deleting the routine cannot change it. A one-off run has no required routine reference; saving it as a routine copies only structure. Empty checklists cannot start. If a routine has an open run, offer Resume first and allow an explicit Start another run; never merge or replace work. Standard checks may be undone while open. Required items cannot be removed or downgraded mid-run to bypass review; cancel and start a corrected run. An all-standard run completes when its last item is checked.
+
+## Evidence and review
+
+Each high-priority item has one current submission version. Optional instructions can describe what to show. Camera capture and library selection both lead to a preview and explicit Send. A local draft is not a sent photo. Honest states include **Photo needed**, **Local draft**, **Sending**, **Upload failed**, **Waiting for review**, **Approved**, **Needs another look**, and **Photo expired**. Show submission time accurately without implying a library photo was captured then. Merely viewing an image is not a decision.
+
+The assigned reviewer may approve the exact current submission version or request another photo with a required explanatory note. That request retains the note and old image until explicit replacement/removal or run closure; its unreviewed timer stops. Discarding a replacement preview preserves the prior submission and approval. Committing a replacement or withdrawing the current submission invalidates approval. A decision against an old, expired, withdrawn, or closed version fails. In a connected app the server, not UI visibility, validates actor, membership, expected version, and open state. Milestone 1 applies the corresponding rules to synthetic local records only.
+
+## Closure, history, and cleanup
+
+Withdrawal names the submission version shown when the action was created. A stale withdrawal cannot remove replacement evidence. It removes only that current submission and its approval; any separately saved replacement draft remains available to send or explicitly discard.
+
+Only all checked standard items plus all currently approved high-priority submissions complete a mixed run. **Completed** and **Canceled** are distinct terminal outcomes; neither reopens. Performer cancellation needs confirmation and never counts as success. Repeating an archive creates a new run. Final approval racing cancellation yields one terminal outcome; late uploads/actions cannot resurrect it.
+
+History is text-only: item descriptions, participant attribution, decisions/notes, and relevant timestamps. It has no image bytes, thumbnails, or live photo links. Run closure initiates cleanup for all app-managed current and superseded media, including derivatives and failed-upload references. **Cleanup pending** can coexist with Completed/Canceled; deletion is reported as confirmed only after the affected store confirms it. Repeat requests must have one logical effect even though network delivery and cleanup attempts may repeat. Milestone 1 has synthetic media references and simulated cleanup status only; it cannot establish real deletion.
+
+Proposed unpairing behavior for the connected phase: explain the consequence, cancel open shared runs, revoke access, begin cleanup, and retain text-only records for the original participants. A later partner must not inherit history. Confirm this default before implementation.
+
+## Photo lifecycle and privacy
+
+By default, retain current photos and unsent drafts while a run is open, including approved and unreviewed evidence. There is no blanket age expiry. Deliberate discard/withdrawal, committed replacement, closure, or an explicitly enabled **unreviewed** timeout can initiate deletion of an app-managed copy. Library originals, screenshots, and exported copies are outside that deletion scope.
+
+Timeout is Off or a configured duration on routine/run settings. It begins only when a connected server accepts a submission for review. Retrying the same upload, opening the app, viewing evidence, and reminders cannot reset it. Approval/request-another-photo stop that submission's timer; a committed replacement gets its own. Expiry revokes access, deletes the unreviewed image, changes the item to Photo needed, and prompts the performer; it never approves or closes the run. Switching Off cancels pending expiry. Turning on or shortening a timeout applies to future submissions or needs explicit confirmation of a future deadline for current evidence. Template edits affect future runs. Milestone 1 persists the setting with Off default but schedules no expiry.
+
+For future real media, use private participant-authorized storage and short-lived access. Keep captures, imported copies, resized output, thumbnails, and upload drafts out of both Photos libraries; leave imported originals untouched. Use still images, strip unnecessary location metadata, and establish sizes that preserve review detail. Keep media/links out of analytics, logs, and push previews. Track every reference for durable retry and orphan detection. Exclude temporary review media from device backups where supported and verify on device; protect unsent drafts appropriately. Avoid durable reviewer caches, hide photo content in app-switcher snapshots, and reconcile access on reopen. A disconnected device cannot instantly erase a previously downloaded file: purge revoked copies on reconnection and state confirmed deletion scope accurately. Plan storage versioning/backups before promising retention guarantees.
+
+Milestone 1 hides local checklist content when its scene becomes inactive, including open sheets. Returning restores the previous presentation and entered text. A scene-level window supplies the cover; actual snapshot behavior must be validated on supported devices before promising protection for real media.
+
+## Reminders and offline work
+
+Routines and one-off/running checklists have separate controls for **Remind reviewer**, **Remind me to add photos**, first-reminder delay, optional repeat interval, recipient snooze/mute, quiet hours, and **Time out unreviewed photos**. No cadence or enabled default has been approved. Any sample interval in a preview/test is illustrative. The proposed first event notification follows successful photo arrival, grouped by run; waiting until all performer steps are done remains an unresolved alternative for the connected phase.
+
+In the local editor, enabling Snooze initializes an editable deadline one hour in the future. The picker permits future dates; an expired saved deadline offers a new snooze rather than silently extending itself. The one-hour value is a UI example, not an approved notification cadence, and no scheduler runs in Milestone 1.
+
+Missing photo or requested replacement routes to performer. Upload failed routes to performer with Retry sending. Successfully accepted evidence awaiting review routes to reviewer. Approval stops that submission's review reminders; completion/cancellation stops all run reminders. Scheduling rechecks state/access, groups by run and recipient, avoids duplicate local/remote sends, respects snooze/quiet hours/time-zone changes, and loads fresh state when an old notification opens. Lock-screen previews default to no private photo/task detail. Notifications do not authorize or define checklist state, and delivery/attention cannot be guaranteed. Milestone 1 stores preference models but sends no reminders.
+
+An existing connected run should permit local checks and photo capture offline, preserving drafts/upload intent through restart. Shared-run creation and final review initially require connection. Reconnection checks membership and run/submission versions before replay, discards attachments for closed runs, and reconciles unknown upload outcomes before retrying. Reminders, enabled expiry, and shared cleanup must work while phones are closed. Milestone 1 proves only local progress persistence and synthetic retry states; connected behavior is later acceptance work.
+
+## Intended screens and language
+
+Primary navigation: **Routines**, **Review**, **History**. Routine cards offer Start or Resume, with explicit Start another run. Editors cover ordered steps, high-priority flags/instructions, roles, and independent reminder/timeout controls. Active checklists show checked steps, outstanding actions, reviewer, and true submission/review state; Take photo is primary and Choose from library secondary once real media exists. Review shows assigned pending submissions, instructions, evidence, accurate source/submission time, Approve, and Request another photo with a note. History shows terminal text-only records and cleanup status, with Start new run. Use calm language such as “Waiting for review” and “Needs another look.” Support Dynamic Type, VoiceOver, light/dark appearance, and text alongside color.
+
+Synthetic example: **Packages brought inside** — Bring packages inside (standard); Lock the front door (high priority, instruction “Show the inside deadbolt locked”); Put keys away (standard). It is example content, never a hard-coded restriction or real household record.

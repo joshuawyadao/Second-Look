@@ -3,37 +3,46 @@
 [![CI Verify](https://github.com/joshuawyadao/Second-Look/actions/workflows/ci.yml/badge.svg)](https://github.com/joshuawyadao/Second-Look/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Second Look is a planned task-list app for getting a second pair of eyes on the things you want to double-check before heading out.
+**Important tasks, double-checked.** Second Look is a native iPhone checklist app being built for two people in a private shared space. Standard tasks are checked off; high-priority tasks will need a photo and approval from the assigned other person.
 
-The idea is to make a list, send photos to a partner or another designated reviewer, and let them check and approve it. For example, someone who tends to forget whether they locked up could share a photo for a trusted person to review before they leave.
+**Current status: Milestones 0–1, local foundation.** Create and edit routines, make one-off checklists, start independent runs, restore progress after relaunch, and keep text-only completed/canceled history. Debug builds include a clearly labeled local demo for sample submissions, reviews, replacement, retry, and cleanup states. No real photo is captured or sent, and no other person receives anything.
 
-> **Status: repository setup and initial product concept.** No application is implemented yet. The fuller product brief, supported platforms, and technology stack are still to be decided.
+## Run the iPhone app
 
-## Project information
+Use Xcode 16 or newer with Swift 6 and an installed iOS Simulator runtime. Open `SecondLook.xcodeproj`, select the **SecondLook** scheme and an iPhone simulator, then Run. The provisional deployment target is iOS 17; no signing team or backend credentials are needed for simulator use. The checked-in project needs no generator or third-party packages.
 
-- [Product brief](docs/Product-Brief.md): the confirmed idea and decisions still to come.
-- [Verification](docs/Verification.md): local repository checks, CI coverage, and limits.
-- [Contributing](CONTRIBUTING.md): how to propose and verify changes.
-- [Current implementation plan](docs/Implementation-Plan.md): replaceable tracking for the latest task.
+Debug launches **Second Look Demo**, with the synthetic “Packages brought inside” routine. Start it or make your own. For a high-priority step, Preview sample evidence → Save local draft or Send sample. A send pauses so you can choose Simulate delivery or Simulate upload failure and Retry. Local settings can preview Demo Alex or Demo Sam; the assigned reviewer sees accepted pending submissions in Review. Completion archives automatically. Cancellation is a distinct terminal result.
 
-## Work locally
+The role picker, synthetic services, and sample evidence views are compiled only into Debug using `SECONDLOOK_DEMO`. Release uses a separate app identity and store, with local standard checklists and editable high-priority routine drafts; it cannot start a high-priority run without a connected reviewer. Release is **not** ready for shared use or distribution.
 
-Install Git and Python 3.10 or newer, then run:
+Reminder and timeout preferences are stored only. No notifications or expiry run; timeout defaults Off. Cleanup acknowledgments in the demo are simulated and never claim real media deletion.
+
+## Verify changes
 
 ```sh
-git clone https://github.com/joshuawyadao/Second-Look.git
-cd Second-Look
 ./scripts/verify-repository.sh
+swift test
+./scripts/verify-native.sh
 ```
 
-These checks run on macOS and Linux; Windows contributors can use WSL. Python is used only for repository tooling and does not imply an application technology choice. No API keys or package installation are needed.
+Repository checks need Git and Python 3.10+. Native verification needs macOS/Xcode: it discovers an available iPhone simulator, runs package and UI tests, builds Release, and checks that the demo adapter is absent. Set `SECONDLOOK_SIMULATOR_ID` to choose another installed device and `SECONDLOOK_DERIVED_DATA` to choose build output. See [Verification](docs/Verification.md) for exact executed commands, results, manual checks, and limits.
+
+## Project documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Product brief](docs/Product-Brief.md) | Confirmed scope and current boundaries |
+| [Product specification](docs/Product-Spec.md) | Durable workflow, privacy, reminder, and lifecycle contracts |
+| [Roadmap](docs/Roadmap.md) | Milestones 0–6 and the acceptance matrix |
+| [Architecture](docs/Architecture.md) | Core rules, local persistence, UI, and future service boundaries |
+| [Native workflow decision](docs/decisions/001-native-local-foundation.md) | Reversible tooling and deployment choices |
+| [Verification](docs/Verification.md) | Checks, observed results, and unverified areas |
+| [Implementation plan](docs/Implementation-Plan.md) | Replaceable tracking for this assignment |
+
+Next is Milestone 2: compare and decide backend/authentication architecture before provisioning private shared state. Real camera/library media and cleanup, network recovery, notifications/timeouts, and two-device acceptance follow. Paid services, Apple enrollment, and distribution remain deferred.
 
 ## Public development
 
-Use synthetic examples in commits, issues, and screenshots. Keep personal photos, household details, addresses, credentials, and private reviewer information out of this public repository. The ignored `local-data/`, `photos/`, and `uploads/` folders are local workspace conventions, not an implemented app storage design.
+Use invented examples. Keep household photos, addresses, credentials, and private reviewer information out of this public repository. Ignored `local-data/`, `photos/`, and `uploads/` folders are workspace conventions, not app storage APIs. See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md), and the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-Changes to `main` use feature branches and pull requests with `CI Verify`. See [SECURITY.md](SECURITY.md) for private vulnerability reporting and the [Code of Conduct](CODE_OF_CONDUCT.md) for participation guidelines.
-
-## License
-
-Original project code and documentation are available under the [MIT License](LICENSE), except where a separate notice applies. Contributor Covenant attribution is retained in the Code of Conduct.
+Changes to `main` require a pull request and passing `CI Verify`. Original code and documentation use the [MIT License](LICENSE), except where separately attributed.

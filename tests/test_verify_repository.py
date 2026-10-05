@@ -96,6 +96,63 @@ class RepositoryVerifierTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertIn(f"Private credential in Git inventory: {filename}", result.stderr)
 
+    def test_forcibly_tracked_xcode_and_swiftpm_artifacts_fail(self):
+        artifacts = (
+            "reports/Tests.xcresult/Data/contents",
+            "reports/OtherTests.XCRESULT/Data/contents",
+            "exports/App.xcarchive/Products/Applications/App.app/Info.plist",
+            "symbols/App.dSYM/Contents/Resources/DWARF/App",
+            "symbols/OtherApp.DSYM/Contents/Info.plist",
+            "packages/.build/debug/output.o",
+            "packages/.SWIFTPM/configuration/registries.json",
+            "out/build/App.o",
+            "out/DerivedData/Build/App.o",
+            "other-out/dErIvEdDaTa/Build/App.o",
+            "SecondLook.xcodeproj/xcuserdata/user.xcuserdatad/UserInterfaceState.xcuserstate",
+        )
+        ignore_patterns = (
+            "*.xcresult/", "*.XCRESULT/", "*.xcarchive/", "*.dSYM/", "*.DSYM/",
+            ".build/", ".SWIFTPM/", "build/", "DerivedData/", "dErIvEdDaTa/",
+            "xcuserdata/",
+        )
+        with (self.repo / ".gitignore").open("a", encoding="utf-8") as ignore_file:
+            ignore_file.write("\n".join(ignore_patterns) + "\n")
+        self.git("add", ".gitignore")
+
+        for relative in artifacts:
+            path = self.repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("TEST_ONLY\n", encoding="utf-8")
+            with self.subTest(relative=relative):
+                subprocess.run(
+                    ["git", "-C", str(self.repo), "check-ignore", "--no-index", "--quiet", relative],
+                    check=True,
+                )
+                self.git("add", "-f", relative)
+
+        result = self.check()
+        self.assertEqual(result.returncode, 1)
+        for relative in artifacts:
+            with self.subTest(relative=relative):
+                self.assertIn(f"Generated cache in Git inventory: {relative}", result.stderr)
+
+    def test_source_paths_resembling_artifacts_are_allowed(self):
+        source_paths = (
+            "docs/DerivedData-guide.md",
+            "docs/build-notes.md",
+            "docs/Archive.xcarchive-example.md",
+            "Sources/xcuserdata_helpers.swift",
+            "Sources/Result.xcresult-examples/README.md",
+        )
+        for relative in source_paths:
+            path = self.repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("TEST_ONLY\n", encoding="utf-8")
+            self.git("add", relative)
+
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_symlink_escaping_repository_fails(self):
         outside = Path(self.temporary.name) / "outside.md"
         outside.write_text("outside\n", encoding="utf-8")

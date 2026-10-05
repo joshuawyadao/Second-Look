@@ -1,0 +1,26 @@
+# Backend comparison — Milestone 2
+
+Decision date: October 5, 2026. This evaluates a private, two-account iPhone app, not public signup or a general household platform. No hosted project, payment plan, Apple entitlement or distribution channel has been provisioned.
+
+| Requirement | Supabase Auth/Postgres + Swift service (selected provisionally) | Firebase Auth/Firestore | CloudKit sharing |
+| --- | --- | --- | --- |
+| Identity and private membership | Verify access tokens with Auth; service checks an explicit two-account allowlist and database membership. Clients receive a public key only. | Auth plus rules or a custom service can enforce membership. Server clients require their own authorization because they bypass Firestore rules. | iCloud identities and private shares provide owner/participant access; Apple account/container setup is required. |
+| Exact versions and atomic closure | PostgreSQL transaction stores aggregate state, revision and command receipt together. Swift service reuses `SecondLookCore`. | Firestore transactions support conditional multi-document changes; using our Swift rules would still require a custom service. | Share permissions govern record access. Our inference: app-specific performer/reviewer transitions require an additional authoritative command design; sharing alone is not sufficient evidence of that design. |
+| Later durable cleanup/jobs | Postgres can hold cleanup intent atomically; scheduled work can use Cron or a worker. Neither is implemented in M2. | Functions/tasks offer later work; hosted Functions require a billing-enabled Blaze plan. | Requires a separate design for reliable app-specific cleanup work and retry evidence. |
+| Later APNs | Requires an APNs-capable worker and Apple configuration. No push integration exists. | FCM for iOS still requires APNs configuration. No push integration exists. | Subscription notifications still require Apple configuration and must not substitute for state fetches. |
+| Development evidence | Docker local Auth/Postgres/PostgREST can exercise real HTTP and SQL without a hosted project. | Auth/Firestore/Functions emulator suite is a viable local test environment. | iCloud/device/container testing would add Apple setup before this milestone's authorization tests. |
+| Cost/operations | Local stack is separate from hosted quotas. Hosted database and Swift-service hosting/operations need an explicit later decision; no price guarantee. | Hosted functions change billing prerequisites; Firestore usage and service operations need review. | Apple platform integration is attractive for an iPhone-only app, but does not remove the unresolved command-service and job design. |
+
+The selected combination keeps one implementation of domain transitions. The extra Swift service is a real operational cost: it must be hosted, monitored and maintained later. This is a reversible choice, not a claim that Supabase alone supplies the app's authorization, cleanup or push behavior. See [ADR 002](decisions/002-private-shared-state.md).
+
+## Official evidence
+
+- [Supabase JWT verification](https://supabase.com/docs/guides/auth/jwts): the service uses `/auth/v1/user`, not unverified JWT claims. Provider verification is an external availability dependency on every request.
+- [Supabase row security](https://supabase.com/docs/guides/database/postgres/row-level-security): service credentials belong on the server. Our additional privilege revocations restrict the app's RPCs to that role; direct app access is denied.
+- [Supabase local development](https://supabase.com/docs/guides/local-development) and [CLI installation](https://supabase.com/docs/guides/local-development/cli/getting-started): Docker local services are distinct from hosted provisioning. CLI is pinned to 2.119.0.
+- [Supabase billing](https://supabase.com/docs/guides/platform/billing-on-supabase), [Cron](https://supabase.com/docs/guides/cron) and [push example](https://supabase.com/docs/guides/functions/examples/push-notifications): later hosted quotas, scheduled work and notification configuration require separate evaluation.
+- [Firestore transactions](https://firebase.google.com/docs/firestore/manage-data/transactions), [server/rules testing](https://firebase.google.com/docs/firestore/security/test-rules-emulator), [emulators](https://firebase.google.com/docs/emulator-suite), [Functions setup](https://firebase.google.com/docs/functions/get-started) and [iOS messaging](https://firebase.google.com/docs/cloud-messaging/ios/client) support the Firebase comparison.
+- [CloudKit sharing](https://developer.apple.com/documentation/CloudKit/sharing-cloudkit-data-with-other-icloud-users) and [shared records](https://developer.apple.com/documentation/CloudKit/shared-records) support the sharing comparison. The command-service assessment above is our inference from the app's domain requirements.
+- [Vapor 4.122.2 release](https://github.com/vapor/vapor/releases/tag/4.122.2) and [routing](https://docs.vapor.codes/basics/routing/) support the pinned service implementation. The server's dependency lockfile records its transitive versions.
+
+Hosted region, backup policy, data processing terms, abuse limits, operations and actual two-device behavior remain acceptance prerequisites. Local synthetic accounts do not establish those properties.

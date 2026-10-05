@@ -38,10 +38,33 @@ jobs:
         run: xcodebuild -version && swift --version
       - name: Test domain, simulator flow, and Release boundary
         run: ./scripts/verify-native.sh
+  backend:
+    name: Private shared state
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend
+      SUPABASE_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Swift server toolchain
+        uses: swift-actions/setup-swift@682457186b71c25a884c45c06f859febbe259240 # v2.3.0
+        with:
+          swift-version: '6.2.4'
+      - name: Verify server boundaries
+        run: swift test --package-path Backend --scratch-path "$SECONDLOOK_BACKEND_SCRATCH" -j 8
+      - name: Verify actual localhost Auth, SQL, HTTP and restart durability
+        run: ./scripts/verify-shared-state.sh
+      - name: Stop synthetic services
+        if: always()
+        run: npx --yes supabase@2.119.0 stop > "$RUNNER_TEMP/secondlook-stop.private.log" 2>&1
   verify:
     name: CI Verify
     if: always()
-    needs: [repository, native]
+    needs: [repository, native, backend]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -49,4 +72,5 @@ jobs:
         env:
           REPOSITORY_RESULT: ${{ needs.repository.result }}
           NATIVE_RESULT: ${{ needs.native.result }}
-        run: test "$REPOSITORY_RESULT" = success && test "$NATIVE_RESULT" = success
+          BACKEND_RESULT: ${{ needs.backend.result }}
+        run: test "$REPOSITORY_RESULT" = success && test "$NATIVE_RESULT" = success && test "$BACKEND_RESULT" = success

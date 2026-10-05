@@ -50,9 +50,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install pinned Swift server toolchain
-        uses: swift-actions/setup-swift@682457186b71c25a884c45c06f859febbe259240 # v2.3.0
+        uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
         with:
-          swift-version: '6.2.4'
+          swift-version: '6.2.1'
       - name: Verify server boundaries
         env:
           SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend

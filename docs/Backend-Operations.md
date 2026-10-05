@@ -20,7 +20,7 @@ The service accepts only the typed command envelope's top-level keys. Actor/time
 
 ## Reproducible local checks
 
-Prerequisites: Swift 6.2+ server toolchain (CI pins 6.2.4), Node 20+, Docker-compatible runtime, Python 3, network access to official dependency/container registries. CLI is pinned to 2.119.0. Tests use a dedicated project `secondlook-m2-local`, Docker network `secondlook_m2_local`, provider ports 56321/56322 and server port 58080. The private Unix-socket adapter in `scripts/local-docker-binding.py` forces every test container port binding to 127.0.0.1. The pinned CLI overrides Docker network binding defaults, so the launcher also verifies actual container bindings before creating accounts. It does not change the Docker daemon or user context. Do not replace these with hosted endpoints.
+Prerequisites: Swift 6.2+ server toolchain (CI pins 6.2.1), Node 20+, Docker-compatible runtime, Python 3, network access to official dependency/container registries. CLI is pinned to 2.119.0. Tests use a dedicated project `secondlook-m2-local`, Docker network `secondlook_m2_local`, provider ports 56321/56322 and server port 58080. The private Unix-socket adapter in `scripts/local-docker-binding.py` forces every test container port binding to 127.0.0.1. The pinned CLI overrides Docker network binding defaults, so the launcher also verifies actual container bindings before creating accounts. It does not change the Docker daemon or user context. Do not replace these with hosted endpoints.
 
 ```sh
 swift test

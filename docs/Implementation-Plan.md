@@ -17,7 +17,8 @@ Implement Milestone 2's authenticated private shared state on `codex/milestone-2
 [x] Run repository checks, `swift test`, backend Debug/Release boundaries, actual integration/restart, discovered-simulator `verify-native.sh`, Release exclusion and both native authenticated flows including saved-session relaunch. All local checks pass; evidence, repaired failures and limitations are in `docs/Verification.md`.
 [x] Update README, AGENTS, Product-Brief/Spec, Architecture and Roadmap to distinguish implemented local-stack behavior from missing hosted/two-device acceptance. Keep full M2 exit criteria and prerequisites explicit.
 [x] Review the integrated changes, checkpoint coherent slices and prepare only task-owned files for the final `save-branch` commit/push. Independent server/session review findings are repaired; the final Git/CI outcome is reported with the branch handoff.
-[ ] Repair the remote Swift installer mismatch using an immutable action release and a supported Swift 6.2 toolchain, run repository checks, save the correction, and inspect the resulting CI run.
+[x] Repair the remote Swift installer mismatch using an immutable action release and its supported Swift 6.2.1 toolchain. Repository checks and all 12 tooling tests pass; the correction is committed and pushed. Keep the operations guide consistent with the workflow.
+[ ] Inspect the corrected branch CI run and fix any remaining remote verification failures before the handoff.
 [ ] Complete the hosted acceptance gate after provider setup, operator access and secrets are resolved. Provisioning remains deferred; full M2 and the goal remain in progress. No PR or merge is authorized.
 
 ## Open questions

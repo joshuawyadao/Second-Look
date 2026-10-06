@@ -80,7 +80,11 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
         var request = URLRequest(url: configuration.providerURL.appendingPathComponent("rest/v1/rpc/\(name)"))
         request.httpMethod = "POST"
         request.setValue(configuration.serviceKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(configuration.serviceKey)", forHTTPHeaderField: "Authorization")
+        // Modern Supabase secret keys are not JWTs. Legacy service_role keys remain
+        // JWTs in the pinned local stack and still need the Bearer header there.
+        if !configuration.serviceKey.hasPrefix("sb_secret_") {
+            request.setValue("Bearer \(configuration.serviceKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         let (body, response) = try await send(request)

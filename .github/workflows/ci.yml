@@ -57,10 +57,12 @@ jobs:
         env:
           SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend
         run: swift test --package-path Backend --scratch-path "$SECONDLOOK_BACKEND_SCRATCH" -j 8
-      - name: Verify actual localhost Auth, SQL, HTTP and restart durability
+      - name: Verify localhost Auth, SQL, HTTP and restart with both API key modes
         env:
           SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend
-        run: ./scripts/verify-shared-state.sh
+        run: |
+          ./scripts/verify-shared-state.sh
+          ./scripts/verify-shared-state.sh --modern-keys
       - name: Stop synthetic services
         if: always()
         run: npx --yes supabase@2.119.0 stop > "$RUNNER_TEMP/secondlook-stop.private.log" 2>&1

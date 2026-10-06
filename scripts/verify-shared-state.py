@@ -58,6 +58,7 @@ def wait_server(process, url):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native", action="store_true", help="Also run paired and fresh-pairing iPhone simulator acceptance (macOS/Xcode).")
+    parser.add_argument("--modern-keys", action="store_true", help="Use this localhost stack's modern publishable/secret keys instead of legacy JWT API keys.")
     args = parser.parse_args()
     os.umask(0o077)
     directory = Path(tempfile.mkdtemp(prefix="secondlook-m2-"))
@@ -85,8 +86,14 @@ def main():
                     raise RuntimeError("A local test service was exposed beyond loopback; synthetic stack stopped.")
     status = json.loads(run(CLI + ["status", "-o", "json"], env=env, capture_output=True).stdout)
     provider = status["API_URL"]
-    public_key = status["ANON_KEY"]
-    service_key = status["SERVICE_ROLE_KEY"]
+    if args.modern_keys:
+        public_key = status.get("PUBLISHABLE_KEY", "")
+        service_key = status.get("SECRET_KEY", "")
+        if not public_key.startswith("sb_publishable_") or not service_key.startswith("sb_secret_"):
+            raise RuntimeError("The local stack did not supply modern API keys.")
+    else:
+        public_key = status["ANON_KEY"]
+        service_key = status["SERVICE_ROLE_KEY"]
     # Refuse to reset anything other than this named localhost-only synthetic project.
     if provider != "http://127.0.0.1:56321":
         raise RuntimeError("Unexpected integration provider URL.")
@@ -102,7 +109,7 @@ def main():
         email = f"m2-{role}-{uuid.uuid4().hex}@example.test"
         password = secrets.token_urlsafe(32)
         user = request(provider + "/auth/v1/admin/users", {"email": email, "password": password,
-                       "email_confirm": True}, service_key, service_key)
+                       "email_confirm": True}, service_key, None if args.modern_keys else service_key)
         accounts.append({"id": user["id"], "email": email, "password": password})
     # The local GoTrue container's HMAC secret is used only to construct a correctly
     # signed expired token for negative validation. It never leaves this private file.

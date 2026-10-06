@@ -67,6 +67,27 @@ import SecondLookCore
         }
     }
 
+    @Test func frameworkErrorsReturnBoundedResponses() async throws {
+        let configuration = try ServerConfiguration(environment: environment())
+        try await withApp { app in
+            try configure(app, configuration: configuration,
+                          verifier: SyntheticVerifier(account: owner), store: InaccessibleStore())
+            try await app.testing().test(.POST, "/_testing/synthetic-evidence?private=synthetic") { response in
+                #expect(response.status == .notFound)
+                #expect(response.body.string == "{\"code\":\"notFound\"}")
+                #expect(response.headers[.cacheControl] == ["no-store"])
+            }
+            app.get("test-framework-failure") { _ -> Response in
+                throw Abort(.internalServerError, reason: "SYNTHETIC_PRIVATE_ERROR_DETAIL")
+            }
+            try await app.testing().test(.GET, "/test-framework-failure") { response in
+                #expect(response.status == .internalServerError)
+                #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
+                #expect(response.headers[.contentType] == ["application/json"])
+            }
+        }
+    }
+
     @Test func identicalRetryFindsReceiptCommittedBetweenReads() async throws {
         let configuration = try ServerConfiguration(environment: environment())
         let original = SharedSnapshot(spaceID: UUID(), revision: 0, members: [owner, peer], state: .init())

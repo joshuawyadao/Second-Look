@@ -1,0 +1,40 @@
+# Allow only inputs needed by the server and its local core package dependency.
+# Hosted secret files, local fixtures, app state and build artifacts stay outside.
+**
+!Package.swift
+!SecondLookCore/
+!SecondLookCore/**
+!SecondLookCoreTests/
+!SecondLookCoreTests/**
+!SecondLook/
+!SecondLook/Services/
+!SecondLook/Services/Transport/
+!SecondLook/Services/Transport/**
+!Backend/
+!Backend/Dockerfile
+!Backend/Package.swift
+!Backend/Package.resolved
+!Backend/Sources/
+!Backend/Sources/**
+!Backend/Tests/
+!Backend/Tests/**
+
+# Exclude private material even if placed inside an allowed source directory.
+**/.env
+**/.env.*
+**/*.private.*
+**/*.key
+**/*.pem
+**/*.p8
+**/*.p12
+**/*.pfx
+**/credentials*.json
+**/secrets*.json
+**/private/**
+**/local-data/**
+**/photos/**
+**/uploads/**
+**/.build/**
+**/*.log
+**/*.sqlite*
+**/*.db

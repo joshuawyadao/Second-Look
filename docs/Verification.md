@@ -21,6 +21,24 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -showdestinations
 
 Open `SecondLook.xcodeproj` and Run the **SecondLook** scheme on a simulator. Debug uses `com.joshuawyadao.SecondLook.demo` and Application Support/SecondLookDemo/state-v1.json. Release uses `com.joshuawyadao.SecondLook.local` and SecondLookLocal/state-v1.json. UI tests use a separate SecondLookUITests document; only Debug test launches accept `-ui-testing -reset-demo`. A normal launch never resets existing data.
 
+## Supabase Free setup preparation — October 6, 2026
+
+The operator authorized Free setup assistance. The Supabase dashboard was opened, but operator sign-in is still required; no hosted project, account, migration, server deployment or billing setting has been changed. [Supabase Free Setup](Supabase-Free-Setup.md) records the operator steps and official cost-control sources. Hosted and physical-device acceptance remain unverified.
+
+The API-key correction keeps modern non-JWT secrets on `apikey` only, legacy service-role JWTs on their existing headers, and actual user bearer verification independent of the server secret. The localhost integration script now supports `--modern-keys`, and CI exercises both modes. Request tests cover the headers, returned snapshots and rejection of a verified third account.
+
+- `./scripts/verify-repository.sh`: **12 tooling tests pass**; local Markdown references and whitespace checks pass.
+- `swift test`: **29 Core/transport tests pass**.
+- Backend Debug and Release request/boundary suites: **8 tests pass in each configuration**, including bounded HTTP missing-route/unhandled-error responses; the two gated integration cases skip without their private fixture.
+- `SECONDLOOK_BACKEND_SCRATCH=/private/tmp/secondlook-backend-build ./scripts/verify-shared-state.sh`: **passes** actual localhost Auth/Postgres/HTTP acceptance, privilege/expiry/rotation/receipt checks and server restart using legacy JWT API keys.
+- The same command with `--modern-keys`: **passes** the same acceptance using actual local modern publishable/secret keys. This includes password sign-in, user-token verification/refresh, membership denial, atomic writes/retries/concurrency and restart; these are synthetic local accounts, not a hosted deployment.
+
+`docker build -f Backend/Dockerfile -t secondlook-m2-server:free-setup .` **passes** using pinned official Swift 6.2.1 and Ubuntu 24.04 images. A live **Linux/arm64** container smoke check passes with a loopback-only port and synthetic runtime configuration: `/health` returns 200, unauthenticated private state returns 401, the absent synthetic-evidence route returns 404, and missing/forbidden configuration exits 78. The image runs as the unprivileged app user and contains no credential defaults. Observed idle memory was **12.21 MiB within a 512 MiB limit**; this is not an authenticated workload, load test, amd64-host build or Render deployment.
+
+Initial verification found a throwing fixture encode missing error handling and a container package-manifest source-path overlap when backend test sources were omitted. Both were repaired. The container's first live HTTP smoke check then found unknown routes closed the connection because the framework error middleware had been removed; a sanitized replacement and bounded-response regression address this without restoring request/error logging. Both legacy and modern localhost integration/restart workflows pass again after that fix. Native app sources did not change in this setup task; the October 5 native evidence remains the most recent local simulator evidence.
+
+Previous remote run [37365352414](https://github.com/joshuawyadao/Second-Look/actions/runs/37365352414) passed repository and native jobs; backend and aggregate jobs were canceled. The run's overall conclusion was failure, so it is not full green CI evidence. The next branch push must be checked separately.
+
 ## Milestone 2 local evidence — October 5, 2026
 
 Environment: Xcode 27.0 (27A266a), Swift 6.4, iPhone 18 Pro on the installed iOS 27 simulator (`ADD1A583-C6C6-4937-A00D-B1112054D521`), Docker 29.6.1, pinned Supabase CLI 2.119.0 and Vapor 4.122.2. These are synthetic accounts and invented checklist content. Auth, Postgres, PostgREST and the Swift HTTP server are actual running localhost services; synthetic photo metadata has no image bytes.

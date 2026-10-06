@@ -12,7 +12,7 @@ Milestones **0–1** established the local foundation. Milestone **2 is in progr
 | 5 — Reminders and optional expiry | Add durable state-aware push/scheduling, grouping, repeat/snooze/quiet hours, time-zone/DST behavior, and explicitly enabled unreviewed timeout. Off retains open evidence; expiry never completes a run. |
 | 6 — Device acceptance and daily trial | Resolve signing/distribution for both real iPhones, exercise the full acceptance matrix including Photos, accessibility, denied permissions, and unreliable connections, then document limits and operating steps. |
 
-Shortcuts and automatic starts, broader release, more users, and other platforms are later considerations, not commitments. The [backend comparison](Backend-Comparison.md) and [ADR 002](decisions/002-private-shared-state.md) record the provisional vendor/service choice; hosted provisioning, paid services, Apple enrollment, and distribution remain deferred.
+Shortcuts and automatic starts, broader release, more users, and other platforms are later considerations, not commitments. The [backend comparison](Backend-Comparison.md) and [ADR 002](decisions/002-private-shared-state.md) record the provisional vendor/service choice. [Supabase Free setup](Supabase-Free-Setup.md) is authorized and being prepared; actual hosted provisioning and acceptance remain pending operator access. Paid services, Apple enrollment, and distribution remain deferred.
 
 ## Acceptance matrix
 

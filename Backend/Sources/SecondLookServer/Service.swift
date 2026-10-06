@@ -55,6 +55,16 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                verifier: (any AccountVerifier)? = nil, store: (any SpaceStore)? = nil) throws {
     // Never emit a request body, Authorization header, invite, email or database error payload.
     app.middleware = .init()
+    // Framework errors (including an absent route) still need an HTTP response.
+    // The default error middleware logs the full URL and error; keep this bounded.
+    app.middleware.use(ErrorMiddleware { _, error in
+        let status = (error as? any AbortError)?.status ?? .serviceUnavailable
+        let code = status == .notFound ? "notFound"
+            : (status.code < 500 ? "invalidRequest" : "serviceUnavailable")
+        return Response(status: status,
+            headers: ["Content-Type": "application/json", "Cache-Control": "no-store"],
+            body: .init(string: "{\"code\":\"\(code)\"}"))
+    })
     app.http.server.configuration.hostname = configuration.localDevelopment ? "127.0.0.1" : "0.0.0.0"
     app.http.server.configuration.port = configuration.port
     app.routes.defaultMaxBodySize = "512kb"

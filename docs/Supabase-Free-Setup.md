@@ -1,6 +1,6 @@
 # Supabase Free setup for Milestone 2
 
-Setup direction selected October 6, 2026: a dedicated **Supabase Free organization/project**, with a **Render Free web service** as the proposed host for the Swift command server. This is a development/acceptance setup. Operator sign-in, project creation, private credentials and hosted acceptance are pending; no hosted deployment is claimed. The localhost implementation and its tests are described in [Backend Operations](Backend-Operations.md) and [Verification](Verification.md).
+Setup direction selected October 6, 2026: a dedicated **Supabase project in the operator's existing Free organization**, with a **Render Free web service** as the proposed host for the Swift command server. This is a development/acceptance setup. The operator created Second Look in **West US (Oregon)** and entered the database password privately. The project is healthy; email/password sign-in is enabled, public signup and anonymous sign-in are disabled, and email confirmation remains enabled. The private-space migration is installed and its hosted catalog checks pass. The two Auth accounts, server credentials/deployment and hosted app acceptance remain pending. The localhost implementation and its tests are described in [Backend Operations](Backend-Operations.md) and [Verification](Verification.md).
 
 ## Cost safeguards
 
@@ -13,7 +13,7 @@ The command-server host has separate billing. For the proposed [Render Free](htt
 ## 1. Create the dedicated project
 
 1. Sign in to the [Supabase dashboard](https://supabase.com/dashboard) yourself. Choose or create a **Free** organization, checking the displayed plan before submitting. Leave unrelated projects unchanged.
-2. Create a project named **Second Look**. Prefer a nearby US region if offered; record the actual region privately and keep the server nearby where practical. Region selection remains an engineering default, not a completed privacy or legal review.
+2. Create a project named **Second Look**. Prefer a nearby US region if offered; record the actual region in the operations evidence and keep the server nearby where practical. Region selection remains an engineering default, not a completed privacy or legal review.
 3. Enter a strong database password yourself and store it in your password manager. Do not put it in chat, this public repository, an image or a build argument. Stop at any paid-plan or new terms/permission prompt that requires an operator decision.
 4. Wait until the project is ready, then recheck the organization's Billing/Usage pages show Free. Do not create a Storage bucket in M2: real photos and retention/cleanup belong to M3.
 
@@ -21,7 +21,16 @@ The command-server host has separate billing. For the proposed [Render Free](htt
 
 In Auth configuration, enable email/password sign-in, disable **Allow new users to sign up**, and disable anonymous sign-in. Use Auth → Users → Add user → Create user to create exactly two operator-managed accounts, with distinct identities and securely delivered passwords. Complete credential entry privately. The app implements password sign-in and refresh; email invitation/password-setup deep links and public signup are not implemented. Do not send invitations as a substitute for that missing flow.
 
-Install [202610050001_private_space.sql](../supabase/migrations/202610050001_private_space.sql) into **this dedicated project**, using the dashboard SQL editor or an explicitly linked CLI migration workflow. Review the target project before execution. The migration creates the private schema, RLS/revoked client access and service-role-only transactional RPCs. Do not expose `secondlook_private` in Data API settings or grant app roles direct RPC/table access. Run the privilege checks and inspect Security Advisor findings instead of dismissing them blindly. The local test script must never be pointed at this hosted project: it intentionally resets only its named localhost synthetic aggregate.
+Install [202610050001_private_space.sql](../supabase/migrations/202610050001_private_space.sql) into **this dedicated project**, using the dashboard SQL editor or an explicitly linked CLI migration workflow. Review the target project before execution. The migration creates the private schema, RLS/revoked client access and service-role-only transactional RPCs. Do not expose `secondlook_private` in Data API settings or grant app roles direct RPC/table access. For a fresh installation, run the read-only [hosted installation checks](../supabase/tests/hosted_installation_checks.sql): all seven rows should report `passed = true`. The empty-state check is an installation prerequisite, not a requirement after pairing; do not erase app state to satisfy it. Inspect Security Advisor findings instead of dismissing them blindly. The local test script must never be pointed at this hosted project: it intentionally resets only its named localhost synthetic aggregate.
+
+The October 6 project setup enabled automatic RLS, which created `public.rls_auto_enable()` as an event-trigger helper. The Advisor reported anonymous and authenticated execute privileges on that definer function. Its definition was inspected, and those API permissions were removed with:
+
+```sql
+revoke execute on function public.rls_auto_enable()
+  from public, anon, authenticated, service_role;
+```
+
+Hosted catalog checks confirmed all three API roles lack execute access and the automatic RLS event trigger remains enabled. The Advisor now shows only the two **RLS Enabled No Policy** notices on the private tables. Those are expected for this server-only boundary: the tables have no client policies or direct role privileges. Keep that denial; do not add permissive policies to clear the notices. See Supabase's [event-trigger guide](https://supabase.com/docs/guides/database/postgres/event-triggers) and [API security guidance](https://supabase.com/docs/guides/api/securing-your-api).
 
 Keep the two Auth user UUIDs in the server's private environment, not in public docs. A third synthetic account used for hosted denial acceptance is a test actor and must stay outside the two-account allowlist. Keep acceptance content invented; never use household photos or tasks to validate access.
 

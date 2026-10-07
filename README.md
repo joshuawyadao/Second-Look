@@ -42,7 +42,7 @@ Repository checks need Git and Python 3.10+. Native verification needs macOS/Xco
 | [Verification](docs/Verification.md) | Checks, observed results, and unverified areas |
 | [Implementation plan](docs/Implementation-Plan.md) | Replaceable tracking for this assignment |
 
-Milestone 2 remains in progress until its authenticated pairing, server enforcement, client convergence, and required acceptance evidence are verified. [Supabase Free setup](docs/Supabase-Free-Setup.md) now has a created project and verified private schema; two Auth accounts, Swift service deployment, hosted app acceptance and two-device acceptance remain pending. Real camera/library media and cleanup, network recovery, notifications/timeouts, and two-device acceptance follow their roadmap gates. Paid services, Apple enrollment, and distribution remain deferred.
+Milestone 2 remains in progress until its authenticated pairing, server enforcement, client convergence, and required acceptance evidence are verified. [Supabase Free setup](docs/Supabase-Free-Setup.md) now has a created project, verified private schema and two confirmed Auth accounts; Swift service deployment, hosted app acceptance and two-device acceptance remain pending. Real camera/library media and cleanup, network recovery, notifications/timeouts, and two-device acceptance follow their roadmap gates. Paid services, Apple enrollment, and distribution remain deferred.
 
 ## Public development
 

@@ -13,5 +13,7 @@ let package = Package(
         .target(name: "SecondLookTransport", dependencies: ["SecondLookCore"],
                 path: "SecondLook/Services/Transport"),
         .testTarget(name: "SecondLookCoreTests", dependencies: ["SecondLookCore"], path: "SecondLookCoreTests"),
+        .testTarget(name: "SecondLookTransportTests", dependencies: ["SecondLookCore", "SecondLookTransport"],
+                    path: "SecondLookTransportTests"),
     ]
 )

@@ -19,7 +19,7 @@ public struct SharedHTTPClient: SharedStateClient {
     public init(serverURL: URL, bearerToken: @escaping @Sendable () async throws -> String,
                 allowLocalHTTP: Bool = false, session: URLSession = .shared) {
         endpoint = PrivateHTTPEndpoint(baseURL: serverURL, allowLocalHTTP: allowLocalHTTP,
-                                       session: session, apiKey: nil)
+                                       session: session, apiKey: nil, failureFormat: .commandService)
         self.bearerToken = bearerToken
     }
 
@@ -57,6 +57,11 @@ public struct SharedHTTPClient: SharedStateClient {
 private struct EmptyRequest: Encodable, Sendable {}
 private struct JoinRequest: Encodable, Sendable { let inviteToken: String }
 
+/// Bounded Auth rejection; raw provider messages and credentials never enter product errors.
+public enum SharedAuthFailure: Error, Equatable, Sendable {
+    case invalidCredentials
+}
+
 /// Supabase Auth REST endpoints; the publishable key is public configuration, never a service key.
 public struct SharedAuthClient: Sendable {
     private let endpoint: PrivateHTTPEndpoint
@@ -64,7 +69,7 @@ public struct SharedAuthClient: Sendable {
     public init(authURL: URL, publishableKey: String, allowLocalHTTP: Bool = false,
                 session: URLSession = .shared) {
         endpoint = PrivateHTTPEndpoint(baseURL: authURL, allowLocalHTTP: allowLocalHTTP,
-                                       session: session, apiKey: publishableKey)
+                                       session: session, apiKey: publishableKey, failureFormat: .supabaseAuth)
     }
 
     public func signIn(email: String, password: String) async throws -> SharedAuthSession {
@@ -99,6 +104,7 @@ public struct SharedAuthSession: Codable, Equatable, Sendable {
 
 private struct Credentials: Encodable, Sendable { let email: String; let password: String }
 private struct RefreshRequest: Encodable, Sendable { let refresh_token: String }
+private enum HTTPFailureFormat { case commandService, supabaseAuth }
 
 /// Kept in the same target as the app's transport so package tests exercise exact request code.
 private struct PrivateHTTPEndpoint: @unchecked Sendable {
@@ -106,6 +112,7 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
     let allowLocalHTTP: Bool
     let session: URLSession
     let apiKey: String?
+    let failureFormat: HTTPFailureFormat
 
     func send<Response: Decodable>(path: [String], method: String, token: String?,
                                    query: [URLQueryItem] = []) async throws -> Response {
@@ -154,13 +161,26 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
         catch { throw SharedStateFailure.serviceUnavailable }
         guard let http = response as? HTTPURLResponse else { throw SharedStateFailure.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            throw Self.failure(status: http.statusCode, data: data)
+            throw failure(status: http.statusCode, data: data)
         }
         do { return try SharedWireCodec.decode(Response.self, from: data) }
         catch { throw SharedStateFailure.invalidResponse }
     }
 
-    private static func failure(status: Int, data: Data) -> SharedStateFailure {
+    private func failure(status: Int, data: Data) -> any Error {
+        if failureFormat == .supabaseAuth, status == 400 {
+            let authCode = (try? SharedWireCodec.decode(AuthError.self, from: data))?.error_code
+            switch authCode {
+            case "invalid_credentials": return SharedAuthFailure.invalidCredentials
+            case "refresh_token_not_found", "refresh_token_already_used":
+                return SharedStateFailure.unauthenticated
+            default: return SharedStateFailure.invalidResponse
+            }
+        }
+        return Self.serviceFailure(status: status, data: data)
+    }
+
+    private static func serviceFailure(status: Int, data: Data) -> SharedStateFailure {
         let code = (try? SharedWireCodec.decode(ServiceError.self, from: data))?.code
         switch status {
         case 401: return .unauthenticated
@@ -187,3 +207,4 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
 }
 
 private struct ServiceError: Decodable { let code: String }
+private struct AuthError: Decodable { let error_code: String }

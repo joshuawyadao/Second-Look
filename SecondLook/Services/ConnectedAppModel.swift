@@ -434,6 +434,12 @@ final class ConnectedAppModel {
     }
 
     static func safeMessage(_ error: Error) -> String {
+        if let failure = error as? SharedAuthFailure {
+            switch failure {
+            case .invalidCredentials:
+                return "Email or password is incorrect. Check both and try again."
+            }
+        }
         if error is ConnectedIdentityFailure {
             return "Secure session storage is unavailable on this device."
         }

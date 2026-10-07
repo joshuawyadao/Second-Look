@@ -7,6 +7,7 @@ WORKDIR /build
 COPY Package.swift ./
 COPY SecondLookCore/ SecondLookCore/
 COPY SecondLookCoreTests/ SecondLookCoreTests/
+COPY SecondLookTransportTests/ SecondLookTransportTests/
 COPY SecondLook/Services/Transport/ SecondLook/Services/Transport/
 COPY Backend/Package.swift Backend/Package.resolved Backend/
 RUN swift package --package-path Backend resolve --force-resolved-versions

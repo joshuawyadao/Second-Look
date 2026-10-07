@@ -50,6 +50,8 @@ In local Settings, choose the private shared space flow and enter only public pr
 
 Credentials use Keychain; connected snapshots are memory-only. Signing out immediately clears protected UI, navigation and the local credential. It does not promise immediate global access-token revocation: issued access tokens follow provider expiry semantics. Fresh verification and membership checks still run on server requests.
 
+The native transport keeps Supabase Auth failure decoding separate from command-service errors. Auth HTTP 400 `invalid_credentials` becomes a bounded incorrect-email/password error; `refresh_token_not_found` and `refresh_token_already_used` require a fresh sign-in. Unknown or malformed Auth400 replies remain invalid responses, and command-service `code` mapping is unchanged. Product UI never displays raw provider messages or request contents. [Supabase's error reference](https://supabase.com/docs/guides/auth/debugging/error-codes) documents the recognized codes; synthetic transport regressions cover their wire shapes and successful sign-in/session decoding.
+
 Debug UI acceptance uses both `-ui-testing` and `-shared-testing`, a separate Keychain namespace, simulator-only ad hoc signing with the Debug Keychain entitlement, and public configuration passed by the UI test runner. The private fixture is never bundled into the app or Release.
 
 ## Hosted setup and pending acceptance

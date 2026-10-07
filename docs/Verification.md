@@ -83,6 +83,34 @@ Device Hub screenshots show the first client's connection form populated with pu
 
 `./scripts/verify-repository.sh` **passes all 12 tooling tests**, local Markdown paths and whitespace checks. Executable sources and test files remain unchanged, so no additional regression tests or full Core/native/local-stack reruns are warranted for this preparation/documentation slice. Authenticated hosted acceptance remains pending; the disposable localhost integration scripts must not be pointed at hosted services. Build logs, screenshots, simulator data and all private account details remain outside Git.
 
+## Hosted sign-in rejection diagnosis — October 7, 2026
+
+The operator entered existing account credentials privately and attempted native sign-in. The app displayed **Could not authenticate this account** with the generic **unexpected response** alert. The hosted Auth log for the matching 11:28 password request shows HTTP **400**, `error_code = invalid_credentials`, and **Invalid login credentials**. This establishes a rejected hosted password attempt, not successful authentication, Keychain/session verification, pairing or an accepted shared write. Participant identifiers, request IDs, addresses and raw logs are omitted.
+
+An independent HTTPS password request using only an invented unregistered email/password and the public publishable key returned the same rejection format: numeric `code: 400`, string `error_code: invalid_credentials`, and the bounded credential-rejection message. No account or shared data was created. The app's transport had used the command service's string `code` error shape for Auth as well, leaving this valid provider rejection classified as `invalidResponse`. [Supabase's Auth error reference](https://supabase.com/docs/guides/auth/debugging/error-codes) identifies stable rejection codes; provider messages must not be copied into product UI or logs.
+
+The correction explicitly separates Auth `error_code` parsing from command-service `code` parsing. Known rejected password credentials produce a typed Auth failure and **Email or password is incorrect. Check both and try again.** Known missing/reused refresh tokens produce `unauthenticated`; unknown/malformed Auth400 responses retain `invalidResponse`. Authorization, session epochs, Keychain handling and server behavior are unchanged. The root package's separate synthetic transport test target is included in the allowlisted Docker build inputs so its manifest remains valid; these sources contain only invented fixtures.
+
+The focused `SharedAuthTransportTests` run first reproduced the two sign-in response variants and both rejected-refresh variants as the wrong `invalidResponse`. After correction, **all eight tests pass**, including service-error separation, existing Auth401 denial, malformed/unknown errors and successful synthetic session/path/public-key/password-grant assertions. This is exact transport behavior with intercepted synthetic HTTP responses, not hosted successful sign-in.
+
+```sh
+CLANG_MODULE_CACHE_PATH=/private/tmp/secondlook-auth-clang \
+SWIFTPM_MODULECACHE_OVERRIDE=/private/tmp/secondlook-auth-swiftpm \
+swift test --scratch-path /private/tmp/secondlook-auth-diagnosis --filter SharedAuthTransportTests
+CLANG_MODULE_CACHE_PATH=/private/tmp/secondlook-auth-clang \
+SWIFTPM_MODULECACHE_OVERRIDE=/private/tmp/secondlook-auth-swiftpm \
+SECONDLOOK_SIMULATOR_ID=ADD1A583-C6C6-4937-A00D-B1112054D521 \
+SECONDLOOK_DERIVED_DATA=/private/tmp/secondlook-auth-native \
+./scripts/verify-native.sh
+```
+
+- Repository checks **pass all 12 tooling tests**, local Markdown paths and whitespace.
+- The combined native command **passes** all **37 package tests** (29 Core plus 8 transport), **10 ordinary native UI cases**, the Release build and Release binary boundary. The two connected cases intentionally skip without their private fixture and are not counted as acceptance.
+- The corrected Debug app's separate ad hoc signed build and strict signature verification **pass**. It was installed and launched successfully on both existing simulators, without a reset, using only the public hosted configuration. The first client visibly shows the clean connection form for a private retry.
+- The isolated localhost modern-key integration/restart workflow and the Release Docker build were started; container startup/dependency resolution are still in progress. No result is claimed yet, and neither job uses hosted participant data or credentials.
+
+Successful hosted sign-in and the subsequent pairing/shared-write acceptance remain pending a private retry with one of the two provisioned app accounts; the Supabase dashboard login itself is not an app account. Operator input is still required because Device Hub's native controls remain unavailable to the agent. No temporary app/server instrumentation was added, and all screenshots/build logs/simulator state remain outside Git.
+
 ## Milestone 2 local evidence — October 5, 2026
 
 Environment: Xcode 27.0 (27A266a), Swift 6.4, iPhone 18 Pro on the installed iOS 27 simulator (`ADD1A583-C6C6-4937-A00D-B1112054D521`), Docker 29.6.1, pinned Supabase CLI 2.119.0 and Vapor 4.122.2. These are synthetic accounts and invented checklist content. Auth, Postgres, PostgREST and the Swift HTTP server are actual running localhost services; synthetic photo metadata has no image bytes.

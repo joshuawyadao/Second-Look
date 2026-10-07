@@ -6,6 +6,8 @@
 !SecondLookCore/**
 !SecondLookCoreTests/
 !SecondLookCoreTests/**
+!SecondLookTransportTests/
+!SecondLookTransportTests/**
 !SecondLook/
 !SecondLook/Services/
 !SecondLook/Services/Transport/

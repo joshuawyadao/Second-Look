@@ -64,6 +64,25 @@ Initial verification found a throwing fixture encode missing error handling and 
 
 Previous remote run [37365352414](https://github.com/joshuawyadao/Second-Look/actions/runs/37365352414) passed repository and native jobs; backend and aggregate jobs were canceled. On the subsequent `cf1d181` push, run [37507366860](https://github.com/joshuawyadao/Second-Look/actions/runs/37507366860) passed repository/native jobs and all eight Linux server boundary/request tests. Its private shared-state job failed during the first isolated Supabase CLI startup, before Auth/Postgres/HTTP integration; CI Verify therefore failed. The documentation/checks push `5d7515b` repeated that startup failure in run [37561938435](https://github.com/joshuawyadao/Second-Look/actions/runs/37561938435), with repository/native jobs passing. The private CLI log was not exported, so the startup cause is not established. None of these runs is full green CI evidence. Diagnose that startup failure before claiming a merge-ready branch; do not publish raw private logs or treat a rerun as a repair.
 
+## Hosted native acceptance preparation — October 7, 2026
+
+A fresh Debug simulator build from the current M2 branch **passes** with `CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`. Strict code-signature verification passes, and the simulator's effective application identifier and Keychain access group match the Debug bundle with the resolved existing identifier prefix. This is simulator ad hoc signing; no Apple enrollment, physical-device install or distribution occurred.
+
+```sh
+xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug \
+  -destination 'platform=iOS Simulator,id=ADD1A583-C6C6-4937-A00D-B1112054D521' \
+  -derivedDataPath /private/tmp/secondlook-hosted-native-20261007 \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
+codesign --verify --strict --verbose=2 \
+  /private/tmp/secondlook-hosted-native-20261007/Build/Products/Debug-iphonesimulator/SecondLook.app
+```
+
+The signed app was installed successfully on the two already-booted **iPhone 18 Pro / iOS 27.0** and **iPhone 17 Pro / iOS 26.5** simulators without uninstalling or resetting data. Both launches succeed using the existing Debug `-ui-testing -shared-testing` flags and only public hosted Auth URL, publishable key and Render HTTPS URL in the launch environment. This uses the separate shared UI-test preference/Keychain namespace; no account, token, password fixture, reset flag or simulated actor was injected. The app's Debug name/local demo remains visibly labeled as simulated, while the connection form is prepared for real hosted authentication.
+
+Device Hub screenshots show the first client's connection form populated with public hosted settings. The existing shared UI-test namespace also shows an unavailable reconnect alert before new credential entry. Launch environment values populate form fields; they do not replace saved configuration for automatic session restoration, so this alert is **not a hosted sign-in result**. The computer-control accessibility tree exposes only Device Hub chrome, and coordinate input fails to find a window after reconnect/raise/compact-window attempts. Operator interaction is required to dismiss the alert and sign in privately; no credential entry, hosted pairing or accepted write is claimed from preparation.
+
+`./scripts/verify-repository.sh` **passes all 12 tooling tests**, local Markdown paths and whitespace checks. Executable sources and test files remain unchanged, so no additional regression tests or full Core/native/local-stack reruns are warranted for this preparation/documentation slice. Authenticated hosted acceptance remains pending; the disposable localhost integration scripts must not be pointed at hosted services. Build logs, screenshots, simulator data and all private account details remain outside Git.
+
 ## Milestone 2 local evidence — October 5, 2026
 
 Environment: Xcode 27.0 (27A266a), Swift 6.4, iPhone 18 Pro on the installed iOS 27 simulator (`ADD1A583-C6C6-4937-A00D-B1112054D521`), Docker 29.6.1, pinned Supabase CLI 2.119.0 and Vapor 4.122.2. These are synthetic accounts and invented checklist content. Auth, Postgres, PostgREST and the Swift HTTP server are actual running localhost services; synthetic photo metadata has no image bytes.

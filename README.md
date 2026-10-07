@@ -38,11 +38,11 @@ Repository checks need Git and Python 3.10+. Native verification needs macOS/Xco
 | [Native workflow decision](docs/decisions/001-native-local-foundation.md) | Reversible tooling and deployment choices |
 | [Backend comparison](docs/Backend-Comparison.md) | Provider tradeoffs for the private shared state |
 | [Shared-state decision](docs/decisions/002-private-shared-state.md) | Reversible Milestone 2 service and persistence choice |
-| [Backend operations](docs/Backend-Operations.md) | Local Auth/Postgres/server setup with synthetic accounts |
+| [Backend operations](docs/Backend-Operations.md) | Local synthetic-account checks and hosted service operation |
 | [Verification](docs/Verification.md) | Checks, observed results, and unverified areas |
 | [Implementation plan](docs/Implementation-Plan.md) | Replaceable tracking for this assignment |
 
-Milestone 2 remains in progress until its authenticated pairing, server enforcement, client convergence, and required acceptance evidence are verified. [Supabase Free setup](docs/Supabase-Free-Setup.md) now has a created project, verified private schema and two confirmed Auth accounts; Swift service deployment, hosted app acceptance and two-device acceptance remain pending. Real camera/library media and cleanup, network recovery, notifications/timeouts, and two-device acceptance follow their roadmap gates. Paid services, Apple enrollment, and distribution remain deferred.
+Milestone 2 remains in progress until its authenticated pairing, server enforcement, client convergence, and required acceptance evidence are verified. [Supabase Free setup](docs/Supabase-Free-Setup.md) has a verified private schema, two confirmed Auth accounts and a live Render Free Release server. Hosted HTTPS health and public denial boundaries pass; authenticated hosted app acceptance and two-device acceptance remain pending. Real camera/library media and cleanup, network recovery, notifications/timeouts, and two-device acceptance follow their roadmap gates. Paid services, Apple enrollment, and distribution remain deferred.
 
 ## Public development
 

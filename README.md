@@ -5,7 +5,7 @@
 
 **Important tasks, double-checked.** Second Look is a native iPhone checklist app being built for two people in a private shared space. Standard tasks are checked off; high-priority tasks will need a photo and approval from the assigned other person.
 
-**Current status: Milestones 0–1 complete; Milestone 2 in progress.** The native app has a local foundation for routines, independent checklist runs, relaunch, and text-only history. Milestone 2 adds an authenticated private-space path backed by a Swift command service and Supabase Auth/Postgres. Local integration uses synthetic accounts and data. Hosted first-account sign-in, private-space creation and an invented standard-routine write are verified; pairing, convergence and full hosted/two-device acceptance remain pending. No real photo is captured or sent.
+**Current status: Milestones 0–1 complete; Milestone 2 in progress.** The native app has a local foundation for routines, independent checklist runs, relaunch, and text-only history. Milestone 2 adds an authenticated private-space path backed by a Swift command service and Supabase Auth/Postgres. Local integration uses synthetic accounts and data. Hosted pairing on two signed-in simulator clients, shared routine edits, standard-run snapshot/history convergence and a peer foreground return pass. Remaining hosted acceptance is pending. No real photo is captured or sent.
 
 ## Run the iPhone app
 
@@ -42,7 +42,7 @@ Repository checks need Git and Python 3.10+. Native verification needs macOS/Xco
 | [Verification](docs/Verification.md) | Checks, observed results, and unverified areas |
 | [Implementation plan](docs/Implementation-Plan.md) | Replaceable tracking for this assignment |
 
-Milestone 2 remains in progress until its authenticated pairing, server enforcement, client convergence, and required acceptance evidence are verified. [Supabase Free setup](docs/Supabase-Free-Setup.md) has a verified private schema, two confirmed Auth accounts and a live Render Free Release server. Hosted HTTPS health and public denial boundaries, first-account sign-in, private-space creation and an invented standard-routine write pass; pairing, convergence and the remaining hosted/device acceptance are pending. Real camera/library media and cleanup, network recovery, notifications/timeouts, and two-device acceptance follow their roadmap gates. Paid services, Apple enrollment, and distribution remain deferred.
+Milestone 2 remains in progress until its authenticated pairing, server enforcement, client convergence, and required acceptance evidence are verified. [Supabase Free setup](docs/Supabase-Free-Setup.md) has a verified private schema, two confirmed Auth accounts and a live Render Free Release server. Hosted HTTPS health and public denial boundaries, two-account native pairing, shared edits and standard-run snapshot/history convergence pass. A peer foreground return passes; remaining hosted/device acceptance is pending. Real camera/library media and cleanup, network recovery, notifications/timeouts, and two-device acceptance follow their roadmap gates. Paid services, Apple enrollment, and distribution remain deferred.
 
 ## Public development
 

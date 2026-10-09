@@ -10,12 +10,12 @@ Complete the requested automated checks after Docker becomes available, then rec
 ## Action items
 
 [x] Read applicable instructions, canonical product docs, `docs/Backend-Operations.md`, `docs/Verification.md` and the shared-state verification workflow. Confirm the existing branch and tested executable source commit `112de84`.
-[ ] Checkpoint this resolved documentation plan before editing the verification record.
-[ ] Finish the unmodified legacy and modern-key localhost workflows, including actual server restart and both gated native scenarios. Record failures and intentional companion-case skips separately from passing cases; preserve existing hosted simulator sessions.
-[ ] Update `docs/Verification.md` with October 8 ordinary suite results and failed attempts, October 9 recovery results, the separate remote CI startup failure and remaining hosted gates. No test files need changes because executable behavior and assertions are unchanged.
-[ ] Remove only the task-owned disposable simulator and stop only the named local Supabase stack while preserving its volumes. Keep private fixtures and logs outside Git.
-[ ] Run `./scripts/verify-repository.sh` and `git diff --check`; check evidence claims and task-owned documentation for private data before saving.
-[ ] Commit the completed plan and evidence, then push `codex/milestone-2-private-shared-state` to its existing origin. Do not open a PR, deploy or mark M2 complete.
+[x] Checkpoint this resolved documentation plan before editing the verification record (`4d7c845`).
+[x] Finish the unmodified legacy and modern-key localhost HTTP/restart workflows: both pass. The paired native scenario fails its foreground assertion; the separate unchanged fresh-pairing scenario passes. Record intentional companion skips separately and preserve existing hosted simulator sessions.
+[x] Update `docs/Verification.md` with October 8 ordinary suite results and failed attempts, October 9 recovery results, the separate remote CI startup failure and remaining hosted gates. No test files need changes because executable behavior and assertions are unchanged. Native foreground failure and hosted acceptance remain open; this task records checks without claiming a repair.
+[x] Remove only the task-owned disposable simulator and stop only the named local Supabase stack while preserving its volumes. Both cleanup operations succeed. Keep private fixtures and logs outside Git.
+[x] Run `./scripts/verify-repository.sh` (12 tooling tests, local Markdown references and whitespace pass) and `git diff --check`; inspect evidence claims and task-owned documentation for private data before saving.
+[x] Prepare the completed plan and evidence for the save-branch final docs-only commit/push to `codex/milestone-2-private-shared-state` on its existing origin. No unrelated files are changed or intentionally left unstaged. Do not open a PR, deploy or mark M2 complete.
 
 ## Open questions
 

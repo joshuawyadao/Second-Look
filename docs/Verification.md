@@ -144,6 +144,44 @@ Full M2 remains in progress. Remaining hosted checks include token refresh, auth
 
 This acceptance-recording slice changes documentation only. No executable sources or test assertions change, so no new behavior tests or duplicate native/container build are needed. `./scripts/verify-repository.sh` **passes all 12 tooling tests**, local Markdown paths and whitespace. The paired-write checkpoint is `23b1be1`; the current evidence is saved on the existing feature branch while awaiting the operator's process-relaunch result. Both existing app sessions and hosted records remain intact; sign-out is not attempted while the operator is completing the relaunch step. Further lifecycle evidence must be observed and recorded separately.
 
+## Automated checks and local recovery — October 8–9, 2026
+
+The requested automated checks use executable source commit **`112de84`** on `codex/milestone-2-private-shared-state`. The later plan/evidence commits change documentation only. No application code, server code, test assertion or hosted service configuration changes in this verification task.
+
+The October 8 foundation checks pass:
+
+| Check | Actual result |
+| --- | --- |
+| `./scripts/verify-repository.sh` | 12 tooling tests, local Markdown references and whitespace pass |
+| `swift test` | 37 tests pass: 29 Core and 8 Auth transport |
+| Backend Debug and Release suites | 8 unit/request/boundary tests pass in each configuration; both gated integration cases skip without their private fixture |
+| `./scripts/verify-native.sh` | 10 ordinary UI cases pass, as do the Debug test build, Release build and Release binary boundary; both connected cases intentionally skip without their fixture |
+
+October 8 local shared-state retries are **not passing acceptance**: legacy HTTP checks fail with `serviceUnavailable`; one modern-key HTTP case passes but its subsequent actual restart check fails with `serviceUnavailable`. Later retries fail again. Docker becomes unresponsive during these attempts. One separate native paired attempt fails before executing assertions because its new simulator exceeds Xcode's cold-boot timeout; a later standalone fresh-pairing case passes. These observations establish the failed phases, without proving an underlying Docker or resource-pressure cause. No assertion is weakened to obtain a pass.
+
+On October 9, after the operator reports Docker running again, the engine responds and the named isolated localhost services are healthy. The unchanged official legacy workflow **passes** SQL expiry/rotation/privilege/receipt checks, actual Auth/Postgres/HTTP acceptance and command-server restart durability. A separate complete official modern-key workflow without `--native` **passes** the same checks and exits 0. The combined modern/native attempt also passes its SQL, HTTP and actual restart cases before the native failure below. The pre-restart companion case skips intentionally; the separate post-restart case executes and passes in both modes.
+
+```sh
+SECONDLOOK_BACKEND_SCRATCH=/private/tmp/secondlook-backend-build \
+  ./scripts/verify-shared-state.sh
+SECONDLOOK_BACKEND_SCRATCH=/private/tmp/secondlook-backend-build \
+  ./scripts/verify-shared-state.sh --modern-keys
+SECONDLOOK_BACKEND_SCRATCH=/private/tmp/secondlook-backend-build \
+  SECONDLOOK_SIMULATOR_ID='<disposable-prebooted-simulator-id>' \
+  SECONDLOOK_DERIVED_DATA=/private/tmp/secondlook-native-checks-oct8 \
+  ./scripts/verify-shared-state.sh --modern-keys --native
+```
+
+The October 9 connected native run uses a separately created, prebooted **iPhone 18 Pro / iOS 27.0** simulator. Its paired scenario **fails** the 20-second foreground assertion, **Foreground return must revalidate the signed-in account and membership** (`ConnectedSharedStateUITests.swift:59`). This attempt executes its assertions, unlike the earlier cold-boot failure, and cannot count as passing native acceptance. After reporting one failed case and one intentional companion skip, Xcode produces no further log output for three minutes; only its identified owned process is terminated, and the combined workflow exits 1. The fresh-pairing companion intentionally skips under the paired fixture, and the fail-fast workflow does not reach its separate fresh fixture.
+
+A separate run of the unchanged `verify-connected-native.py` with the dedicated `freshPairing:true` private fixture **passes** `testFreshOwnerInvitationPeerJoinAndOwnerReopen` in **67.037 seconds**, returns **TEST EXECUTE SUCCEEDED** and exits 0. Only the named synthetic aggregate is reset for this scenario; an owned localhost server uses the generated fixture. It verifies native owner creation, invitation entry by the peer and owner reopening the joined space. Its paired companion intentionally skips and is not counted as a second passing case. This standalone success does not erase the earlier foreground failure.
+
+Cleanup succeeds: the owned Swift server stops, the disposable test simulator is shut down/deleted, and `npx --yes supabase@2.119.0 stop` exits 0 with local volumes preserved. The existing two signed-in hosted simulator clients and their records are preserved. Logs, generated fixture credentials, invitations and simulator/build artifacts remain outside Git. Repository verification passes all 12 tooling tests, local Markdown references and whitespace for the documentation update. No new behavior tests are added because executable sources and existing assertions are unchanged; the failing native assertion remains intact.
+
+Remote [CI run 37826994451](https://github.com/joshuawyadao/Second-Look/actions/runs/37826994451), including its failed-job retry (attempt 2), is **not green** at the same executable source commit. Repository and native jobs pass, and the server boundary step passes. The private shared-state job fails during pinned Supabase CLI startup, before SQL checks or HTTP integration; aggregate CI Verify fails. The private startup output was not exported, so a more specific cause is not established. Local recovery does not repair or explain this separate runner failure, and a rerun is not treated as a fix.
+
+These are synthetic localhost results. Auth, Postgres and HTTP are actual local services, but any synthetic evidence is metadata with no image bytes. They do not establish hosted two-client or physical-device acceptance. Full M2 remains **in progress**, including the separately recorded hosted process-relaunch/sign-out, refresh, outsider denial, stale-command, receipt/concurrency, stronger closure races, restart and Free cold-start gates. Real photos/uploads, push, deletion, unpairing, paid services and distribution retain their later milestone gates.
+
 ## Milestone 2 local evidence — October 5, 2026
 
 Environment: Xcode 27.0 (27A266a), Swift 6.4, iPhone 18 Pro on the installed iOS 27 simulator (`ADD1A583-C6C6-4937-A00D-B1112054D521`), Docker 29.6.1, pinned Supabase CLI 2.119.0 and Vapor 4.122.2. These are synthetic accounts and invented checklist content. Auth, Postgres, PostgREST and the Swift HTTP server are actual running localhost services; synthetic photo metadata has no image bytes.

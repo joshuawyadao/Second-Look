@@ -1,19 +1,22 @@
 # Plan
 
-Continue Milestone 2 hosted acceptance after the operator reports successful private sign-in on both existing simulator clients. Complete approved targeted pairing and exercise invented shared writes, foreground/relaunch revalidation and sign-out isolation; preserve exact observed evidence and remaining gates on the existing feature branch.
+Complete the requested automated checks after Docker becomes available, then record the actual results on the existing Milestone 2 feature branch. Keep earlier failures, skipped cases and remaining hosted acceptance gates explicit; this evidence update changes documentation only.
 
 ## Scope
-- In: Existing Supabase and Render Free services, two provisioned accounts and signed Device Hub simulators; targeted pairing already approved by the operator; invented standard checklist records; canonical status/evidence updates; repository checks and checkpoint/final branch save.
-- Out: Credential entry or account recreation, new access recipients, hosted reset/deletion, service redeployment, real media or synthetic hosted photo routes, paid services, distribution, PR or merge. Full M2 remains incomplete until all required hosted checks pass.
+
+- In: Repository, Core/transport, backend Debug/Release, native foundation and isolated localhost shared-state checks; October 8–9 evidence in `docs/Verification.md`; cleanup of task-owned test resources; local checkpoints and final branch push.
+- Out: App/server behavior changes, hosted data or account changes, deployment, real media, paid services, distribution, PR or merge. Full M2 remains in progress.
 
 ## Action items
-[x] Read applicable instructions and canonical product, roadmap, architecture, operations, setup and verification docs. Map current pairing/write/lifecycle UI and existing automated coverage through bounded read-only exploration. The current feature branch is clean.
-[x] Checkpoint this resolved plan before implementation (`dcdebac`). This acceptance-recording slice initially changes documentation only; no new behavior tests or duplicate native/container build are warranted unless a code defect is found.
-[x] Verify both native sessions and finish approved targeted pairing. The operator renews the expired owner invitation; the second account joins, and both clients show the same space with two members. Keep the invitation and participant identifiers private. Compact Device Hub windows provide working coordinate controls after expanded-window input failures.
-[x] Verify the second client sees the invented routine, accepts two template title edits and converges to the owner. The owner starts an all-standard run; both clients retain its original title after the second template edit, the peer cannot check the owner’s step, and the owner’s final check produces the same Completed text-only record on both clients. Retain these invented records.
-[ ] Finish lifecycle checks. Peer Home/foreground return restores the latest shared routine at the routines root; its app-switcher card shows Content hidden. Automation could not dismiss that card, so process relaunch is awaiting the operator and sign-out isolation remains pending. Leave both existing sessions and hosted records intact while waiting; record this acceptance slice without marking the milestone complete.
-[x] Update `docs/Verification.md` with actual October 8 evidence and limits. Align status references in `README.md`, `docs/Architecture.md`, `docs/Backend-Operations.md`, `docs/Supabase-Free-Setup.md`, ADR 002, `docs/Product-Spec.md` and `docs/Roadmap.md` without changing product rules or milestone gates. Repository verification passes 12 tooling tests, Markdown paths and whitespace for this paired-write checkpoint; the remaining operator lifecycle result will be recorded separately.
-[x] Pass `./scripts/verify-repository.sh` (12 tooling tests, Markdown paths and whitespace), inspect task-owned changes for private data and unsupported claims, and prepare the existing feature branch for the save-branch final commit/push. Paired-write checkpoint: `23b1be1`; no task files are intentionally left unstaged. Retain invented hosted records; preserve unresolved lifecycle, hosted denial/concurrency/refresh/restart/cold-start and prior local/container failures honestly.
+
+[x] Read applicable instructions, canonical product docs, `docs/Backend-Operations.md`, `docs/Verification.md` and the shared-state verification workflow. Confirm the existing branch and tested executable source commit `112de84`.
+[ ] Checkpoint this resolved documentation plan before editing the verification record.
+[ ] Finish the unmodified legacy and modern-key localhost workflows, including actual server restart and both gated native scenarios. Record failures and intentional companion-case skips separately from passing cases; preserve existing hosted simulator sessions.
+[ ] Update `docs/Verification.md` with October 8 ordinary suite results and failed attempts, October 9 recovery results, the separate remote CI startup failure and remaining hosted gates. No test files need changes because executable behavior and assertions are unchanged.
+[ ] Remove only the task-owned disposable simulator and stop only the named local Supabase stack while preserving its volumes. Keep private fixtures and logs outside Git.
+[ ] Run `./scripts/verify-repository.sh` and `git diff --check`; check evidence claims and task-owned documentation for private data before saving.
+[ ] Commit the completed plan and evidence, then push `codex/milestone-2-private-shared-state` to its existing origin. Do not open a PR, deploy or mark M2 complete.
 
 ## Open questions
-- None. Pairing the two existing accounts was explicitly approved. The operator has completed the second password reset and reports both clients signed in; verify their actual UI state before dependent checks.
+
+- None. The requested checks use existing synthetic fixtures and isolated local services. Pending hosted lifecycle and other acceptance work remains recorded in the canonical verification and roadmap docs.

@@ -90,6 +90,35 @@ class SharedStackDiagnosticsTests(unittest.TestCase):
                          "Local Supabase startup failed: Multiple Docker/API signals or unspecified Docker failure; inspect the private stack log.")
         self.assertNotIn(secret.decode(), message)
 
+    def test_adapter_phase_markers_report_only_fixed_hints(self):
+        secret = b"sb_secret_PRIVATE_TEST_ONLY"
+        phases = {
+            b"container_scope": "outside the synthetic project scope",
+            b"request": "malformed or oversized request",
+            b"upstream_connect": "upstream Unix socket",
+            b"upstream_send": "send the request upstream",
+            b"response_read": "valid upstream response",
+            b"downstream_write": "response to the CLI",
+        }
+        for phase, expected in phases.items():
+            with self.subTest(phase=phase):
+                self.assertEqual(self.classify(b"Local Docker adapter failed\nLocal Docker adapter phase: " +
+                                               phase + b"\n" + secret), "docker")
+                message = startup_failure_message(self.log)
+                self.assertIn(expected, message)
+                self.assertNotIn(secret.decode(), message)
+                self.assertNotIn(str(self.log), message)
+
+    def test_multiple_or_unrecognized_adapter_markers_do_not_guess(self):
+        self.assertEqual(self.classify(b"Local Docker adapter failed\nLocal Docker adapter phase: request\n"
+                                       b"Local Docker adapter phase: upstream_connect\n"), "docker")
+        self.assertEqual(startup_failure_message(self.log),
+                         "Local Supabase startup failed: Multiple local Docker adapter phases; inspect the private stack log.")
+        self.assertEqual(self.classify(b"Local Docker adapter failed\nLocal Docker adapter phase: invented\n"),
+                         "docker")
+        self.assertEqual(startup_failure_message(self.log),
+                         "Local Supabase startup failed: Local Docker adapter failed; inspect the private stack log.")
+
     def test_only_bounded_tail_is_read(self):
         prefix = b"port is already allocated" + b"x" * MAX_DIAGNOSTIC_BYTES
         self.assertEqual(self.classify(prefix + b"database is not healthy"), "health")

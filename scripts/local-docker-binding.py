@@ -19,6 +19,23 @@ import threading
 from urllib.parse import parse_qs, urlsplit
 
 PROJECT = "secondlook-m2-local"
+ADAPTER_PHASE_MARKERS = {
+    "container_scope": "Local Docker adapter phase: container_scope",
+    "request": "Local Docker adapter phase: request",
+    "upstream_connect": "Local Docker adapter phase: upstream_connect",
+    "upstream_send": "Local Docker adapter phase: upstream_send",
+    "response_read": "Local Docker adapter phase: response_read",
+    "downstream_write": "Local Docker adapter phase: downstream_write",
+}
+
+
+class UnrelatedContainerError(ValueError):
+    """A container-create request escaped this synthetic project's name scope."""
+
+
+def report_adapter_phase(phase: str) -> None:
+    # Only names from this closed set reach stderr; requests and exceptions stay private.
+    print(ADAPTER_PHASE_MARKERS[phase], file=sys.stderr, flush=True)
 
 
 def bind_create(path: str, data: bytes) -> bytes:
@@ -27,7 +44,7 @@ def bind_create(path: str, data: bytes) -> bytes:
     if not parts.path.endswith("/containers/create"):
         return data
     if not (name.startswith("supabase_") and name.endswith("_" + PROJECT)):
-        raise ValueError("Local test launcher refused an unrelated container creation.")
+        raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
     payload = json.loads(data)
     for bindings in payload.get("HostConfig", {}).get("PortBindings", {}).values():
         for binding in bindings:
@@ -74,6 +91,7 @@ def main(arguments: list[str]) -> int:
         def forward(self):
             self.close_connection = True
             response_started = False
+            phase = "request"
             try:
                 if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
                     body = read_chunked(self.rfile)
@@ -95,27 +113,44 @@ def main(arguments: list[str]) -> int:
                 headers["Content-Length"] = str(len(body))
                 head = f"{self.command} {self.path} HTTP/1.1\r\n" + "".join(
                     f"{key}: {value}\r\n" for key, value in headers.items()) + "\r\n"
+                phase = "upstream_connect"
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
                     stream.settimeout(300)
                     stream.connect(upstream)
+                    phase = "upstream_send"
                     stream.sendall(head.encode() + body)
+
+                    def receive_upstream():
+                        nonlocal phase
+                        phase = "response_read"
+                        return stream.recv(65536)
+
+                    def send_downstream(data):
+                        nonlocal phase
+                        phase = "downstream_write"
+                        self.connection.sendall(data)
+
                     if wants_upgrade:
                         response = bytearray()
                         while b"\r\n\r\n" not in response:
-                            chunk = stream.recv(65536)
+                            chunk = receive_upstream()
                             if not chunk:
                                 raise OSError("Incomplete upstream response.")
                             response.extend(chunk)
                             if len(response) > 64 * 1024 and b"\r\n\r\n" not in response:
                                 raise ValueError("Unexpected upstream response header size.")
                         status = bytes(response).split(b"\r\n", 1)[0].split()
-                        self.connection.sendall(response)
+                        send_downstream(response)
                         response_started = True
                         if len(status) >= 2 and status[1] == b"101":
                             def client_to_upstream():
                                 try:
                                     while chunk := self.rfile.read1(65536):
-                                        stream.sendall(chunk)
+                                        try:
+                                            stream.sendall(chunk)
+                                        except OSError:
+                                            report_adapter_phase("upstream_send")
+                                            break
                                 except OSError:
                                     pass
                                 finally:
@@ -127,8 +162,8 @@ def main(arguments: list[str]) -> int:
                             sender = threading.Thread(target=client_to_upstream, daemon=True)
                             sender.start()
                             try:
-                                while chunk := stream.recv(65536):
-                                    self.connection.sendall(chunk)
+                                while chunk := receive_upstream():
+                                    send_downstream(chunk)
                             finally:
                                 try:
                                     self.connection.shutdown(socket.SHUT_RD)
@@ -136,14 +171,19 @@ def main(arguments: list[str]) -> int:
                                     pass
                                 sender.join(timeout=2)
                         else:
-                            while chunk := stream.recv(65536):
-                                self.connection.sendall(chunk)
+                            while chunk := receive_upstream():
+                                send_downstream(chunk)
                     else:
-                        while chunk := stream.recv(65536):
+                        chunk = receive_upstream()
+                        if not chunk:
+                            raise OSError("No upstream response.")
+                        while chunk:
                             response_started = True
-                            self.connection.sendall(chunk)
-            except (ValueError, OSError):
+                            send_downstream(chunk)
+                            chunk = receive_upstream()
+            except (ValueError, OSError) as error:
                 # Static message only. Never echo a Docker request or response.
+                report_adapter_phase("container_scope" if isinstance(error, UnrelatedContainerError) else phase)
                 if not response_started:
                     try:
                         self.send_error(502, "Local Docker adapter failed")

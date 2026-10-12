@@ -10,6 +10,19 @@ import re
 
 MAX_DIAGNOSTIC_BYTES = 128 * 1024
 
+_ADAPTER_PHASE_MESSAGES = {
+    "container_scope": "Local Docker adapter rejected a container outside the synthetic project scope.",
+    "request": "Local Docker adapter rejected a malformed or oversized request.",
+    "upstream_connect": "Local Docker adapter could not connect to the upstream Unix socket.",
+    "upstream_send": "Local Docker adapter could not send the request upstream.",
+    "response_read": "Local Docker adapter could not read a valid upstream response.",
+    "downstream_write": "Local Docker adapter could not write the response to the CLI.",
+}
+_ADAPTER_PHASE_PATTERNS = {
+    phase: rb"(?m)^Local Docker adapter phase: " + phase.encode() + rb"\r?$"
+    for phase in _ADAPTER_PHASE_MESSAGES
+}
+
 _DOCKER_SUBREASONS = {
     "daemon": (
         rb"cannot connect to the docker daemon",
@@ -22,7 +35,7 @@ _DOCKER_SUBREASONS = {
         rb"api version.{0,120}(?:not supported|too (?:old|new))",
         rb"unsupported (?:docker )?api version",
     ),
-    "adapter": (rb"local docker adapter failed",),
+    "adapter": (rb"local docker adapter failed",) + tuple(_ADAPTER_PHASE_PATTERNS.values()),
 }
 
 _PATTERNS = {
@@ -129,8 +142,15 @@ def startup_failure_message(log_path: Path) -> str:
     elif matches == ("docker",):
         subreasons = [name for name, patterns in _DOCKER_SUBREASONS.items()
                       if any(re.search(pattern, sample, re.IGNORECASE) for pattern in patterns)]
-        hint = (_DOCKER_MESSAGES[subreasons[0]] if len(subreasons) == 1 else
-                "Multiple Docker/API signals or unspecified Docker failure; inspect the private stack log.")
+        if subreasons == ["adapter"]:
+            phases = [name for name, pattern in _ADAPTER_PHASE_PATTERNS.items()
+                      if re.search(pattern, sample, re.IGNORECASE)]
+            hint = (_ADAPTER_PHASE_MESSAGES[phases[0]] if len(phases) == 1 else
+                    "Multiple local Docker adapter phases; inspect the private stack log." if phases else
+                    _DOCKER_MESSAGES["adapter"])
+        else:
+            hint = (_DOCKER_MESSAGES[subreasons[0]] if len(subreasons) == 1 else
+                    "Multiple Docker/API signals or unspecified Docker failure; inspect the private stack log.")
     else:
         hint = _MESSAGES[matches[0] if matches else "unknown"]
     return "Local Supabase startup failed: " + hint

@@ -55,6 +55,24 @@ import SecondLookCore
         }
     }
 
+    @Test func providerURLRequiresHost() throws {
+        var env = environment()
+        let local = try ServerConfiguration(environment: env)
+        #expect(local.providerURL.host == "127.0.0.1")
+
+        env["SECONDLOOK_LOCAL_DEVELOPMENT"] = nil
+        env["SECONDLOOK_PROVIDER_URL"] = "https://example.test"
+        let hosted = try ServerConfiguration(environment: env)
+        #expect(hosted.providerURL.host == "example.test")
+
+        for hostless in ["https:", "https:///"] {
+            env["SECONDLOOK_PROVIDER_URL"] = hostless
+            #expect(throws: ConfigurationFailure.self) {
+                try ServerConfiguration(environment: env)
+            }
+        }
+    }
+
     @Test func requestsRequireVerifiedIdentity() async throws {
         let configuration = try ServerConfiguration(environment: environment())
         try await withApp { app in

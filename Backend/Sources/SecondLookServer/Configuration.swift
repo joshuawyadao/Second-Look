@@ -13,6 +13,7 @@ struct ServerConfiguration: Sendable {
     init(environment: [String: String] = ProcessInfo.processInfo.environment) throws {
         let local = environment["SECONDLOOK_LOCAL_DEVELOPMENT"] == "1"
         guard let rawURL = environment["SECONDLOOK_PROVIDER_URL"], let url = URL(string: rawURL),
+              let host = url.host, !host.isEmpty,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
               url.path.isEmpty || url.path == "/",
               url.scheme == "https" || (local && url.scheme == "http" && Self.isLoopback(url)),

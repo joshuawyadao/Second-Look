@@ -25,9 +25,7 @@ struct ConnectedConfiguration: Codable, Equatable {
         for url in [authURL, serverURL] {
             try SharedEndpointValidation.validate(url, allowLocalHTTP: allowLocalHTTP)
         }
-        guard !publishableKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw SharedStateFailure.invalidResponse
-        }
+        try SharedPublicKeyValidation.validate(publishableKey)
     }
 }
 

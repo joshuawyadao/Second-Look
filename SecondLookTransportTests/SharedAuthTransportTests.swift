@@ -7,6 +7,36 @@ import SecondLookCore
 import SecondLookTransport
 
 final class SharedAuthTransportTests: XCTestCase {
+    func testRecognizedPrivateKeysFailBeforeAuthHTTP() async throws {
+        let keys = ["sb_secret_invented-private-key", " sb_secret_invented-private-key ",
+                    inventedJWT(role: "service_role")]
+        for key in keys {
+            do {
+                _ = try await SharedAuthClient(authURL: url(host: "invalid-key-probe.test"),
+                    publishableKey: key, session: session()).signIn(
+                        email: "person@example.test", password: "invented-password")
+                XCTFail("Private key must be rejected before Auth HTTP")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, .invalidResponse)
+            }
+        }
+    }
+
+    func testPublicAndSyntheticKeysPassValidation() throws {
+        for key in ["sb_publishable_invented-public-key", inventedJWT(role: "anon"),
+                    "public-test-key"] {
+            XCTAssertNoThrow(try SharedPublicKeyValidation.validate(key))
+        }
+    }
+
+    func testEmptyAndHeaderControlKeysFailValidation() {
+        for key in ["", "  ", "public\rkey", "public\nkey", "public\u{0000}key"] {
+            XCTAssertThrowsError(try SharedPublicKeyValidation.validate(key)) {
+                XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+            }
+        }
+    }
+
     func testHostlessEndpointsFailBeforeAuthOrCommandRequests() async throws {
         for raw in ["https:", "https:///"] {
             let endpoint = try XCTUnwrap(URL(string: raw))
@@ -112,6 +142,14 @@ final class SharedAuthTransportTests: XCTestCase {
         SharedAuthClient(authURL: url(host: host), publishableKey: "public-test-key", session: session())
     }
 
+    private func inventedJWT(role: String) -> String {
+        let payload = Data("{\"role\":\"\(role)\"}".utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return "invented-header.\(payload).invented-signature"
+    }
+
     private func url(host: String) -> URL {
         URL(string: "https://\(host)")!
     }
@@ -164,6 +202,8 @@ private final class SyntheticTransportProtocol: URLProtocol {
             result = valid
                 ? (200, #"{"access_token":"invented-access-token","refresh_token":"invented-refresh-token","expires_in":3600,"user":{"id":"11111111-1111-4111-8111-111111111111","email":"person@example.test"}}"#)
                 : (418, #"{"code":"unexpectedRequest"}"#)
+        case "invalid-key-probe.test":
+            result = (200, #"{"access_token":"invented-access-token","refresh_token":"invented-refresh-token","expires_in":3600,"user":{"id":"11111111-1111-4111-8111-111111111111","email":"person@example.test"}}"#)
         default:
             result = (418, #"{"code":"unexpectedHost"}"#)
         }

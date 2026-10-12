@@ -15,6 +15,36 @@ public enum SharedEndpointValidation {
     }
 }
 
+/// Rejects known private Supabase API-key forms before configuration is saved or Auth HTTP is sent.
+/// Opaque public test keys remain valid; this does not authenticate a key with Supabase.
+public enum SharedPublicKeyValidation {
+    public static func validate(_ key: String) throws {
+        guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              key.utf8.count <= 8_192,
+              !key.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+              !key.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sb_secret_"),
+              !isLegacyServiceRoleJWT(key) else {
+            throw SharedStateFailure.invalidResponse
+        }
+    }
+
+    private static func isLegacyServiceRoleJWT(_ key: String) -> Bool {
+        let segments = key.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count == 3, segments[1].utf8.count <= 8_192 else { return false }
+        let payload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padded = payload + String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: padded),
+              let claims = try? JSONDecoder().decode(RoleClaim.self, from: data) else {
+            return false
+        }
+        return claims.role == "service_role"
+    }
+
+    private struct RoleClaim: Decodable { let role: String? }
+}
+
 public struct PairingInvitation: Codable, Equatable, Sendable {
     public let snapshot: SharedSnapshot
     public let inviteToken: String
@@ -135,8 +165,10 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
                                                        token: String?, query: [URLQueryItem] = [],
                                                        body: Request?) async throws -> Response {
         try SharedEndpointValidation.validate(baseURL, allowLocalHTTP: allowLocalHTTP)
-        guard !path.contains(where: { $0 == ".." || $0.contains("/") }),
-              apiKey.map({ !$0.isEmpty }) ?? true else { throw SharedStateFailure.invalidResponse }
+        guard !path.contains(where: { $0 == ".." || $0.contains("/") }) else {
+            throw SharedStateFailure.invalidResponse
+        }
+        if let apiKey { try SharedPublicKeyValidation.validate(apiKey) }
         var url = baseURL
         for part in path { url.appendPathComponent(part) }
         if !query.isEmpty {

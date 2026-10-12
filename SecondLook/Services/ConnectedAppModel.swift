@@ -14,7 +14,11 @@ final class ConnectedAppModel {
     private(set) var retryMembership = false
     private(set) var confirmedNoSpace = false
     private(set) var status = "Sign in to connect a private space."
-    var errorMessage: String?
+    var errorMessage: String? {
+        didSet { retryActionForError = nil }
+    }
+    private(set) var retryActionForError: UUID?
+    private(set) var unconfirmedActions: [UnconfirmedAction] = []
     var busy = false
 
     #if SECONDLOOK_DEMO
@@ -237,6 +241,7 @@ final class ConnectedAppModel {
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession()
+                unconfirmedActions = []
                 snapshot = nil
                 invitation = nil
                 confirmedNoSpace = true
@@ -305,6 +310,7 @@ final class ConnectedAppModel {
         coordinator.beginSession(scope: SharedAccountScope(backend: configuration.backendID,
                                                             accountID: accountID,
                                                             spaceID: incoming.spaceID), client: client)
+        unconfirmedActions = []
         // The first authenticated space lookup is already validated and held only in memory.
         snapshot = incoming
         confirmedNoSpace = false
@@ -460,6 +466,7 @@ final class ConnectedAppModel {
         foregroundRevalidationPending = true
         retryMembership = true
         coordinator.endSession()
+        unconfirmedActions = []
         snapshot = nil
         invitation = nil
         status = "Checking private-space access…"
@@ -504,9 +511,40 @@ final class ConnectedAppModel {
 
     struct ActionReceipt { let createdID: UUID? }
 
+    struct UnconfirmedAction: Identifiable {
+        let id: UUID
+        let command: SharedCommand
+        var title: String {
+            switch command {
+            case .saveRoutine: return "Save routine"
+            case .deleteRoutine: return "Delete routine"
+            case .startRun, .startOneOff, .repeatRun: return "Start checklist"
+            case .saveRunAsRoutine: return "Save checklist as routine"
+            case .setStandardChecked(_, _, let checked, _): return checked ? "Check step" : "Uncheck step"
+            case .updateRunSettings: return "Save checklist settings"
+            case .cancel: return "Cancel checklist"
+            case .approve: return "Approve submission"
+            case .requestAnother: return "Request another submission"
+            case .withdraw: return "Withdraw submission"
+            }
+        }
+    }
+
+    func canRetryUnconfirmedAction(_ id: UUID) -> Bool {
+        canUseForeground && !busy && snapshot != nil && coordinator.hasUnconfirmedCommand(commandID: id)
+    }
+
     @discardableResult
-    func execute(_ command: SharedCommand) async -> ActionReceipt? {
-        guard canUseForeground else { return nil }
+    func retryUnconfirmedAction(_ id: UUID) async -> ActionReceipt? {
+        guard canRetryUnconfirmedAction(id),
+              let action = unconfirmedActions.first(where: { $0.id == id }) else { return nil }
+        errorMessage = nil
+        return await execute(action.command, commandID: action.id)
+    }
+
+    @discardableResult
+    func execute(_ command: SharedCommand, commandID: UUID = UUID()) async -> ActionReceipt? {
+        guard canUseForeground, !busy else { return nil }
         guard snapshot != nil else { errorMessage = "Refresh this private space before changing it."; return nil }
         let epoch = generation
         busy = true
@@ -521,17 +559,27 @@ final class ConnectedAppModel {
                     throw SharedStateFailure.staleState
                 }
             }
-            let created = try await coordinator.execute(command)
+            let created = try await coordinator.execute(command, commandID: commandID)
             guard currentForegroundSession(epoch) else { return nil }
+            unconfirmedActions.removeAll { $0.id == commandID }
             snapshot = coordinator.snapshot
             return ActionReceipt(createdID: created)
         } catch {
             if currentForegroundSession(epoch) {
                 snapshot = coordinator.snapshot
-                let message = coordinator.hasUnconfirmedCommand(command)
-                    ? "Could not confirm this action. Retry the same action to check its result."
+                let unconfirmed = coordinator.hasUnconfirmedCommand(commandID: commandID)
+                if unconfirmed && !unconfirmedActions.contains(where: { $0.id == commandID }) {
+                    unconfirmedActions.append(UnconfirmedAction(id: commandID, command: command))
+                } else if !unconfirmed {
+                    unconfirmedActions.removeAll { $0.id == commandID }
+                }
+                let message = unconfirmed
+                    ? "Could not confirm this action. Use Retry this action to check its original result."
                     : Self.safeMessage(error)
-                if !clearSessionIfAccessLost(error) { errorMessage = message }
+                if !clearSessionIfAccessLost(error) {
+                    errorMessage = message
+                    if unconfirmed { retryActionForError = commandID }
+                }
                 if error as? SharedStateFailure == .staleState { await refresh() }
             }
             return nil
@@ -576,6 +624,7 @@ final class ConnectedAppModel {
         if let configuration { ConnectedKeychain.clearBinding(configuration: configuration) }
         if let vault { Task { await vault.invalidate() } }
         coordinator.endSession()
+        unconfirmedActions = []
         vault = nil; client = nil; accountID = nil; snapshot = nil; invitation = nil
         busy = false; errorMessage = nil
         status = "Sign in to connect a private space."

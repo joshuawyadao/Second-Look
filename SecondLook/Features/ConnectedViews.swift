@@ -34,6 +34,17 @@ struct ConnectedRootView: View {
             }
             #endif
 
+            if !model.unconfirmedActions.isEmpty {
+                Menu("Retry unconfirmed action") {
+                    ForEach(model.unconfirmedActions) { action in
+                        Button(action.title) { model.enqueue { _ = await model.retryUnconfirmedAction(action.id) } }
+                            .disabled(!model.canRetryUnconfirmedAction(action.id))
+                    }
+                }
+                .disabled(model.busy)
+                .accessibilityIdentifier("retryUnconfirmedAction")
+            }
+
             if model.accountID == nil {
                 ConnectedSignInView()
             } else if model.snapshot == nil {
@@ -53,7 +64,14 @@ struct ConnectedRootView: View {
         .alert("Shared action not completed", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
-        )) { Button("OK") { model.errorMessage = nil } }
+        )) {
+            if let actionID = model.retryActionForError {
+                Button("Retry this action") {
+                    model.enqueue { _ = await model.retryUnconfirmedAction(actionID) }
+                }
+            }
+            Button("OK") { model.errorMessage = nil }
+        }
         message: { Text(model.errorMessage ?? "") }
         .tint(.teal)
         .onAppear {

@@ -44,27 +44,25 @@ public final class SharedStateCoordinator {
         }
     }
 
-    public func hasUnconfirmedCommand(_ command: SharedCommand) -> Bool {
-        unconfirmedCommands.contains { $0.command == command }
+    public func hasUnconfirmedCommand(commandID: UUID) -> Bool {
+        unconfirmedCommands.contains { $0.commandID == commandID }
     }
 
     @discardableResult
-    public func execute(_ command: SharedCommand, commandID: UUID? = nil) async throws -> UUID? {
+    public func execute(_ command: SharedCommand, commandID: UUID = UUID()) async throws -> UUID? {
         guard let scope, let client else { throw SharedStateFailure.unauthenticated }
         guard let snapshot else { throw SharedStateFailure.notPaired }
         let capturedGeneration = generation
         let envelope: SharedCommandEnvelope
-        if let commandID, let pending = unconfirmedCommands.first(where: { $0.commandID == commandID }) {
+        if let pending = unconfirmedCommands.first(where: { $0.commandID == commandID }) {
             guard pending.command == command, pending.spaceID == scope.spaceID else {
                 throw SharedStateFailure.invalidResponse
             }
             envelope = pending
-        } else if commandID == nil, let pending = unconfirmedCommands.first(where: { $0.command == command }) {
-            envelope = pending
         } else {
-            envelope = SharedCommandEnvelope(spaceID: scope.spaceID, commandID: commandID ?? UUID(),
+            envelope = SharedCommandEnvelope(spaceID: scope.spaceID, commandID: commandID,
                                              expectedSpaceRevision: snapshot.revision, command: command)
-            // Register before awaiting the client so simultaneous default retries share this ID.
+            // Register before awaiting the client so an explicit overlapping retry shares this ID.
             unconfirmedCommands.append(envelope)
         }
         do {

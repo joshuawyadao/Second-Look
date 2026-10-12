@@ -60,7 +60,7 @@ def start_stack(directory, env):
     stack_log = directory / "stack.private.log"
     with stack_log.open("w") as log:
         try:
-            run(["python3", "scripts/local-docker-binding.py"] + CLI + ["start", "--network-id", NETWORK, "--exclude", EXCLUDED], env=env,
+            run(["python3", "scripts/local-docker-binding.py"] + CLI + ["start", "--debug", "--network-id", NETWORK, "--exclude", EXCLUDED], env=env,
                 stdout=log, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError:
             log.flush()
@@ -149,8 +149,11 @@ def main():
         "fixture": str(fixture_path), "uiFixture": str(ui_fixture_path),
         "directory": str(directory), "scratch": os.environ.get("SECONDLOOK_BACKEND_SCRATCH", str(directory / "build"))}))
     scratch = os.environ.get("SECONDLOOK_BACKEND_SCRATCH", str(directory / "build"))
-    build_env = dict(env, CLANG_MODULE_CACHE_PATH=str(directory / "clang"),
-                     SWIFTPM_MODULECACHE_OVERRIDE=str(directory / "swiftpm"))
+    # Stable caches accompany a reused scratch path; fresh per-run cache paths otherwise
+    # invalidate the cached dependency build and obscure the HTTP/UI feedback loop.
+    module_cache = Path(scratch).resolve() / "module-caches"
+    build_env = dict(env, CLANG_MODULE_CACHE_PATH=str(module_cache / "clang"),
+                     SWIFTPM_MODULECACHE_OVERRIDE=str(module_cache / "swiftpm"))
     print("Building the Swift command server and localhost integration tests.", flush=True)
     with (directory / "build.private.log").open("w") as log:
         run(["swift", "build", "--package-path", "Backend", "--scratch-path", scratch, "-j", "8"],

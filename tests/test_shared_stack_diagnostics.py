@@ -35,6 +35,8 @@ class SharedStackDiagnosticsTests(unittest.TestCase):
             "port": b"Ports are not available: bind 127.0.0.1:56321",
             "health": b"database is not healthy: supabase_db_secondlook-m2-local",
             "migration": b"Error applying migration 202610050001_private_space.sql",
+            "database_connection": b"password authentication failed for user \"postgres\"",
+            "cli_configuration": b"unknown flag: --network-id",
         }
         for expected, content in cases.items():
             with self.subTest(expected=expected):
@@ -43,10 +45,22 @@ class SharedStackDiagnosticsTests(unittest.TestCase):
                          "docker")
 
     def test_unknown_and_ambiguous_logs_do_not_guess(self):
-        self.assertEqual(self.classify(b"startup failed with secret sb_secret_NOT_FOR_OUTPUT"), "unknown")
-        self.assertEqual(self.classify(b"port is already allocated\nfailed to pull image"), "unknown")
+        secret = b"sb_secret_NOT_FOR_OUTPUT"
+        self.assertEqual(self.classify(b"startup failed with secret " + secret), "unknown")
+        self.assertEqual(startup_failure_message(self.log),
+                         "Local Supabase startup failed: Cause not identified; inspect the private stack log.")
+        self.assertEqual(self.classify(b"port is already allocated\nfailed to pull image " + secret), "unknown")
+        self.assertEqual(startup_failure_message(self.log),
+                         "Local Supabase startup failed: Multiple known failure signals (image/registry, port); inspect the private stack log.")
+        self.assertNotIn(secret.decode(), startup_failure_message(self.log))
         self.log.unlink()
         self.assertEqual(classify_startup_log(self.log), "unknown")
+        self.assertEqual(startup_failure_message(self.log),
+                         "Local Supabase startup failed: Private stack log unavailable; cause not identified.")
+
+    def test_multiple_phrases_in_one_family_remain_specific(self):
+        self.assertEqual(self.classify(b"port is already allocated\naddress already in use"), "port")
+        self.assertIn("Local port conflict", startup_failure_message(self.log))
 
     def test_only_bounded_tail_is_read(self):
         prefix = b"port is already allocated" + b"x" * MAX_DIAGNOSTIC_BYTES

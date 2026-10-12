@@ -45,6 +45,18 @@ _PATTERNS = {
         rb"failed to apply migration",
         rb"migration .{0,120} failed",
     ),
+    "database_connection": (
+        rb"(?:failed|unable) to connect to (?:postgres|postgresql|the database)",
+        rb"could not connect to (?:postgres|postgresql|the database)",
+        rb"password authentication failed for user [\"']?postgres[\"']?",
+        rb"(?:postgres|postgresql).{0,120}connection refused",
+    ),
+    "cli_configuration": (
+        rb"unknown flag: --(?:network-id|exclude)",
+        rb"failed to parse (?:supabase )?config",
+        rb"(?:invalid|malformed) (?:supabase/)?config\.toml",
+        rb"config\.toml.{0,120}(?:invalid|malformed)",
+    ),
 }
 
 _MESSAGES = {
@@ -53,24 +65,48 @@ _MESSAGES = {
     "port": "Local port conflict; check the configured test ports.",
     "health": "Database or container health timeout; inspect the private stack log.",
     "migration": "Database migration failure; inspect the private stack log.",
+    "database_connection": "Database connection or authentication failure; inspect the private stack log.",
+    "cli_configuration": "Supabase CLI or project configuration failure; inspect the private stack log.",
     "unknown": "Cause not identified; inspect the private stack log.",
 }
 
+_LABELS = {
+    "docker": "Docker/API",
+    "image": "image/registry",
+    "port": "port",
+    "health": "health",
+    "migration": "migration",
+    "database_connection": "database connection/authentication",
+    "cli_configuration": "CLI/configuration",
+}
 
-def classify_startup_log(log_path: Path) -> str:
-    """Return one known family only when a bounded log tail is unambiguous."""
+
+def _matching_families(log_path: Path) -> tuple[str, ...] | None:
+    """Return fixed pattern families, or None when the private log is unavailable."""
     try:
         with log_path.open("rb") as log:
             log.seek(0, 2)
             log.seek(max(0, log.tell() - MAX_DIAGNOSTIC_BYTES))
             sample = log.read(MAX_DIAGNOSTIC_BYTES)
     except OSError:
-        return "unknown"
-    matches = {family for family, patterns in _PATTERNS.items()
-               if any(re.search(pattern, sample, re.IGNORECASE) for pattern in patterns)}
-    return next(iter(matches)) if len(matches) == 1 else "unknown"
+        return None
+    return tuple(sorted(family for family, patterns in _PATTERNS.items()
+                        if any(re.search(pattern, sample, re.IGNORECASE) for pattern in patterns)))
+
+
+def classify_startup_log(log_path: Path) -> str:
+    """Return one known family only when a bounded log tail is unambiguous."""
+    matches = _matching_families(log_path)
+    return matches[0] if matches is not None and len(matches) == 1 else "unknown"
 
 
 def startup_failure_message(log_path: Path) -> str:
     """Never interpolate log content, file paths, or subprocess exceptions."""
-    return "Local Supabase startup failed: " + _MESSAGES[classify_startup_log(log_path)]
+    matches = _matching_families(log_path)
+    if matches is None:
+        hint = "Private stack log unavailable; cause not identified."
+    elif len(matches) > 1:
+        hint = "Multiple known failure signals (" + ", ".join(_LABELS[family] for family in matches) + "); inspect the private stack log."
+    else:
+        hint = _MESSAGES[matches[0] if matches else "unknown"]
+    return "Local Supabase startup failed: " + hint

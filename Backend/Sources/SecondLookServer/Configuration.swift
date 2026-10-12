@@ -17,9 +17,9 @@ struct ServerConfiguration: Sendable {
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
               url.path.isEmpty || url.path == "/",
               url.scheme == "https" || (local && url.scheme == "http" && Self.isLoopback(url)),
-              let publicKey = environment["SECONDLOOK_PUBLISHABLE_KEY"], !publicKey.isEmpty,
-              let secret = environment["SECONDLOOK_SERVICE_KEY"], !secret.isEmpty,
-              !publicKey.contains("\n"), !secret.contains("\n"), publicKey != secret,
+              let publicKey = environment["SECONDLOOK_PUBLISHABLE_KEY"], Self.isSafeHeaderValue(publicKey),
+              let secret = environment["SECONDLOOK_SERVICE_KEY"], Self.isSafeHeaderValue(secret),
+              publicKey != secret,
               let accounts = environment["SECONDLOOK_ALLOWED_ACCOUNTS"] else {
             throw ConfigurationFailure.invalid
         }
@@ -47,6 +47,14 @@ struct ServerConfiguration: Sendable {
 
     static func isLoopback(_ url: URL) -> Bool {
         ["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? "")
+    }
+
+    /// Both keys become HTTP field values. Reject controls at startup, including CR from
+    /// CRLF-sourced environment files, before Foundation or NIO tries to construct a request.
+    private static func isSafeHeaderValue(_ value: String) -> Bool {
+        !value.isEmpty && value.unicodeScalars.allSatisfy {
+            !CharacterSet.controlCharacters.contains($0)
+        }
     }
 }
 

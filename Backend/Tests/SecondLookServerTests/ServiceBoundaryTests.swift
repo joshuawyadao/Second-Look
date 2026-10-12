@@ -35,6 +35,44 @@ import SecondLookCore
         #expect(throws: ConfigurationFailure.self) { try ServerConfiguration(environment: env) }
     }
 
+    @Test func providerKeysRejectHTTPControlCharacters() throws {
+        let controls: [(String, String)] = [
+            ("CRLF source trailing CR", "\r"),
+            ("CRLF", "\r\n"),
+            ("NUL", "\0"),
+            ("DEL", "\u{007F}"),
+            ("horizontal tab", "\t"),
+            ("vertical tab", "\u{000B}"),
+            ("Unicode next line", "\u{0085}")
+        ]
+        for field in ["SECONDLOOK_PUBLISHABLE_KEY", "SECONDLOOK_SERVICE_KEY"] {
+            for (caseName, control) in controls {
+                var env = environment()
+                env[field] = "invented-key" + control
+                let rejected: Bool
+                do { _ = try ServerConfiguration(environment: env); rejected = false }
+                catch is ConfigurationFailure { rejected = true }
+                catch { rejected = false }
+                #expect(rejected, "\(field) must refuse \(caseName) without exposing the key")
+            }
+        }
+    }
+
+    @Test func providerKeysAcceptValidModernAndLegacyFormats() throws {
+        let validPairs = [
+            ("sb_publishable_invented-for-test", "sb_secret_invented-for-test"),
+            ("invented-local-anon-jwt", "invented-local-service-jwt")
+        ]
+        for (publishable, service) in validPairs {
+            var env = environment()
+            env["SECONDLOOK_PUBLISHABLE_KEY"] = publishable
+            env["SECONDLOOK_SERVICE_KEY"] = service
+            let configuration = try ServerConfiguration(environment: env)
+            #expect(configuration.publishableKey == publishable)
+            #expect(configuration.serviceKey == service)
+        }
+    }
+
     @Test func allowedAccountsRequireExactlyTwoValidDistinctFields() throws {
         let valid = try ServerConfiguration(environment: environment())
         #expect(valid.allowedAccounts == Set([owner, peer]))

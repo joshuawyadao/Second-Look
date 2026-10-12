@@ -165,9 +165,9 @@ final class SharedPairingRecoveryUITests: XCTestCase {
         guard alert.exists else { return }
         alert.buttons["OK"].tap()
         if withinSettings {
-            XCTAssertFalse(app.staticTexts["pairingInvitation"].exists,
-                           "A committed renewal with a lost reply must invalidate the displayed old invitation")
-            tap("Done", in: app)
+            // Presenting the root alert may already dismiss the settings sheet.
+            // Inspect the invitation only after deliberately reopening the sheet.
+            if app.buttons["Done"].waitForExistence(timeout: 1) { tap("Done", in: app) }
         }
         let marker = app.staticTexts["sharedSimulatedPairingReplyLoss"]
         XCTAssertTrue(marker.waitForExistence(timeout: 8),

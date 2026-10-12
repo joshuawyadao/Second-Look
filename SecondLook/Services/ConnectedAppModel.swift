@@ -289,6 +289,8 @@ final class ConnectedAppModel {
         let dropRenewalReply = localRecoveryChecksRequested && invitation != nil && !didDropRenewalReply &&
             ProcessInfo.processInfo.arguments.contains("-shared-test-renewal-reply-loss")
         #endif
+        // Once renewal starts, the server may rotate the old code even if its reply is lost.
+        invitation = nil
         busy = true
         do {
             let result = try await client.createSpace()

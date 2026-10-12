@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import signal
 import stat
 import subprocess
@@ -28,6 +29,21 @@ HOSTED_TEST = ("-only-testing:SecondLookUITests/SharedCommandAcceptanceUITests/"
                "testHostedExistingSessionSharedCommandsAndForeground")
 MEMBERSHIP_TEST = ("-only-testing:SecondLookUITests/SharedCommandAcceptanceUITests/"
                    "testHostedMembershipFailureKeepsPairingDisabled")
+GENERATED_TEST_RUN = re.compile(
+    r"SecondLook_iphonesimulator\d+(?:\.\d+)*-(?:arm64|x86_64)\.xctestrun"
+)
+
+
+def generated_test_runs(products: Path) -> list[Path]:
+    """Select only Xcode's generated Second Look simulator configurations."""
+    return sorted(path for path in products.glob("SecondLook_iphonesimulator*.xctestrun")
+                  if GENERATED_TEST_RUN.fullmatch(path.name))
+
+
+def clear_generated_test_runs(products: Path) -> None:
+    """Prevent an earlier SDK build in this derived data from masking the new run."""
+    for path in generated_test_runs(products):
+        path.unlink()
 
 
 class HostedFailure(Exception):
@@ -198,10 +214,14 @@ def main() -> None:
         flags |= os.O_NOFOLLOW
     with os.fdopen(os.open(log_path, flags, 0o600), "w") as log:
         os.fchmod(log.fileno(), 0o600)
+        try:
+            clear_generated_test_runs(products)
+        except OSError:
+            raise HostedFailure("test_configuration") from None
         run_owned(["xcodebuild", "-project", "SecondLook.xcodeproj", "-scheme", "SecondLook",
                    "-configuration", "Debug", *common, "build-for-testing"], 180,
                   environment=environment, output=log, failure="build", timed_out="build_timeout")
-        runs = list(products.glob("SecondLook_*.xctestrun"))
+        runs = generated_test_runs(products)
         if len(runs) != 1:
             raise HostedFailure("test_configuration")
         try:

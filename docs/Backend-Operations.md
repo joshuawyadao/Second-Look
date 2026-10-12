@@ -46,6 +46,8 @@ To run connected iPhone UI acceptance on macOS/Xcode, use `./scripts/verify-shar
 
 The three recovery phases require a fresh `pairingRecovery:true` fixture and select `--only-pairing-recovery --recovery-case invitation`, `join` or `restore`. Invitation/join cases discard one decoded response from a genuine local server write and verify recovery without presenting stale codes or enabling pairing before membership discovery. The restore case enqueues concurrent entry points, forces genuine local Auth refresh and requires one admitted credential candidate. Fault/concurrency injection is labeled simulated in the Debug app; identities, Auth responses and server writes are genuine local operations. Hooks require explicit test arguments and localhost HTTP endpoints and are absent from Release. Each case has its own private log, and only successful completed runs count as acceptance.
 
+Both native wrappers support reused DerivedData by removing only exact Xcode-generated `SecondLook_iphonesimulator{version}-{arm64|x86_64}.xctestrun` configurations before the current build. Selection afterward is limited to that generated family. Other schemes/platforms and private runner configurations are preserved; simulator sessions, Keychain, app records and other build outputs are not reset. A successful build must still produce exactly one matching configuration and the intended UI target.
+
 Stop the local stack with `npx --yes supabase@2.119.0 stop`; this preserves volumes. Do not use hosted `link`, `db push`, provisioning or billing commands as part of M2 local testing.
 
 ## Server configuration

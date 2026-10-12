@@ -5,11 +5,27 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 import tempfile
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+GENERATED_TEST_RUN = re.compile(
+    r"SecondLook_iphonesimulator\d+(?:\.\d+)*-(?:arm64|x86_64)\.xctestrun"
+)
+
+
+def generated_test_runs(products: Path) -> list[Path]:
+    """Select only Xcode's generated Second Look simulator configurations."""
+    return sorted(path for path in products.glob("SecondLook_iphonesimulator*.xctestrun")
+                  if GENERATED_TEST_RUN.fullmatch(path.name))
+
+
+def clear_generated_test_runs(products: Path) -> None:
+    """Prevent an earlier SDK build in this derived data from masking the new run."""
+    for path in generated_test_runs(products):
+        path.unlink()
 
 
 def main():
@@ -56,11 +72,13 @@ def main():
             "access-loss" if args.only_invitation_access_loss else
             "fresh" if fixture.get("freshPairing") else "paired")
     log_path = fixture_path.parent / ("native-" + mode + ".private.log")
+    products = derived / "Build" / "Products"
     with log_path.open("w") as log:
+        clear_generated_test_runs(products)
         subprocess.run(["xcodebuild", "-project", "SecondLook.xcodeproj", "-scheme", "SecondLook",
                         "-configuration", "Debug", *common, "build-for-testing"], cwd=ROOT,
                        check=True, stdout=log, stderr=subprocess.STDOUT)
-        runs = list((derived / "Build/Products").glob("SecondLook_*.xctestrun"))
+        runs = generated_test_runs(products)
         if len(runs) != 1:
             raise RuntimeError("Expected one native test-run configuration.")
         run = plistlib.loads(runs[0].read_bytes())
@@ -75,7 +93,7 @@ def main():
         target = matched[0]
         target.setdefault("EnvironmentVariables", {})["SECONDLOOK_SHARED_UI_FIXTURE"] = str(fixture_path)
         # Only the path enters the runner config; credentials never enter app launch config.
-        temporary = derived / "Build/Products/SecondLook.connected.private.xctestrun"
+        temporary = products / "SecondLook.connected.private.xctestrun"
         temporary.write_bytes(plistlib.dumps(run))
         try:
             if args.only_pairing_recovery:

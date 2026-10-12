@@ -37,8 +37,10 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
             if [401, 403].contains(http.statusCode) { throw SharedStateFailure.unauthenticated }
             throw SharedStateFailure.serviceUnavailable
         }
-        guard let user = try? JSONDecoder().decode(VerifiedUser.self, from: data),
-              configuration.allowedAccounts.contains(user.id) else { throw SharedStateFailure.forbidden }
+        guard let user = try? JSONDecoder().decode(VerifiedUser.self, from: data) else {
+            throw SharedStateFailure.invalidResponse
+        }
+        guard configuration.allowedAccounts.contains(user.id) else { throw SharedStateFailure.forbidden }
         return user.id
     }
 

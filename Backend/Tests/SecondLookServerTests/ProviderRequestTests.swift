@@ -3,6 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 import Testing
+import VaporTesting
 import SecondLookCore
 @testable import SecondLookServer
 
@@ -62,6 +63,54 @@ import SecondLookCore
         #expect(rpc.value(forHTTPHeaderField: "Authorization") == "Bearer \(legacyKey)")
     }
 
+    @Test func malformedAuthUserRepliesAreProviderFailures() async throws {
+        let session = Self.session()
+        defer { session.invalidateAndCancel() }
+        let provider = try provider(serviceKey: "sb_secret_synthetic", session: session)
+        for token in ["synthetic-malformed-json-access-token", "synthetic-invalid-id-access-token"] {
+            do {
+                _ = try await provider.account(for: token)
+                Issue.record("Malformed Auth user replies must not look like allowlist denials")
+            } catch {
+                #expect(error as? SharedStateFailure == .invalidResponse)
+            }
+            _ = ProviderRequestRecorder.shared.take()
+        }
+        do {
+            _ = try await provider.account(for: "synthetic-outsider-access-token")
+            Issue.record("A decoded user outside the allowlist must remain forbidden")
+        } catch {
+            #expect(error as? SharedStateFailure == .forbidden)
+        }
+        _ = ProviderRequestRecorder.shared.take()
+    }
+
+    @Test func malformedAuthRepliesBecomeBoundedServerResponses() async throws {
+        let session = Self.session()
+        defer { session.invalidateAndCancel() }
+        let provider = try provider(serviceKey: "sb_secret_synthetic", session: session)
+        try await withApp { app in
+            try configure(app, configuration: provider.configuration, verifier: provider, store: provider)
+            for token in ["synthetic-malformed-json-access-token", "synthetic-invalid-id-access-token"] {
+                try await app.testing().test(.GET, "/v1/space", beforeRequest: { request in
+                    request.headers.bearerAuthorization = .init(token: token)
+                }, afterResponse: { response in
+                    #expect(response.status == .serviceUnavailable)
+                    #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
+                    #expect(response.headers[.cacheControl] == ["no-store"])
+                })
+                _ = ProviderRequestRecorder.shared.take()
+            }
+            try await app.testing().test(.GET, "/v1/space", beforeRequest: { request in
+                request.headers.bearerAuthorization = .init(token: "synthetic-outsider-access-token")
+            }, afterResponse: { response in
+                #expect(response.status == .forbidden)
+                #expect(response.body.string == "{\"code\":\"forbidden\"}")
+            })
+            _ = ProviderRequestRecorder.shared.take()
+        }
+    }
+
     private static func session() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ProviderRequestProtocol.self]
@@ -110,11 +159,17 @@ private final class ProviderRequestProtocol: URLProtocol {
         }
         let body: Data
         if url.path == "/auth/v1/user" {
-            let id = request.value(forHTTPHeaderField: "Authorization") ==
-                "Bearer synthetic-outsider-access-token"
-                ? "10000000-0000-0000-0000-000000000003"
-                : "10000000-0000-0000-0000-000000000001"
-            body = Data("{\"id\":\"\(id)\"}".utf8)
+            let authorization = request.value(forHTTPHeaderField: "Authorization")
+            if authorization == "Bearer synthetic-malformed-json-access-token" {
+                body = Data("{".utf8)
+            } else if authorization == "Bearer synthetic-invalid-id-access-token" {
+                body = Data("{\"id\":\"not-a-uuid\"}".utf8)
+            } else {
+                let id = authorization == "Bearer synthetic-outsider-access-token"
+                    ? "10000000-0000-0000-0000-000000000003"
+                    : "10000000-0000-0000-0000-000000000001"
+                body = Data("{\"id\":\"\(id)\"}".utf8)
+            }
         } else {
             let owner = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
             let peer = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!

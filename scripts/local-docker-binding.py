@@ -3,7 +3,7 @@
 
 The pinned CLI supplies an explicit wildcard HostIp, overriding Docker network
 host_binding_ipv4 defaults. This adapter changes only container-create requests
-for our named synthetic project. No Docker daemon or user context is modified.
+scoped to our synthetic project. No Docker daemon or user context is modified.
 """
 from __future__ import annotations
 from http.server import BaseHTTPRequestHandler
@@ -19,6 +19,8 @@ import threading
 from urllib.parse import parse_qs, urlsplit
 
 PROJECT = "secondlook-m2-local"
+NETWORK = "secondlook_m2_local"
+PROJECT_LABELS = ("com.supabase.cli.project", "com.docker.compose.project")
 ADAPTER_PHASE_MARKERS = {
     "container_scope": "Local Docker adapter phase: container_scope",
     "request": "Local Docker adapter phase: request",
@@ -30,7 +32,7 @@ ADAPTER_PHASE_MARKERS = {
 
 
 class UnrelatedContainerError(ValueError):
-    """A container-create request escaped this synthetic project's name scope."""
+    """A container-create request escaped this synthetic project's scope."""
 
 
 def report_adapter_phase(phase: str) -> None:
@@ -43,9 +45,19 @@ def bind_create(path: str, data: bytes) -> bytes:
     name = parse_qs(parts.query).get("name", [""])[0]
     if not parts.path.endswith("/containers/create"):
         return data
-    if not (name.startswith("supabase_") and name.endswith("_" + PROJECT)):
+    if name and not (name.startswith("supabase_") and name.endswith("_" + PROJECT)):
         raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
     payload = json.loads(data)
+    if not name:
+        if not isinstance(payload, dict):
+            raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
+        labels = payload.get("Labels")
+        host_config = payload.get("HostConfig")
+        if (not isinstance(labels, dict) or
+                not all(labels.get(label) == PROJECT for label in PROJECT_LABELS) or
+                not isinstance(host_config, dict) or
+                host_config.get("NetworkMode") != NETWORK):
+            raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
     for bindings in payload.get("HostConfig", {}).get("PortBindings", {}).values():
         for binding in bindings:
             binding["HostIp"] = "127.0.0.1"

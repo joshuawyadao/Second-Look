@@ -18,6 +18,16 @@ spec.loader.exec_module(module)
 
 
 class LocalDockerBindingTests(unittest.TestCase):
+    def _unnamed_bootstrap_payload(self):
+        # Docker's create API combines Config fields at the root, with HostConfig beside them.
+        return {"Image": "synthetic/migration:local",
+                "Labels": {"com.supabase.cli.project": module.PROJECT,
+                           "com.docker.compose.project": module.PROJECT},
+                "HostConfig": {"NetworkMode": "secondlook_m2_local",
+                               "PortBindings": {"5432/tcp": [
+                                   {"HostIp": "0.0.0.0", "HostPort": "56322"}]}},
+                "Env": ["SYNTHETIC_SECRET=not-a-real-key"]}
+
     def _failed_proxy_request(self, upstream, request, directory):
         child = r'''
 import os, socket, sys
@@ -49,6 +59,18 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             markers = self._failed_proxy_request(str(Path(directory) / "unused.sock"), request, directory)
         self.assertEqual(markers, module.ADAPTER_PHASE_MARKERS["container_scope"] + "\n")
         self.assertNotIn(secret.decode(), markers)
+        self.assertNotIn("another-project", markers)
+
+    def test_matching_labels_do_not_permit_named_unrelated_create_or_log_body(self):
+        with tempfile.TemporaryDirectory(prefix="sl-adapter-test-", dir="/tmp") as directory:
+            payload = self._unnamed_bootstrap_payload()
+            body = json.dumps(payload).encode()
+            request = (b"POST /v1.48/containers/create?name=another-project HTTP/1.1\r\n"
+                       b"Host: docker\r\nContent-Length: " + str(len(body)).encode() +
+                       b"\r\n\r\n" + body)
+            markers = self._failed_proxy_request(str(Path(directory) / "unused.sock"), request, directory)
+        self.assertEqual(markers, module.ADAPTER_PHASE_MARKERS["container_scope"] + "\n")
+        self.assertNotIn("SYNTHETIC_SECRET", markers)
         self.assertNotIn("another-project", markers)
 
     def test_missing_upstream_socket_has_only_fixed_connect_marker(self):
@@ -203,6 +225,42 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         self.assertEqual([x["HostIp"] for x in actual["HostConfig"]["PortBindings"]["5432/tcp"]],
                          ["127.0.0.1", "127.0.0.1"])
         self.assertEqual(actual["Env"], payload["Env"])
+
+    def test_scoped_unnamed_bootstrap_create_rewrites_loopback(self):
+        payload = self._unnamed_bootstrap_payload()
+        for path in ("/v1.48/containers/create", "/v1.48/containers/create?name="):
+            with self.subTest(path=path):
+                actual = json.loads(module.bind_create(path, json.dumps(payload).encode()))
+                self.assertEqual(actual["HostConfig"]["PortBindings"]["5432/tcp"][0]["HostIp"],
+                                 "127.0.0.1")
+                self.assertEqual(actual["Env"], payload["Env"])
+
+    def test_unnamed_create_requires_both_project_labels_and_expected_network(self):
+        valid = self._unnamed_bootstrap_payload()
+        for field in ("com.supabase.cli.project", "com.docker.compose.project"):
+            for replacement in (None, "another-project"):
+                with self.subTest(label=field, replacement=replacement):
+                    payload = json.loads(json.dumps(valid))
+                    if replacement is None:
+                        del payload["Labels"][field]
+                    else:
+                        payload["Labels"][field] = replacement
+                    with self.assertRaises(module.UnrelatedContainerError):
+                        module.bind_create("/v1.48/containers/create", json.dumps(payload).encode())
+        for network in (None, "another_network"):
+            with self.subTest(network=network):
+                payload = json.loads(json.dumps(valid))
+                if network is None:
+                    del payload["HostConfig"]["NetworkMode"]
+                else:
+                    payload["HostConfig"]["NetworkMode"] = network
+                with self.assertRaises(module.UnrelatedContainerError):
+                    module.bind_create("/v1.48/containers/create", json.dumps(payload).encode())
+
+    def test_named_unrelated_create_is_refused_even_with_scoped_labels(self):
+        payload = self._unnamed_bootstrap_payload()
+        with self.assertRaises(module.UnrelatedContainerError):
+            module.bind_create("/v1.48/containers/create?name=another-project", json.dumps(payload).encode())
 
     def test_refuses_unrelated_creation_and_preserves_other_requests(self):
         with self.assertRaises(ValueError):

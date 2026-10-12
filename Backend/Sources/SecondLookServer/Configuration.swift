@@ -22,8 +22,11 @@ struct ServerConfiguration: Sendable {
               let accounts = environment["SECONDLOOK_ALLOWED_ACCOUNTS"] else {
             throw ConfigurationFailure.invalid
         }
-        let values = accounts.split(separator: ",").compactMap { UUID(uuidString: String($0)) }
-        guard values.count == 2, Set(values).count == 2 else { throw ConfigurationFailure.invalid }
+        let fields = accounts.split(separator: ",", omittingEmptySubsequences: false)
+        guard fields.count == 2,
+              let first = UUID(uuidString: String(fields[0])),
+              let second = UUID(uuidString: String(fields[1])),
+              first != second else { throw ConfigurationFailure.invalid }
         let port = Int(environment["SECONDLOOK_PORT"] ?? "8080") ?? 0
         guard (1024...65535).contains(port) else { throw ConfigurationFailure.invalid }
         let requestedEvidence = environment["SECONDLOOK_TEST_EVIDENCE"] == "1"
@@ -35,7 +38,7 @@ struct ServerConfiguration: Sendable {
         self.providerURL = url
         self.publishableKey = publicKey
         self.serviceKey = secret
-        self.allowedAccounts = Set(values)
+        self.allowedAccounts = [first, second]
         self.port = port
         self.localDevelopment = local
         self.testEvidence = requestedEvidence

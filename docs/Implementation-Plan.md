@@ -11,7 +11,7 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 
 [x] Read instructions and product, architecture, operations, roadmap, ADR and verification docs; map native and CI failure phases with bounded read-only agents. Existing branch is clean at `568e17d`; referenced GitHub helper skills are unavailable, so use connected GitHub tools/CLI for their equivalent steps.
 [x] Checkpoint this resolved plan before changes (`178071a`). Maintain concise private review/fix notes and task-owned file boundaries.
-[ ] Reject every malformed/empty allowlist component, with red/green server configuration cases; save/push and acknowledge review comment 4251244559.
+[x] Reject every malformed/empty allowlist component. A red/green configuration regression covers extra typo, leading/trailing/interior empty fields, duplicate IDs and valid input; all 7 service-boundary tests pass. Save/push and acknowledge review comment 4251244559 in this slice.
 [ ] Require a provider URL host, including hostless HTTPS regressions; save/push and acknowledge comment 4251244569.
 [ ] Preserve the vault's rotated credentials during sign-in. Exercise initial verification's refresh path with synthetic native acceptance and verify stored/current credentials match without exporting them; save/push and acknowledge comment 4251244552.
 [ ] Clear protected account/snapshot/invitation immediately on invitation renewal access loss. Add the strongest feasible regression at the actual failure boundary; save/push and acknowledge comment 4251244565.

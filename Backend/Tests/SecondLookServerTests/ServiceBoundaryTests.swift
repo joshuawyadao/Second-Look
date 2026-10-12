@@ -35,6 +35,26 @@ import SecondLookCore
         #expect(throws: ConfigurationFailure.self) { try ServerConfiguration(environment: env) }
     }
 
+    @Test func allowedAccountsRequireExactlyTwoValidDistinctFields() throws {
+        let valid = try ServerConfiguration(environment: environment())
+        #expect(valid.allowedAccounts == Set([owner, peer]))
+
+        let malformed = [
+            "two valid plus typo": "\(owner),\(peer),not-a-uuid",
+            "leading empty": ",\(owner),\(peer)",
+            "trailing empty": "\(owner),\(peer),",
+            "interior empty": "\(owner),,\(peer)",
+            "duplicate valid": "\(owner),\(owner)",
+        ]
+        for (caseName, accounts) in malformed {
+            var env = environment()
+            env["SECONDLOOK_ALLOWED_ACCOUNTS"] = accounts
+            #expect(throws: ConfigurationFailure.self, "\(caseName) must be refused") {
+                try ServerConfiguration(environment: env)
+            }
+        }
+    }
+
     @Test func requestsRequireVerifiedIdentity() async throws {
         let configuration = try ServerConfiguration(environment: environment())
         try await withApp { app in

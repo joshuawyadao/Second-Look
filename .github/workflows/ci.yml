@@ -57,6 +57,8 @@ jobs:
         env:
           SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend
         run: swift test --package-path Backend --scratch-path "$SECONDLOOK_BACKEND_SCRATCH" -j 8
+      - name: Report Docker API compatibility
+        run: docker version --format 'Engine {{.Server.Version}}; maximum API {{.Server.APIVersion}}; minimum API {{.Server.MinAPIVersion}}'
       - name: Verify localhost Auth, SQL, HTTP and restart with both API key modes
         env:
           SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend

@@ -10,17 +10,23 @@ import re
 
 MAX_DIAGNOSTIC_BYTES = 128 * 1024
 
-_PATTERNS = {
-    "docker": (
+_DOCKER_SUBREASONS = {
+    "daemon": (
         rb"cannot connect to the docker daemon",
         rb"is the docker daemon running",
         rb"docker daemon is not running",
         rb"error during connect",
-        rb"local docker adapter failed",
-        rb"client version.{0,120}is too old",
+    ),
+    "client_api": (rb"client version.{0,120}is too old",),
+    "unsupported_api": (
         rb"api version.{0,120}(?:not supported|too (?:old|new))",
         rb"unsupported (?:docker )?api version",
     ),
+    "adapter": (rb"local docker adapter failed",),
+}
+
+_PATTERNS = {
+    "docker": tuple(pattern for patterns in _DOCKER_SUBREASONS.values() for pattern in patterns),
     "image": (
         rb"failed to pull image",
         rb"error pulling image",
@@ -80,33 +86,51 @@ _LABELS = {
     "cli_configuration": "CLI/configuration",
 }
 
+_DOCKER_MESSAGES = {
+    "daemon": "Docker daemon unavailable or unreachable; check the local Docker engine.",
+    "client_api": "Docker client API too old for the daemon; check client and daemon compatibility.",
+    "unsupported_api": "Docker API version unsupported; check client and daemon compatibility.",
+    "adapter": "Local Docker adapter failed; inspect the private stack log.",
+}
 
-def _matching_families(log_path: Path) -> tuple[str, ...] | None:
-    """Return fixed pattern families, or None when the private log is unavailable."""
+
+def _log_tail(log_path: Path) -> bytes | None:
+    """Read only bounded private log bytes, or None when unavailable."""
     try:
         with log_path.open("rb") as log:
             log.seek(0, 2)
             log.seek(max(0, log.tell() - MAX_DIAGNOSTIC_BYTES))
-            sample = log.read(MAX_DIAGNOSTIC_BYTES)
+            return log.read(MAX_DIAGNOSTIC_BYTES)
     except OSError:
         return None
+
+
+def _matching_families(sample: bytes) -> tuple[str, ...]:
+    """Return only fixed pattern family names, sorted for stable reporting."""
     return tuple(sorted(family for family, patterns in _PATTERNS.items()
                         if any(re.search(pattern, sample, re.IGNORECASE) for pattern in patterns)))
 
 
 def classify_startup_log(log_path: Path) -> str:
     """Return one known family only when a bounded log tail is unambiguous."""
-    matches = _matching_families(log_path)
-    return matches[0] if matches is not None and len(matches) == 1 else "unknown"
+    sample = _log_tail(log_path)
+    matches = _matching_families(sample) if sample is not None else ()
+    return matches[0] if len(matches) == 1 else "unknown"
 
 
 def startup_failure_message(log_path: Path) -> str:
     """Never interpolate log content, file paths, or subprocess exceptions."""
-    matches = _matching_families(log_path)
-    if matches is None:
+    sample = _log_tail(log_path)
+    matches = _matching_families(sample) if sample is not None else ()
+    if sample is None:
         hint = "Private stack log unavailable; cause not identified."
     elif len(matches) > 1:
         hint = "Multiple known failure signals (" + ", ".join(_LABELS[family] for family in matches) + "); inspect the private stack log."
+    elif matches == ("docker",):
+        subreasons = [name for name, patterns in _DOCKER_SUBREASONS.items()
+                      if any(re.search(pattern, sample, re.IGNORECASE) for pattern in patterns)]
+        hint = (_DOCKER_MESSAGES[subreasons[0]] if len(subreasons) == 1 else
+                "Multiple Docker/API signals or unspecified Docker failure; inspect the private stack log.")
     else:
         hint = _MESSAGES[matches[0] if matches else "unknown"]
     return "Local Supabase startup failed: " + hint

@@ -55,6 +55,8 @@ For one-member invitation recovery testing, a separate Debug hook requires `-ui-
 
 A separate membership-recovery acceptance hook requires all explicit Debug/UI/shared flags. After genuine Auth verification, it simulates one failed membership lookup and labels that simulation on screen. Create/Join stay disabled until manual retry obtains an actual server result. The hook changes no server membership and is excluded from Release.
 
+Dedicated localhost Debug recovery hooks can discard a decoded genuine invitation-renewal or join response once, or enqueue concurrent saved-session restores while forcing normal Auth refresh. These hooks label the reply loss or concurrent trigger as simulated; authentication and server writes are genuine local calls. All require explicit UI/shared/scenario flags and local HTTP configuration. They neither simulate identity nor expose credentials, and are excluded from Release. Their fixture-gated tests and named synthetic-space resets belong to the local acceptance workflow.
+
 ## Future media and background work
 
 When real media arrives, closure must write cleanup intent with the logical terminal transition; retryable workers then perform physical deletion. Private storage must grant short-lived participant reads. Notifications/reminders derive from current state after access rechecks and never become the record of truth. Uploads need stable logical IDs and unknown-outcome reconciliation. Offline intent replays only after membership/version checks. See [Product-Spec.md](Product-Spec.md) for lifecycle, privacy, and reminder contracts and [Roadmap.md](Roadmap.md) for milestone gates.

@@ -20,11 +20,20 @@ def main():
                            help="Run command checks against an already-paired synthetic localhost fixture.")
     selection.add_argument("--only-invitation-access-loss", action="store_true",
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
+    selection.add_argument("--only-pairing-recovery", action="store_true",
+                           help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
+    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore"),
+                        help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
+    if args.only_pairing_recovery != (args.recovery_case is not None):
+        parser.error("--only-pairing-recovery requires exactly one --recovery-case, and vice versa")
     fixture_path = Path(args.fixture).resolve()
     fixture = json.loads(fixture_path.read_text())
     if args.only_invitation_access_loss and fixture.get("invitationAccessLoss") is not True:
         raise RuntimeError("Invitation access-loss acceptance requires its dedicated synthetic fixture.")
+    if args.only_pairing_recovery and (fixture.get("pairingRecovery") is not True or
+                                      fixture.get("recoveryCase") != args.recovery_case):
+        raise RuntimeError("Pairing recovery acceptance requires its matching dedicated synthetic fixture.")
     for key in ("authURL", "serverURL"):
         url = urlsplit(fixture[key])
         if url.scheme != "http" or url.hostname not in ("127.0.0.1", "localhost", "::1"):
@@ -43,7 +52,8 @@ def main():
     derived = Path(os.environ.get("SECONDLOOK_DERIVED_DATA", str(fixture_path.parent / "native-build"))).resolve()
     common = ["-destination", "platform=iOS Simulator,id=" + selected,
               "-derivedDataPath", str(derived), "-parallel-testing-enabled", "NO", "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-"]
-    mode = ("access-loss" if args.only_invitation_access_loss else
+    mode = ("recovery-" + args.recovery_case if args.only_pairing_recovery else
+            "access-loss" if args.only_invitation_access_loss else
             "fresh" if fixture.get("freshPairing") else "paired")
     log_path = fixture_path.parent / ("native-" + mode + ".private.log")
     with log_path.open("w") as log:
@@ -68,7 +78,13 @@ def main():
         temporary = derived / "Build/Products/SecondLook.connected.private.xctestrun"
         temporary.write_bytes(plistlib.dumps(run))
         try:
-            if args.only_invitation_access_loss:
+            if args.only_pairing_recovery:
+                selected_tests = ["-only-testing:SecondLookUITests/SharedPairingRecoveryUITests/" + {
+                    "invitation": "testRenewalReplyLossInvalidatesOldInvitation",
+                    "join": "testJoinReplyLossKeepsPairingDisabledUntilMembershipCheck",
+                    "restore": "testRacingRestoreAttemptsOneCandidate"
+                }[args.recovery_case]]
+            elif args.only_invitation_access_loss:
                 selected_tests = ["-only-testing:SecondLookUITests/SharedInvitationAccessLossUITests"]
             else:
                 selected_tests = ["-only-testing:SecondLookUITests/SharedCommandAcceptanceUITests"]
@@ -79,7 +95,8 @@ def main():
                            stdout=log, stderr=subprocess.STDOUT)
         finally:
             temporary.unlink(missing_ok=True)
-    scenario = ("invitation access loss" if args.only_invitation_access_loss else
+    scenario = ("pairing recovery " + args.recovery_case if args.only_pairing_recovery else
+                "invitation access loss" if args.only_invitation_access_loss else
                 "shared commands" if args.only_shared_commands else
                 "fresh pairing" if fixture.get("freshPairing") else "owner write, peer convergence and outsider denial")
     print("Authenticated native " + scenario + " acceptance passed on " + selected + ".")

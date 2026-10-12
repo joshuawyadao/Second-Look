@@ -24,6 +24,17 @@ struct ConnectedRootView: View {
             .background(.thinMaterial)
 
             #if SECONDLOOK_DEMO
+            if model.simulatedPairingReplyLoss {
+                Text("Pairing reply loss (simulated for acceptance)").font(.caption)
+                    .accessibilityIdentifier("sharedSimulatedPairingReplyLoss")
+            }
+            if model.restoreRaceChecksRequested {
+                VStack {
+                    Text("Concurrent reconnect triggers (simulated for acceptance)").font(.caption)
+                    Text("\(model.restoreCandidateCount)")
+                        .accessibilityIdentifier("sharedRestoreCandidateCount")
+                }
+            }
             if model.simulatedMembershipFailure {
                 Text("Membership lookup failure (simulated for acceptance)").font(.caption)
                     .accessibilityIdentifier("sharedSimulatedMembershipFailure")

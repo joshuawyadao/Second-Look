@@ -28,6 +28,11 @@ final class ConnectedAppModel {
     @ObservationIgnored private var didSimulateMembershipFailure = false
     @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
     @ObservationIgnored private var commandAcceptanceStarted = false
+    private(set) var simulatedPairingReplyLoss = false
+    private(set) var restoreCandidateCount = 0
+    @ObservationIgnored private var didDropRenewalReply = false
+    @ObservationIgnored private var didDropJoinReply = false
+    @ObservationIgnored private var didTriggerRestoreRace = false
     #endif
 
     @ObservationIgnored private let coordinator = SharedStateCoordinator()
@@ -180,6 +185,17 @@ final class ConnectedAppModel {
             }
         }
         busy = true
+        #if SECONDLOOK_DEMO
+        if restoreRaceChecksRequested {
+            restoreCandidateCount += 1
+            if !didTriggerRestoreRace {
+                didTriggerRestoreRace = true
+                // Deliberately race genuine saved-session restores on the isolated local fixture.
+                Task { await restore() }
+                Task { await restore() }
+            }
+        }
+        #endif
         do {
             guard let candidate = try ConnectedKeychain.restore(configuration: configuration) else {
                 if currentForegroundSession(epoch) { busy = false }
@@ -187,7 +203,12 @@ final class ConnectedAppModel {
             }
             pendingSessionID = candidate.sessionID
             ConnectedKeychain.bind(configuration: configuration, sessionID: candidate.sessionID)
+            #if SECONDLOOK_DEMO
+            if restoreRaceChecksRequested { try await candidate.verifyRefreshForAcceptance() }
+            else { try await candidate.verify() }
+            #else
             try await candidate.verify()
+            #endif
             guard currentForegroundSession(epoch) else { return }
             install(candidate, accountID: candidate.accountID, configuration: configuration)
             await discoverSpace(epoch: epoch)
@@ -264,10 +285,22 @@ final class ConnectedAppModel {
     func createSpace() async {
         guard canCreatePrivateSpace, !busy, let client, let accountID, let configuration else { return }
         let epoch = generation
+        #if SECONDLOOK_DEMO
+        let dropRenewalReply = localRecoveryChecksRequested && invitation != nil && !didDropRenewalReply &&
+            ProcessInfo.processInfo.arguments.contains("-shared-test-renewal-reply-loss")
+        #endif
         busy = true
         do {
             let result = try await client.createSpace()
             guard currentForegroundSession(epoch) else { return }
+            #if SECONDLOOK_DEMO
+            if dropRenewalReply {
+                didDropRenewalReply = true
+                simulatedPairingReplyLoss = true
+                // The server operation is genuine; discarding its decoded response is simulated.
+                throw SharedStateFailure.serviceUnavailable
+            }
+            #endif
             try publishSpace(result.snapshot, accountID: accountID,
                              configuration: configuration, client: client)
             invitation = result
@@ -287,6 +320,14 @@ final class ConnectedAppModel {
         do {
             let result = try await client.joinSpace(inviteToken: token.trimmingCharacters(in: .whitespacesAndNewlines))
             guard currentForegroundSession(epoch) else { return }
+            #if SECONDLOOK_DEMO
+            if localRecoveryChecksRequested, !didDropJoinReply,
+               ProcessInfo.processInfo.arguments.contains("-shared-test-join-reply-loss") {
+                didDropJoinReply = true
+                simulatedPairingReplyLoss = true
+                throw SharedStateFailure.serviceUnavailable
+            }
+            #endif
             try publishSpace(result, accountID: accountID, configuration: configuration, client: client)
             busy = false
         } catch {
@@ -323,6 +364,19 @@ final class ConnectedAppModel {
     }
 
     #if SECONDLOOK_DEMO
+    private var localRecoveryChecksRequested: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-ui-testing"), arguments.contains("-shared-testing"),
+              let configuration else { return false }
+        return [configuration.authURL, configuration.serverURL].allSatisfy {
+            $0.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains($0.host ?? "")
+        }
+    }
+
+    var restoreRaceChecksRequested: Bool {
+        localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-restore-race")
+    }
+
     var canInvalidateAccessForAcceptance: Bool {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-ui-testing"), arguments.contains("-shared-testing"),
@@ -616,6 +670,11 @@ final class ConnectedAppModel {
         accessInvalidatedForAcceptance = false
         simulatedMembershipFailure = false
         didSimulateMembershipFailure = false
+        simulatedPairingReplyLoss = false
+        restoreCandidateCount = 0
+        didDropRenewalReply = false
+        didDropJoinReply = false
+        didTriggerRestoreRace = false
         #endif
         generation &+= 1
         foregroundRevalidationPending = false

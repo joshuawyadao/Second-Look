@@ -202,6 +202,24 @@ def main():
                 print("Running native invitation access-loss acceptance against an empty synthetic space.", flush=True)
                 run(["python3", "scripts/verify-connected-native.py", "--fixture", str(access_loss_path),
                      "--only-invitation-access-loss"])
+                recovery_cases = (
+                    ("invitation", "committed invitation renewal with a lost reply"),
+                    ("join", "committed peer join with a lost reply"),
+                    ("restore", "concurrent account restoration"),
+                )
+                for recovery_case, description in recovery_cases:
+                    # Each scenario needs its own empty space. Truncate only the exact
+                    # named synthetic project's private receipt and space tables.
+                    run(["docker", "exec", f"supabase_db_{PROJECT}", "psql", "-U", "postgres", "-d", "postgres",
+                         "-v", "ON_ERROR_STOP=1", "-c",
+                         "truncate secondlook_private.command_receipts, secondlook_private.spaces;"],
+                        stdout=subprocess.DEVNULL)
+                    recovery_path = directory / f"ui-recovery-{recovery_case}.private.json"
+                    recovery_path.write_text(json.dumps(dict(ui_fixture, pairingRecovery=True,
+                                                             recoveryCase=recovery_case)))
+                    print(f"Running native {description} against an empty synthetic space.", flush=True)
+                    run(["python3", "scripts/verify-connected-native.py", "--fixture", str(recovery_path),
+                         "--only-pairing-recovery", "--recovery-case", recovery_case])
         finally:
             process.terminate()
             process.wait(timeout=15)

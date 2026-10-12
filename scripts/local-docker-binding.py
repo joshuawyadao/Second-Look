@@ -73,6 +73,7 @@ def main(arguments: list[str]) -> int:
 
         def forward(self):
             self.close_connection = True
+            response_started = False
             try:
                 if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
                     body = read_chunked(self.rfile)
@@ -87,7 +88,10 @@ def main(arguments: list[str]) -> int:
                     body = bind_create(self.path, body)
                 headers = {key: value for key, value in self.headers.items()
                            if key.lower() not in ("content-length", "connection", "transfer-encoding")}
-                headers["Connection"] = "close"
+                wants_upgrade = (bool(self.headers.get("Upgrade")) and
+                                 any(token.strip().lower() == "upgrade" for token in
+                                     self.headers.get("Connection", "").split(",")))
+                headers["Connection"] = "Upgrade" if wants_upgrade else "close"
                 headers["Content-Length"] = str(len(body))
                 head = f"{self.command} {self.path} HTTP/1.1\r\n" + "".join(
                     f"{key}: {value}\r\n" for key, value in headers.items()) + "\r\n"
@@ -95,14 +99,56 @@ def main(arguments: list[str]) -> int:
                     stream.settimeout(300)
                     stream.connect(upstream)
                     stream.sendall(head.encode() + body)
-                    while chunk := stream.recv(65536):
-                        self.connection.sendall(chunk)
+                    if wants_upgrade:
+                        response = bytearray()
+                        while b"\r\n\r\n" not in response:
+                            chunk = stream.recv(65536)
+                            if not chunk:
+                                raise OSError("Incomplete upstream response.")
+                            response.extend(chunk)
+                            if len(response) > 64 * 1024 and b"\r\n\r\n" not in response:
+                                raise ValueError("Unexpected upstream response header size.")
+                        status = bytes(response).split(b"\r\n", 1)[0].split()
+                        self.connection.sendall(response)
+                        response_started = True
+                        if len(status) >= 2 and status[1] == b"101":
+                            def client_to_upstream():
+                                try:
+                                    while chunk := self.rfile.read1(65536):
+                                        stream.sendall(chunk)
+                                except OSError:
+                                    pass
+                                finally:
+                                    try:
+                                        stream.shutdown(socket.SHUT_WR)
+                                    except OSError:
+                                        pass
+
+                            sender = threading.Thread(target=client_to_upstream, daemon=True)
+                            sender.start()
+                            try:
+                                while chunk := stream.recv(65536):
+                                    self.connection.sendall(chunk)
+                            finally:
+                                try:
+                                    self.connection.shutdown(socket.SHUT_RD)
+                                except OSError:
+                                    pass
+                                sender.join(timeout=2)
+                        else:
+                            while chunk := stream.recv(65536):
+                                self.connection.sendall(chunk)
+                    else:
+                        while chunk := stream.recv(65536):
+                            response_started = True
+                            self.connection.sendall(chunk)
             except (ValueError, OSError):
                 # Static message only. Never echo a Docker request or response.
-                try:
-                    self.send_error(502, "Local Docker adapter failed")
-                except OSError:
-                    pass
+                if not response_started:
+                    try:
+                        self.send_error(502, "Local Docker adapter failed")
+                    except OSError:
+                        pass
 
         do_GET = forward
         do_POST = forward

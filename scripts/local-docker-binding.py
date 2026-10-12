@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from urllib.parse import parse_qs, urlsplit
 
 PROJECT = "secondlook-m2-local"
@@ -109,6 +110,28 @@ def main(arguments: list[str]) -> int:
         protocol_version = "HTTP/1.1"
         def log_message(self, *_):
             pass  # Requests/headers can contain server credentials.
+
+        def discard_after_nonstream_response(self):
+            # A client may have sent stdin while awaiting a Docker hijack. Never forward it
+            # after an ordinary response; drain briefly so closing does not reset that response.
+            try:
+                self.connection.shutdown(socket.SHUT_WR)
+            except OSError:
+                return
+            deadline = time.monotonic() + 1
+            remaining = 64 * 1024
+            while remaining:
+                wait = deadline - time.monotonic()
+                if wait <= 0:
+                    break
+                self.connection.settimeout(wait)
+                try:
+                    chunk = self.rfile.read1(min(65536, remaining))
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                remaining -= len(chunk)
 
         def forward(self):
             self.close_connection = True
@@ -205,6 +228,7 @@ def main(arguments: list[str]) -> int:
                         else:
                             while chunk := receive_upstream():
                                 send_downstream(chunk)
+                            self.discard_after_nonstream_response()
                     else:
                         chunk = receive_upstream()
                         if not chunk:
@@ -213,6 +237,7 @@ def main(arguments: list[str]) -> int:
                             response_started = True
                             send_downstream(chunk)
                             chunk = receive_upstream()
+                        self.discard_after_nonstream_response()
             except (ValueError, OSError) as error:
                 # Static message only. Never echo a Docker request or response.
                 report_adapter_phase("container_scope" if isinstance(error, UnrelatedContainerError) else phase)

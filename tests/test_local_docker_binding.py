@@ -288,10 +288,11 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
                 self.assertEqual(observed["stdin"], payload)
 
     def test_unupgraded_nonstream_responses_remain_one_way(self):
-        cases = (("/v1.48/exec/example/start", "application/json"),
-                 ("/v1.48/containers/example/json", "application/vnd.docker.raw-stream"))
-        for route, content_type in cases:
-            with self.subTest(route=route, content_type=content_type), \
+        cases = (("/v1.48/exec/example/start", "application/json", True),
+                 ("/v1.48/containers/example/json", "application/vnd.docker.raw-stream", True),
+                 ("/v1.48/exec/example/start", "application/json", False))
+        for route, content_type, half_close in cases:
+            with self.subTest(route=route, content_type=content_type, half_close=half_close), \
                  tempfile.TemporaryDirectory(prefix="sl-adapter-test-", dir="/tmp") as directory:
                 endpoint = str(Path(directory) / "upstream.sock")
                 observed = {}
@@ -328,14 +329,18 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
     while b"\r\n\r\n" not in response:
         response.extend(client.recv(4096))
     client.sendall(b"synthetic stdin must not forward")
-    client.shutdown(socket.SHUT_WR)
+    if sys.argv[3] == "half_close":
+        client.shutdown(socket.SHUT_WR)
     while chunk := client.recv(4096):
         response.extend(chunk)
-    sys.exit(0 if response.endswith(b"\r\n\r\nok") else 3)
+    expected = (b"HTTP/1.1 200 OK\r\nContent-Type: " + sys.argv[2].encode() +
+                b"\r\nContent-Length: 2\r\n\r\nok")
+    sys.exit(0 if bytes(response) == expected else 3)
 '''
                     with patch.dict(os.environ, {"DOCKER_HOST": "unix://" + endpoint}), \
                          patch.object(tempfile, "tempdir", directory):
-                        result = module.main([sys.executable, "-c", child, route])
+                        result = module.main([sys.executable, "-c", child, route, content_type,
+                                              "half_close" if half_close else "stay_open"])
                     server.join(timeout=3)
                 self.assertFalse(server.is_alive())
                 self.assertNotIn("error", observed)

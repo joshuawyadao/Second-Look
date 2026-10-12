@@ -176,7 +176,7 @@ final class ConnectedAppModel {
     }
 
     func restore() async {
-        guard canUseForeground, selected, accountID == nil, let configuration else { return }
+        guard canUseForeground, selected, !busy, accountID == nil, let configuration else { return }
         let epoch = generation
         var pendingSessionID: UUID?
         defer {

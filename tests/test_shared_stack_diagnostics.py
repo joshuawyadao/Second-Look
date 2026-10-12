@@ -110,10 +110,18 @@ class SharedStackDiagnosticsTests(unittest.TestCase):
                 self.assertNotIn(str(self.log), message)
 
     def test_multiple_or_unrecognized_adapter_markers_do_not_guess(self):
+        secret = b"sb_secret_PRIVATE_TEST_ONLY"
         self.assertEqual(self.classify(b"Local Docker adapter failed\nLocal Docker adapter phase: request\n"
-                                       b"Local Docker adapter phase: upstream_connect\n"), "docker")
+                                       b"Local Docker adapter phase: upstream_connect\n" + secret), "docker")
         self.assertEqual(startup_failure_message(self.log),
-                         "Local Supabase startup failed: Multiple local Docker adapter phases; inspect the private stack log.")
+                         "Local Supabase startup failed: Observed local Docker adapter phases in inspected log tail (request, upstream_connect); first observed: request; cause unconfirmed; inspect the private stack log.")
+        self.assertNotIn(secret.decode(), startup_failure_message(self.log))
+        self.assertEqual(self.classify(b"Local Docker adapter phase: upstream_connect\n"
+                                       b"Local Docker adapter phase: request\n"
+                                       b"Local Docker adapter phase: upstream_connect\n" + secret), "docker")
+        self.assertEqual(startup_failure_message(self.log),
+                         "Local Supabase startup failed: Observed local Docker adapter phases in inspected log tail (upstream_connect, request); first observed: upstream_connect; cause unconfirmed; inspect the private stack log.")
+        self.assertNotIn(secret.decode(), startup_failure_message(self.log))
         self.assertEqual(self.classify(b"Local Docker adapter failed\nLocal Docker adapter phase: invented\n"),
                          "docker")
         self.assertEqual(startup_failure_message(self.log),

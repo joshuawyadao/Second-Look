@@ -143,11 +143,20 @@ def startup_failure_message(log_path: Path) -> str:
         subreasons = [name for name, patterns in _DOCKER_SUBREASONS.items()
                       if any(re.search(pattern, sample, re.IGNORECASE) for pattern in patterns)]
         if subreasons == ["adapter"]:
-            phases = [name for name, pattern in _ADAPTER_PHASE_PATTERNS.items()
-                      if re.search(pattern, sample, re.IGNORECASE)]
-            hint = (_ADAPTER_PHASE_MESSAGES[phases[0]] if len(phases) == 1 else
-                    "Multiple local Docker adapter phases; inspect the private stack log." if phases else
-                    _DOCKER_MESSAGES["adapter"])
+            observed = [(match.start(), name)
+                        for name, pattern in _ADAPTER_PHASE_PATTERNS.items()
+                        if (match := re.search(pattern, sample, re.IGNORECASE))]
+            phases = [name for _, name in sorted(observed)]
+            if len(phases) == 1:
+                hint = _ADAPTER_PHASE_MESSAGES[phases[0]]
+            elif phases:
+                # Names alone come from the whitelist. Their byte positions reveal
+                # order in the bounded sample, not the cause of startup failure.
+                hint = ("Observed local Docker adapter phases in inspected log tail (" +
+                        ", ".join(phases) + "); first observed: " + phases[0] +
+                        "; cause unconfirmed; inspect the private stack log.")
+            else:
+                hint = _DOCKER_MESSAGES["adapter"]
         else:
             hint = (_DOCKER_MESSAGES[subreasons[0]] if len(subreasons) == 1 else
                     "Multiple Docker/API signals or unspecified Docker failure; inspect the private stack log.")

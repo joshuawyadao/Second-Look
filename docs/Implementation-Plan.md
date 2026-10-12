@@ -27,7 +27,7 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 [x] Reject hostless iPhone endpoint configuration (4251782077) through one shared contract before persistence and HTTP. Four Auth/command assertions fail before the fix; all 9 transport cases pass afterward. Native Debug build passes. Save/push/acknowledge separately.
 [ ] Preserve and replay the original command envelope after an ambiguous reply (4251782086), including polling between attempts. Retain identity/body/revision only within the active account session, keep monotonic snapshots and stabilize editor creation identity. Add lost-response fake-client behavior regressions and document the M2 memory-only limitation.
 [ ] Permit pairing mutations only after confirmed not-paired lookup or a verified one-member owner snapshot (4251782094); unresolved membership must offer recovery without rotating an outstanding invitation. Keep epoch/access-loss guards and add the strongest feasible behavior check.
-[ ] Separate malformed client requests from malformed upstream/stored responses (4251782107); keep 4xx for bad input and 5xx for provider/state incidents, with bounded wire-shape regressions.
+[x] Separate malformed client requests from malformed upstream/stored responses (4251782107). The red server-response test fails four assertions before the change; all 12 boundary cases pass after typed client decoding remains400 and invalid provider/stored responses become bounded503. Save/push/acknowledge separately.
 [ ] Finish the fresh Codex review and terminal current-HEAD CI, check outstanding threads/mergeability, and update PR evidence/body. Report merge-ready only when all required gates pass; otherwise identify exact blockers and leave it unmerged.
 
 ## Open questions

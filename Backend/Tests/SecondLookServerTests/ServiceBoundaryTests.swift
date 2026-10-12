@@ -143,6 +143,47 @@ import SecondLookCore
         }
     }
 
+    @Test func invalidStoredResponsesAreServerFailures() async throws {
+        let configuration = try ServerConfiguration(environment: environment())
+        for mode in InvalidReadStore.Mode.allCases {
+            try await withApp { app in
+                try configure(app, configuration: configuration,
+                              verifier: SyntheticVerifier(account: owner),
+                              store: InvalidReadStore(mode: mode, peer: peer))
+                try await app.testing().test(.GET, "/v1/space", beforeRequest: { request in
+                    request.headers.bearerAuthorization = .init(token: "verified-synthetic")
+                }, afterResponse: { response in
+                    #expect(response.status == .serviceUnavailable)
+                    #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
+                    #expect(response.headers[.cacheControl] == ["no-store"])
+                })
+            }
+        }
+    }
+
+    @Test func malformedAuthenticatedBodiesRemainClientFailures() async throws {
+        let configuration = try ServerConfiguration(environment: environment())
+        try await withApp { app in
+            try configure(app, configuration: configuration,
+                          verifier: SyntheticVerifier(account: owner), store: InaccessibleStore())
+            for path in ["/v1/spaces", "/v1/spaces/\(UUID())/commands"] {
+                try await app.testing().test(.POST, path, beforeRequest: { request in
+                    request.headers.bearerAuthorization = .init(token: "verified-synthetic")
+                    request.body = ByteBuffer(string: "{")
+                }, afterResponse: { response in
+                    #expect(response.status == .badRequest)
+                    #expect(response.body.string == "{\"code\":\"invalidResponse\"}")
+                })
+            }
+            try await app.testing().test(.POST, "/v1/spaces", beforeRequest: { request in
+                request.body = ByteBuffer(string: "{")
+            }, afterResponse: { response in
+                #expect(response.status == .unauthorized)
+                #expect(response.body.string == "{\"code\":\"unauthenticated\"}")
+            })
+        }
+    }
+
     @Test func frameworkErrorsReturnBoundedResponses() async throws {
         let configuration = try ServerConfiguration(environment: environment())
         try await withApp { app in
@@ -212,6 +253,24 @@ private struct SyntheticVerifier: AccountVerifier {
 
 private struct InaccessibleStore: SpaceStore {
     func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult? { throw SharedStateFailure.forbidden }
+    func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String, result: SharedCommandResult) async throws -> SharedCommandResult { throw SharedStateFailure.forbidden }
+}
+
+private struct InvalidReadStore: SpaceStore {
+    enum Mode: CaseIterable, Sendable { case throwsInvalidResponse, returnsInvalidSnapshot }
+    let mode: Mode
+    let peer: UUID
+
+    func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot {
+        switch mode {
+        case .throwsInvalidResponse: throw SharedStateFailure.invalidResponse
+        case .returnsInvalidSnapshot:
+            return SharedSnapshot(spaceID: UUID(), revision: 1, members: [peer], state: .init())
+        }
+    }
     func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult? { throw SharedStateFailure.forbidden }

@@ -162,6 +162,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
 
 private struct Empty: Decodable {}
 private struct JoinBody: Decodable { let inviteToken: String }
+private enum MalformedClientRequest: Error { case invalid }
 private struct SyntheticEvidence: Codable {
     let spaceID: UUID; let runID: UUID; let itemID: UUID
     let expectedSpaceRevision: Int; let expectedRunRevision: Int
@@ -175,11 +176,11 @@ private func spaceID(_ request: Request) throws -> UUID {
 }
 
 private func decode<T: Decodable>(_ type: T.Type, request: Request, keys: Set<String>) throws -> T {
-    guard let buffer = request.body.data else { throw SharedStateFailure.invalidResponse }
+    guard let buffer = request.body.data else { throw MalformedClientRequest.invalid }
     let data = Data(buffer.readableBytesView)
     guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           Set(object.keys) == keys, let value = try? SharedWireCodec.decode(T.self, from: data) else {
-        throw SharedStateFailure.invalidResponse
+        throw MalformedClientRequest.invalid
     }
     return value
 }
@@ -204,7 +205,8 @@ private func respond(_ operation: () async throws -> Response) async -> Response
         case let SharedStateFailure.domain(domain): status = .badRequest; code = String(describing: domain)
         case let domain as SecondLookError: status = .badRequest; code = String(describing: domain)
         case SharedStateFailure.scopeMismatch: status = .badRequest; code = "scopeMismatch"
-        case SharedStateFailure.invalidResponse: status = .badRequest; code = "invalidResponse"
+        case MalformedClientRequest.invalid: status = .badRequest; code = "invalidResponse"
+        case SharedStateFailure.invalidResponse: status = .serviceUnavailable; code = "serviceUnavailable"
         default: status = .serviceUnavailable; code = "serviceUnavailable"
         }
         return Response(status: status, headers: ["Content-Type": "application/json", "Cache-Control": "no-store"],

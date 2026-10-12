@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from shared_stack_diagnostics import startup_failure_message
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ["npx", "--yes", "supabase@2.119.0"]
@@ -55,6 +56,17 @@ def wait_server(process, url):
     raise RuntimeError("Local Swift server did not become ready.")
 
 
+def start_stack(directory, env):
+    stack_log = directory / "stack.private.log"
+    with stack_log.open("w") as log:
+        try:
+            run(["python3", "scripts/local-docker-binding.py"] + CLI + ["start", "--network-id", NETWORK, "--exclude", EXCLUDED], env=env,
+                stdout=log, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError:
+            log.flush()
+            raise RuntimeError(startup_failure_message(stack_log)) from None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native", action="store_true", help="Also run paired and fresh-pairing iPhone simulator acceptance (macOS/Xcode).")
@@ -73,9 +85,7 @@ def main():
         if options.get("com.docker.network.bridge.host_binding_ipv4") != "127.0.0.1":
             raise RuntimeError("Local test network is not bound to loopback.")
     print("Starting isolated localhost Supabase services; output stays in a private temporary directory.", flush=True)
-    with (directory / "stack.private.log").open("w") as log:
-        run(["python3", "scripts/local-docker-binding.py"] + CLI + ["start", "--network-id", NETWORK, "--exclude", EXCLUDED], env=env,
-            stdout=log, stderr=subprocess.STDOUT)
+    start_stack(directory, env)
     bindings = json.loads(run(["docker", "inspect", f"supabase_db_{PROJECT}", f"supabase_kong_{PROJECT}"],
                               capture_output=True).stdout)
     for container in bindings:

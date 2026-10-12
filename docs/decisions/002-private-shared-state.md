@@ -14,9 +14,13 @@ The server verifies the bearer token with Auth on each request, then checks a co
 
 The phone sends typed commands with expected space/run/routine/evidence versions, never an actor, server clock or arbitrary replacement state. The service derives the actor from verified identity and applies the existing rules. Only privileged database RPCs can commit the resulting aggregate. A row lock and revision compare-and-swap atomically save state and an actor/request-bound command receipt. An identical retry returns current state plus the original created ID; reusing an ID with another actor or payload is rejected. A concurrent conflicting change requires a fresh snapshot and explicit new action.
 
+Each new user action receives a fresh command ID, even when its body equals an earlier unresolved action. Only an explicit retry with the same ID may reuse the original envelope, including its expected revision. The phone retains unresolved ID/body pairs in session memory and exposes a specific retry control; it never infers retry intent from command equality. Loaded local and connected state must correlate every closed run with its text archive, including fixed participants, ordered item history and decisions attributed to that run's reviewer.
+
 The private SQL schema is not exposed to PostgREST. Its tables have no direct client privileges and RLS is enabled. Public definer RPCs have a fixed empty search path and grant execution only to the service role. This credential is a trusted server capability, not client authorization; it never belongs in app configuration.
 
 Connected iPhone state is memory-only in M2. Keychain holds account credentials scoped to app identity and provider/server configuration. A new session gets an epoch; state publication, errors, credential saves and navigation require that epoch still to be current. Foreground polling/manual refresh fetch server snapshots; commands publish only after successful server commit. Local M1 stores and Debug role/fixture controls are a separate composition.
+
+Saved-session restoration admits one operation before reading or binding credentials. Invitation renewal clears the old displayed code before sending the request, because a committed rotation can invalidate that code even if its response is lost. Joining invalidates confirmed absence before sending; an uncertain or rejected result requires a genuine membership lookup before another pairing mutation. Account and foreground invalidation still prevent older responses from publishing. Debug localhost acceptance may deliberately discard a genuine pairing response or enqueue concurrent restores; those triggers are explicitly labeled simulated and are excluded from Release.
 
 ## Boundaries and consequences
 

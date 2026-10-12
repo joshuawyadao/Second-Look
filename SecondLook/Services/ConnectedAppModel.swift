@@ -16,6 +16,12 @@ final class ConnectedAppModel {
     var errorMessage: String?
     var busy = false
 
+    #if SECONDLOOK_DEMO
+    private(set) var commandAcceptanceStatus: String?
+    @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
+    @ObservationIgnored private var commandAcceptanceStarted = false
+    #endif
+
     @ObservationIgnored private let coordinator = SharedStateCoordinator()
     @ObservationIgnored private var vault: AuthSessionVault?
     @ObservationIgnored private var client: SharedHTTPClient?
@@ -262,16 +268,58 @@ final class ConnectedAppModel {
         snapshot = incoming
         retryMembership = false
         status = incoming.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
+        #if SECONDLOOK_DEMO
+        startCommandAcceptanceIfRequested()
+        #endif
     }
 
-    func refresh(quietly: Bool = false) async {
-        guard canUseForeground, let client, let accountID, let configuration else { return }
+    #if SECONDLOOK_DEMO
+    /// Explicit UI-test opt-in uses the installed account client; no credential is exported.
+    private func startCommandAcceptanceIfRequested() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-ui-testing"), arguments.contains("-shared-testing"),
+              arguments.contains("-shared-command-checks"), !commandAcceptanceStarted,
+              peerJoined, canUseForeground, let client, let vault, let accountID else { return }
+        commandAcceptanceStarted = true
+        let epoch = generation
+        commandAcceptanceTask = Task { [weak self] in
+            guard let self, self.currentForegroundSession(epoch) else { return }
+            self.busy = true
+            do {
+                try await vault.verifyRefreshForAcceptance()
+            } catch {
+                guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
+                self.commandAcceptanceStatus = "Shared command checks failed: sessionRefresh"
+                self.busy = false
+                return
+            }
+            let report = await SharedCommandAcceptanceChecks.run(client: client, accountID: accountID)
+            guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
+            let refreshed = await self.refresh()
+            guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
+            self.commandAcceptanceStatus = !refreshed ? "Shared command checks failed: postRunRefresh" :
+                report.allPassed ? "Shared command checks passed" :
+                "Shared command checks failed: " + (report.firstFailedStepID?.rawValue ?? "incomplete")
+            self.busy = false
+        }
+    }
+
+    private func cancelCommandAcceptance() {
+        commandAcceptanceTask?.cancel()
+        commandAcceptanceTask = nil
+        commandAcceptanceStatus = nil
+    }
+    #endif
+
+    @discardableResult
+    func refresh(quietly: Bool = false) async -> Bool {
+        guard canUseForeground, let client, let accountID, let configuration else { return false }
         let epoch = generation
         busy = true
         do {
             // A fresh membership lookup also catches a revoked or changed space.
             let incoming = try await client.currentSpace()
-            guard currentForegroundSession(epoch) else { return }
+            guard currentForegroundSession(epoch) else { return false }
             try incoming.validate(for: accountID)
             if snapshot?.spaceID != incoming.spaceID {
                 try publishSpace(incoming, accountID: accountID,
@@ -279,7 +327,7 @@ final class ConnectedAppModel {
             } else {
                 let floor = max(snapshot?.revision ?? 0, incoming.revision)
                 try await coordinator.refresh()
-                guard currentForegroundSession(epoch) else { return }
+                guard currentForegroundSession(epoch) else { return false }
                 guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
                     throw SharedStateFailure.staleState
                 }
@@ -289,6 +337,7 @@ final class ConnectedAppModel {
             status = snapshot?.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
             retryMembership = false
             busy = false
+            return true
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession(); snapshot = nil; invitation = nil
@@ -313,6 +362,7 @@ final class ConnectedAppModel {
                 busy = false
             }
         }
+        return false
     }
 
     /// Any transition away from the foreground invalidates in-flight publications, including
@@ -322,6 +372,9 @@ final class ConnectedAppModel {
         let wasEligible = foregroundEligible
         foregroundEligible = false
         guard selected, wasEligible else { return }
+        #if SECONDLOOK_DEMO
+        cancelCommandAcceptance()
+        #endif
         generation &+= 1
         if accountID == nil {
             // A pre-install auth/restore task must not persist its response after this point.
@@ -422,6 +475,10 @@ final class ConnectedAppModel {
     }
 
     private func resetSession() {
+        #if SECONDLOOK_DEMO
+        cancelCommandAcceptance()
+        commandAcceptanceStarted = false
+        #endif
         generation &+= 1
         foregroundRevalidationPending = false
         retryMembership = false

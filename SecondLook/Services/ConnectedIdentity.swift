@@ -195,6 +195,16 @@ actor AuthSessionVault {
         guard !invalidated, user.id == accountID else { throw SharedStateFailure.unauthenticated }
     }
 
+    #if SECONDLOOK_DEMO
+    /// Drive the existing near-expiry refresh path against Auth during explicit acceptance.
+    func verifyRefreshForAcceptance() async throws {
+        try Task.checkCancellation()
+        expiresAt = .distantPast
+        try await verify()
+        try Task.checkCancellation()
+    }
+    #endif
+
     func invalidate() { invalidated = true; refreshTask?.cancel(); refreshTask = nil; access = ""; refreshValue = "" }
 
     nonisolated static var localHTTPAllowed: Bool {

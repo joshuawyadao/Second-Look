@@ -13,6 +13,7 @@ struct ConnectedRootView: View {
                 VStack(alignment: .leading) {
                     Text("PRIVATE SHARED SPACE").font(.caption.bold())
                     Text(model.status).font(.caption2).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("sharedConnectionStatus")
                 }
                 Spacer()
                 if model.busy { ProgressView().accessibilityLabel("Synchronizing") }
@@ -21,6 +22,13 @@ struct ConnectedRootView: View {
             }
             .padding(.horizontal).padding(.vertical, 8)
             .background(.thinMaterial)
+
+            #if SECONDLOOK_DEMO
+            if let result = model.commandAcceptanceStatus {
+                Text(result).font(.caption)
+                    .accessibilityIdentifier("sharedCommandAcceptanceResult")
+            }
+            #endif
 
             if model.accountID == nil {
                 ConnectedSignInView()

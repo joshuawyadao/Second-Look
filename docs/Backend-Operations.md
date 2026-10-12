@@ -24,6 +24,8 @@ Prerequisites: Swift 6.2+ server toolchain (CI pins 6.2.1), Node 20+, Docker-com
 
 The proxy preserves Docker's explicit HTTP Upgrade for exec streams and forwards input/output in both directions, including a client half-close. Ordinary HTTP responses keep their close/stream behavior. Fake Unix-socket regressions exercise upgrade, stdin, framed output and ordinary HTTP without a real daemon; named-container refusal and loopback rewriting remain enforced.
 
+Fresh setup in the [pinned CLI's database bootstrap](https://github.com/supabase/cli/blob/v2.119.0/apps/cli/src/command-internal/db-bootstrap/db-setup.ts#L380-L429) runs an unnamed Auth migration container. The adapter permits a missing/empty name only when both `com.supabase.cli.project` and `com.docker.compose.project` equal `secondlook-m2-local` and `HostConfig.NetworkMode` equals `secondlook_m2_local`. Unrelated named containers remain denied even with those labels. The same loopback rewrite applies to permitted unnamed containers; this exception does not allow arbitrary utility jobs.
+
 ```sh
 swift test
 swift test --package-path Backend
@@ -59,6 +61,8 @@ Credentials use Keychain; connected snapshots are memory-only. Signing out immed
 The native transport keeps Supabase Auth failure decoding separate from command-service errors. Auth HTTP 400 `invalid_credentials` becomes a bounded incorrect-email/password error; `refresh_token_not_found` and `refresh_token_already_used` require a fresh sign-in. Unknown or malformed Auth400 replies remain invalid responses, and command-service `code` mapping is unchanged. Product UI never displays raw provider messages or request contents. [Supabase's error reference](https://supabase.com/docs/guides/auth/debugging/error-codes) documents the recognized codes; synthetic transport regressions cover their wire shapes and successful sign-in/session decoding.
 
 Debug UI acceptance uses both `-ui-testing` and `-shared-testing`, a separate Keychain namespace, simulator-only ad hoc signing with the Debug Keychain entitlement, and public configuration passed by the UI test runner. The private fixture is never bundled into the app or Release.
+
+An additional explicit `-shared-command-checks` flag runs Debug command acceptance on an already paired account. It forces the normal Auth refresh path and checks request-bound retries, stale revisions, conflicting writes, immutable run snapshots, terminal races, closed-run denial, text archives and performer self-review denial without a submission. It creates invented text records and leaves pre-existing records untouched. Its result appears only after completion and successful final refresh; no token, snapshot or provider diagnostic is displayed. Background/account changes cancel the task and clear the result. Normal Debug launches and Release do not run it. For a running paired synthetic server, `verify-connected-native.py --fixture /absolute/private/ui-fixture.private.json --only-shared-commands` selects just this case. Hosted use requires the existing approved account/configuration and must omit `-reset-demo`; local fixture execution is not hosted evidence.
 
 ## Hosted setup and pending acceptance
 

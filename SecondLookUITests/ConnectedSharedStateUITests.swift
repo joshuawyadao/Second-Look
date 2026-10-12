@@ -54,13 +54,18 @@ final class ConnectedSharedStateUITests: XCTestCase {
         let createdRoutine = app.staticTexts["sharedRoutine-\(createdTitle)"]
         XCTAssertTrue(revealRoutine(createdTitle, in: app),
                       "Owner's accepted routine command should appear from the server snapshot")
-        XCUIDevice.shared.press(.home)
-        app.activate()
-        XCTAssertTrue(app.staticTexts["Private space connected."].waitForExistence(timeout: 20),
-                      "Foreground return must revalidate the signed-in account and membership")
-        XCTAssertTrue(revealRoutine(routineTitle, in: app))
-        XCTAssertTrue(revealRoutine(createdTitle, in: app),
-                      "Foreground return must restore the latest accepted shared snapshot")
+        for _ in 0..<3 {
+            XCUIDevice.shared.press(.home)
+            app.activate()
+            let foregroundConnected = app.staticTexts["Private space connected."].waitForExistence(timeout: 20)
+            XCTAssertTrue(foregroundConnected,
+                          "Foreground return must revalidate the signed-in account and membership; " +
+                          safeConnectionContext(in: app))
+            guard foregroundConnected else { return }
+            XCTAssertTrue(revealRoutine(routineTitle, in: app))
+            XCTAssertTrue(revealRoutine(createdTitle, in: app),
+                          "Foreground return must restore the latest accepted shared snapshot")
+        }
         // Relaunch without the Debug reset flag: the test-scoped public configuration and
         // Keychain session must be revalidated before shared state is fetched again.
         app.terminate()
@@ -142,8 +147,31 @@ final class ConnectedSharedStateUITests: XCTestCase {
 
         signOut(in: app)
         signIn(fixture.owner, in: app)
-        XCTAssertTrue(app.staticTexts["Private space connected."].waitForExistence(timeout: 20),
-                      "Owner should reopen the same joined space after fresh auth and membership checks")
+        let ownerReopened = app.staticTexts["Private space connected."].waitForExistence(timeout: 20)
+        XCTAssertTrue(ownerReopened,
+                      "Owner should reopen the same joined space after fresh auth and membership checks; " +
+                      safeConnectionContext(in: app))
+    }
+
+    /// Report only bounded state categories; never dump the tree, credentials or fixture.
+    private func safeConnectionContext(in app: XCUIApplication) -> String {
+        let statusText = app.staticTexts["sharedConnectionStatus"].firstMatch
+        let label = statusText.exists ? statusText.label : ""
+        let status: String
+        switch label {
+        case "Private space connected.": status = "connected"
+        case "Checking private-space access…": status = "checking_access"
+        case "Could not synchronize. Retrying when connected.": status = "synchronization_failed"
+        case "Sign in to connect a private space.": status = "signed_out"
+        case "Could not authenticate this account.": status = "authentication_failed"
+        case "Sign-in was interrupted. Reconnect when the app is active.": status = "sign_in_interrupted"
+        case "Could not check private-space membership. Try again when connected.": status = "membership_failed"
+        case "Could not reconnect. Try again when the service is available.": status = "restoration_failed"
+        case "This account is no longer paired.": status = "not_paired"
+        default: status = "other_or_unavailable"
+        }
+        let hasSharedAlert = app.alerts["Shared action not completed"].exists
+        return "app_state=\(app.state.rawValue), status=\(status), shared_alert=\(hasSharedAlert)"
     }
 
     private func signIn(_ account: Account, in app: XCUIApplication) {

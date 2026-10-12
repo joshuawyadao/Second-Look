@@ -122,19 +122,31 @@ final class SecondLookUITests: XCTestCase {
         enter("stepTitle-0", text: "Pack lunch")
 
         let snooze = app.switches["snoozeToggle"]
+        func visibleBottom() -> CGFloat {
+            let keyboard = app.keyboards.firstMatch
+            return keyboard.exists
+                ? min(app.frame.maxY - 100, keyboard.frame.minY - 16)
+                : app.frame.maxY - 100
+        }
         for _ in 0..<6 {
             if snooze.exists {
                 let frame = snooze.frame
                 if frame.width > 0 && frame.height > 0 &&
-                    frame.minY > app.frame.minY + 80 && frame.maxY < app.frame.maxY - 100 { break }
+                    frame.minY > app.frame.minY + 80 && frame.maxY < visibleBottom() { break }
             }
             app.swipeUp()
         }
         XCTAssertTrue(snooze.exists)
         XCTAssertGreaterThan(snooze.frame.height, 0)
-        XCTAssertLessThan(snooze.frame.maxY, app.frame.maxY - 100)
-        // SwiftUI exposes the whole row as a switch; tap its trailing control.
+        XCTAssertLessThan(snooze.frame.maxY, visibleBottom())
+        XCTAssertTrue(snooze.isHittable)
+        // SwiftUI exposes the full row; its trailing control must clear the keyboard.
         snooze.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let enabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"), object: snooze
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed,
+                       "Snooze did not enable after tapping the switch at \(snooze.frame)")
         XCTAssertEqual(snooze.value as? String, "1")
 
         let deadline = app.staticTexts["snoozeDeadline"]

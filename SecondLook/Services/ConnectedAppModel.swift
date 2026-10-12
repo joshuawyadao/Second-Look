@@ -12,6 +12,7 @@ final class ConnectedAppModel {
     private(set) var snapshot: SharedSnapshot?
     private(set) var invitation: PairingInvitation?
     private(set) var retryMembership = false
+    private(set) var confirmedNoSpace = false
     private(set) var status = "Sign in to connect a private space."
     var errorMessage: String?
     var busy = false
@@ -19,6 +20,8 @@ final class ConnectedAppModel {
     #if SECONDLOOK_DEMO
     private(set) var commandAcceptanceStatus: String?
     private(set) var accessInvalidatedForAcceptance = false
+    private(set) var simulatedMembershipFailure = false
+    @ObservationIgnored private var didSimulateMembershipFailure = false
     @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
     @ObservationIgnored private var commandAcceptanceStarted = false
     #endif
@@ -81,6 +84,12 @@ final class ConnectedAppModel {
     var isPaired: Bool { snapshot != nil }
     var peerJoined: Bool { snapshot?.members.count == 2 }
     var canConnect: Bool { configuration != nil }
+    var canCreatePrivateSpace: Bool {
+        guard accountID != nil, canUseForeground else { return false }
+        return (snapshot == nil && confirmedNoSpace) ||
+            (snapshot?.members.count == 1 && snapshot?.members.first == accountID)
+    }
+    var canJoinPrivateSpace: Bool { accountID != nil && canUseForeground && snapshot == nil && confirmedNoSpace }
     var openRuns: [ChecklistRun] { state.runs.filter(\.isOpen).sorted { $0.startedAt > $1.startedAt } }
     func run(_ id: UUID) -> ChecklistRun? { state.runs.first { $0.id == id } }
     func latestOpenRun(_ id: UUID) -> ChecklistRun? { openRuns.first { $0.routineID == id } }
@@ -201,7 +210,17 @@ final class ConnectedAppModel {
 
     private func discoverSpace(epoch: UInt64) async {
         guard let client, let accountID, let configuration else { return }
+        confirmedNoSpace = false
         do {
+            #if SECONDLOOK_DEMO
+            let arguments = ProcessInfo.processInfo.arguments
+            if !didSimulateMembershipFailure, arguments.contains("-ui-testing"),
+               arguments.contains("-shared-testing"), arguments.contains("-shared-test-membership-failure") {
+                didSimulateMembershipFailure = true
+                simulatedMembershipFailure = true
+                throw SharedStateFailure.serviceUnavailable
+            }
+            #endif
             let incoming = try await client.currentSpace()
             guard currentForegroundSession(epoch) else { return }
             try publishSpace(incoming, accountID: accountID, configuration: configuration,
@@ -212,6 +231,7 @@ final class ConnectedAppModel {
                 coordinator.endSession()
                 snapshot = nil
                 invitation = nil
+                confirmedNoSpace = true
                 status = "Signed in. Create a private space or enter an invitation."
                 busy = false
             }
@@ -219,6 +239,7 @@ final class ConnectedAppModel {
             if currentForegroundSession(epoch) {
                 let message = Self.safeMessage(error)
                 if !clearSessionIfAccessLost(error) {
+                    retryMembership = true
                     status = "Could not check private-space membership. Try again when connected."
                 }
                 errorMessage = message
@@ -228,8 +249,7 @@ final class ConnectedAppModel {
     }
 
     func createSpace() async {
-        guard canUseForeground, let client, let accountID, let configuration,
-              snapshot == nil || (snapshot?.members.count == 1 && snapshot?.members.first == accountID) else { return }
+        guard canCreatePrivateSpace, !busy, let client, let accountID, let configuration else { return }
         let epoch = generation
         busy = true
         do {
@@ -249,7 +269,7 @@ final class ConnectedAppModel {
     }
 
     func joinSpace(token: String) async {
-        guard canUseForeground, let client, let accountID, let configuration, snapshot == nil else { return }
+        guard canJoinPrivateSpace, !busy, let client, let accountID, let configuration else { return }
         let epoch = generation
         busy = true
         do {
@@ -281,9 +301,11 @@ final class ConnectedAppModel {
                                                             spaceID: incoming.spaceID), client: client)
         // The first authenticated space lookup is already validated and held only in memory.
         snapshot = incoming
+        confirmedNoSpace = false
         retryMembership = false
         status = incoming.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
         #if SECONDLOOK_DEMO
+        simulatedMembershipFailure = false
         startCommandAcceptanceIfRequested()
         #endif
     }
@@ -358,6 +380,7 @@ final class ConnectedAppModel {
     func refresh(quietly: Bool = false) async -> Bool {
         guard canUseForeground, let client, let accountID, let configuration else { return false }
         let epoch = generation
+        confirmedNoSpace = false
         busy = true
         do {
             // A fresh membership lookup also catches a revoked or changed space.
@@ -384,6 +407,7 @@ final class ConnectedAppModel {
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession(); snapshot = nil; invitation = nil
+                confirmedNoSpace = true
                 retryMembership = false
                 status = "This account is no longer paired."
                 busy = false
@@ -411,6 +435,7 @@ final class ConnectedAppModel {
     func holdForValidation() {
         let wasEligible = foregroundEligible
         foregroundEligible = false
+        confirmedNoSpace = false
         guard selected, wasEligible else { return }
         #if SECONDLOOK_DEMO
         cancelCommandAcceptance()
@@ -529,10 +554,13 @@ final class ConnectedAppModel {
         cancelCommandAcceptance()
         commandAcceptanceStarted = false
         accessInvalidatedForAcceptance = false
+        simulatedMembershipFailure = false
+        didSimulateMembershipFailure = false
         #endif
         generation &+= 1
         foregroundRevalidationPending = false
         retryMembership = false
+        confirmedNoSpace = false
         if let configuration { ConnectedKeychain.clearBinding(configuration: configuration) }
         if let vault { Task { await vault.invalidate() } }
         coordinator.endSession()

@@ -24,6 +24,10 @@ struct ConnectedRootView: View {
             .background(.thinMaterial)
 
             #if SECONDLOOK_DEMO
+            if model.simulatedMembershipFailure {
+                Text("Membership lookup failure (simulated for acceptance)").font(.caption)
+                    .accessibilityIdentifier("sharedSimulatedMembershipFailure")
+            }
             if let result = model.commandAcceptanceStatus {
                 Text(result).font(.caption)
                     .accessibilityIdentifier("sharedCommandAcceptanceResult")
@@ -188,8 +192,11 @@ private struct ConnectedPairingView: View {
                 Section("Your private space") {
                     Text("Each private space has exactly two authorized accounts. The invitation is restricted to the other provisioned account and expires.")
                     Button("Create private space") { model.enqueue { await model.createSpace() } }
-                        .disabled(model.busy)
+                        .disabled(model.busy || !model.canCreatePrivateSpace)
                         .accessibilityIdentifier("createPrivateSpace")
+                    if !model.confirmedNoSpace {
+                        Text("Check private-space membership before creating or joining a space.")
+                    }
                     if let invitation = model.invitation {
                         Text("Invitation for the other account")
                         Text(invitation.inviteToken)
@@ -204,11 +211,13 @@ private struct ConnectedPairingView: View {
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("invitationCode")
                     Button("Join private space") { model.enqueue { await model.joinSpace(token: token) } }
-                        .disabled(model.busy || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(model.busy || !model.canJoinPrivateSpace || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("joinPrivateSpace")
                 }
                 Section {
                     Button("Check for pairing") { model.enqueue { await model.refresh() } }
+                        .disabled(model.busy)
+                        .accessibilityIdentifier("sharedCheckPairing")
                 }
             }
             .navigationTitle("Pair accounts")

@@ -122,10 +122,17 @@ final class SecondLookUITests: XCTestCase {
         enter("stepTitle-0", text: "Pack lunch")
 
         let snooze = app.switches["snoozeToggle"]
-        for _ in 0..<6 where !snooze.isHittable || snooze.frame.maxY > app.frame.maxY - 100 {
+        for _ in 0..<6 {
+            if snooze.exists {
+                let frame = snooze.frame
+                if frame.width > 0 && frame.height > 0 &&
+                    frame.minY > app.frame.minY + 80 && frame.maxY < app.frame.maxY - 100 { break }
+            }
             app.swipeUp()
         }
-        XCTAssertTrue(snooze.isHittable)
+        XCTAssertTrue(snooze.exists)
+        XCTAssertGreaterThan(snooze.frame.height, 0)
+        XCTAssertLessThan(snooze.frame.maxY, app.frame.maxY - 100)
         // SwiftUI exposes the whole row as a switch; tap its trailing control.
         snooze.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         XCTAssertEqual(snooze.value as? String, "1")

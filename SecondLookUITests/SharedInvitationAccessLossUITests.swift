@@ -94,6 +94,15 @@ final class SharedInvitationAccessLossUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["pairingInvitation"].exists)
         XCTAssertFalse(app.buttons["sharedCreateRoutine"].exists)
         XCTAssertFalse(app.staticTexts["Private space connected."].exists)
+
+        // A new process must not restore the rejected session from Keychain.
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-shared-testing", "-shared-no-periodic-poll"]
+        app.launch()
+        XCTAssertTrue(email.waitForExistence(timeout: 20), "Access loss must remain signed out after relaunch")
+        XCTAssertTrue(app.buttons["sharedSignIn"].exists)
+        XCTAssertFalse(app.staticTexts["Waiting for your invited reviewer."].exists)
+        XCTAssertFalse(app.staticTexts["pairingInvitation"].exists)
     }
 
     private func safeContext(in app: XCUIApplication) -> String {

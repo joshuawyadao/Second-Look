@@ -11,6 +11,7 @@ from socketserver import ThreadingMixIn, UnixStreamServer
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -21,6 +22,8 @@ from urllib.parse import parse_qs, urlsplit
 PROJECT = "secondlook-m2-local"
 NETWORK = "secondlook_m2_local"
 PROJECT_LABELS = ("com.supabase.cli.project", "com.docker.compose.project")
+DOCKER_STREAM_TYPES = frozenset((b"application/vnd.docker.raw-stream",
+                                 b"application/vnd.docker.multiplexed-stream"))
 ADAPTER_PHASE_MARKERS = {
     "container_scope": "Local Docker adapter phase: container_scope",
     "request": "Local Docker adapter phase: request",
@@ -79,6 +82,13 @@ def read_chunked(stream, limit: int = 8 * 1024 * 1024) -> bytes:
         if len(chunk) != size or stream.read(2) != b"\r\n":
             raise ValueError("Incomplete Docker request body.")
         body.extend(chunk)
+
+
+def is_docker_stream_route(method: str, path: str) -> bool:
+    if method != "POST":
+        return False
+    route = urlsplit(path).path
+    return bool(re.fullmatch(r"/(?:v\d+\.\d+/)?(?:exec/[^/]+/start|containers/[^/]+/attach)", route))
 
 
 def main(arguments: list[str]) -> int:
@@ -142,7 +152,8 @@ def main(arguments: list[str]) -> int:
                         phase = "downstream_write"
                         self.connection.sendall(data)
 
-                    if wants_upgrade:
+                    stream_route = is_docker_stream_route(self.command, self.path)
+                    if wants_upgrade or stream_route:
                         response = bytearray()
                         while b"\r\n\r\n" not in response:
                             chunk = receive_upstream()
@@ -151,10 +162,19 @@ def main(arguments: list[str]) -> int:
                             response.extend(chunk)
                             if len(response) > 64 * 1024 and b"\r\n\r\n" not in response:
                                 raise ValueError("Unexpected upstream response header size.")
-                        status = bytes(response).split(b"\r\n", 1)[0].split()
+                        header_end = response.index(b"\r\n\r\n")
+                        if header_end > 64 * 1024:
+                            raise ValueError("Unexpected upstream response header size.")
+                        lines = bytes(response[:header_end]).split(b"\r\n")
+                        status = lines[0].split()
+                        content_types = [line.split(b":", 1)[1].strip().split(b";", 1)[0].lower()
+                                         for line in lines[1:] if line.lower().startswith(b"content-type:")]
+                        hijacked = ((len(status) >= 2 and status[1] == b"101" and wants_upgrade) or
+                                    (len(status) >= 2 and status[1] == b"200" and stream_route and
+                                     len(content_types) == 1 and content_types[0] in DOCKER_STREAM_TYPES))
                         send_downstream(response)
                         response_started = True
-                        if len(status) >= 2 and status[1] == b"101":
+                        if hijacked:
                             def client_to_upstream():
                                 try:
                                     while chunk := self.rfile.read1(65536):

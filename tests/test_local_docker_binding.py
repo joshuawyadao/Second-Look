@@ -216,6 +216,161 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         self.assertIn(b"connection: upgrade", observed["head"])
         self.assertEqual(observed["stdin"], payload)
 
+    def test_unupgraded_docker_hijack_forwards_stdin_and_half_close(self):
+        payload = b"synthetic exec stdin"
+        output = b"synthetic exec stdout"
+        frame = b"\x01\x00\x00\x00" + len(output).to_bytes(4, "big") + output
+        routes = (("/v1.48/exec/example/start", "application/vnd.docker.raw-stream"),
+                  ("/v1.48/exec/example/start", "application/vnd.docker.multiplexed-stream"),
+                  ("/v1.48/containers/example/attach?stdin=1&stdout=1", "application/vnd.docker.raw-stream"))
+        for route, content_type in routes:
+            with self.subTest(route=route, content_type=content_type), \
+                 tempfile.TemporaryDirectory(prefix="sl-adapter-test-", dir="/tmp") as directory:
+                endpoint = str(Path(directory) / "upstream.sock")
+                observed = {}
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                    listener.bind(endpoint)
+                    listener.listen(1)
+
+                    def upstream():
+                        try:
+                            with listener.accept()[0] as connection:
+                                connection.settimeout(1)
+                                request = bytearray()
+                                while b"\r\n\r\n" not in request:
+                                    request.extend(connection.recv(4096))
+                                observed["head"] = bytes(request).split(b"\r\n\r\n", 1)[0].lower()
+                                connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: " +
+                                                   content_type.encode() + b"\r\n\r\n")
+                                received = bytearray()
+                                try:
+                                    while chunk := connection.recv(4096):
+                                        received.extend(chunk)
+                                except socket.timeout:
+                                    pass  # The old proxy never forwarded unupgraded stdin.
+                                observed["stdin"] = bytes(received)
+                                connection.sendall(frame)
+                                connection.shutdown(socket.SHUT_WR)
+                        except BaseException as error:
+                            observed["error"] = error
+
+                    server = threading.Thread(target=upstream, daemon=True)
+                    server.start()
+                    child = r'''
+import os, socket, sys
+endpoint = os.environ["DOCKER_HOST"].removeprefix("unix://")
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+    client.settimeout(4)
+    client.connect(endpoint)
+    route = sys.argv[1].encode()
+    client.sendall(b"POST " + route + b" HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\n\r\n")
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        response.extend(client.recv(4096))
+    head, remainder = bytes(response).split(b"\r\n\r\n", 1)
+    if b"200" not in head.split(b"\r\n", 1)[0]:
+        sys.exit(2)
+    client.sendall(b"synthetic exec stdin")
+    client.shutdown(socket.SHUT_WR)
+    while chunk := client.recv(4096):
+        remainder += chunk
+    expected = b"\x01\x00\x00\x00" + len(b"synthetic exec stdout").to_bytes(4, "big") + b"synthetic exec stdout"
+    sys.exit(0 if remainder == expected else 3)
+'''
+                    with patch.dict(os.environ, {"DOCKER_HOST": "unix://" + endpoint}), \
+                         patch.object(tempfile, "tempdir", directory):
+                        result = module.main([sys.executable, "-c", child, route])
+                    server.join(timeout=3)
+                self.assertFalse(server.is_alive())
+                self.assertNotIn("error", observed)
+                self.assertEqual(result, 0)
+                self.assertIn(b"connection: close", observed["head"])
+                self.assertEqual(observed["stdin"], payload)
+
+    def test_unupgraded_nonstream_responses_remain_one_way(self):
+        cases = (("/v1.48/exec/example/start", "application/json"),
+                 ("/v1.48/containers/example/json", "application/vnd.docker.raw-stream"))
+        for route, content_type in cases:
+            with self.subTest(route=route, content_type=content_type), \
+                 tempfile.TemporaryDirectory(prefix="sl-adapter-test-", dir="/tmp") as directory:
+                endpoint = str(Path(directory) / "upstream.sock")
+                observed = {}
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                    listener.bind(endpoint)
+                    listener.listen(1)
+
+                    def upstream():
+                        try:
+                            with listener.accept()[0] as connection:
+                                connection.settimeout(1)
+                                request = bytearray()
+                                while b"\r\n\r\n" not in request:
+                                    request.extend(connection.recv(4096))
+                                connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: " +
+                                                   content_type.encode() + b"\r\nContent-Length: 2\r\n\r\nok")
+                                try:
+                                    observed["stdin"] = connection.recv(4096)
+                                except socket.timeout:
+                                    observed["stdin"] = b""
+                        except BaseException as error:
+                            observed["error"] = error
+
+                    server = threading.Thread(target=upstream, daemon=True)
+                    server.start()
+                    child = r'''
+import os, socket, sys
+endpoint = os.environ["DOCKER_HOST"].removeprefix("unix://")
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+    client.settimeout(4)
+    client.connect(endpoint)
+    client.sendall(b"POST " + sys.argv[1].encode() + b" HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\n\r\n")
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        response.extend(client.recv(4096))
+    client.sendall(b"synthetic stdin must not forward")
+    client.shutdown(socket.SHUT_WR)
+    while chunk := client.recv(4096):
+        response.extend(chunk)
+    sys.exit(0 if response.endswith(b"\r\n\r\nok") else 3)
+'''
+                    with patch.dict(os.environ, {"DOCKER_HOST": "unix://" + endpoint}), \
+                         patch.object(tempfile, "tempdir", directory):
+                        result = module.main([sys.executable, "-c", child, route])
+                    server.join(timeout=3)
+                self.assertFalse(server.is_alive())
+                self.assertNotIn("error", observed)
+                self.assertEqual(result, 0)
+                self.assertEqual(observed["stdin"], b"")
+
+    def test_unupgraded_stream_header_is_bounded_and_private(self):
+        with tempfile.TemporaryDirectory(prefix="sl-adapter-test-", dir="/tmp") as directory:
+            endpoint = str(Path(directory) / "upstream.sock")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(endpoint)
+                listener.listen(1)
+
+                def upstream():
+                    with listener.accept()[0] as connection:
+                        connection.settimeout(2)
+                        request = bytearray()
+                        while b"\r\n\r\n" not in request:
+                            request.extend(connection.recv(4096))
+                        try:
+                            connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: " +
+                                               b"application/vnd.docker.raw-stream\r\nX-Padding: " +
+                                               b"SYNTHETIC_PRIVATE_HEADER" * 3000 + b"\r\n\r\n")
+                        except OSError:
+                            pass  # The proxy may close as soon as its header limit is reached.
+
+                server = threading.Thread(target=upstream, daemon=True)
+                server.start()
+                request = b"POST /v1.48/exec/example/start HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\n\r\n"
+                markers = self._failed_proxy_request(endpoint, request, directory)
+                server.join(timeout=3)
+        self.assertFalse(server.is_alive())
+        self.assertEqual(markers, module.ADAPTER_PHASE_MARKERS["response_read"] + "\n")
+        self.assertNotIn("SYNTHETIC_PRIVATE_HEADER", markers)
+
     def test_forces_each_published_port_to_loopback(self):
         payload = {"HostConfig": {"PortBindings": {"5432/tcp": [
             {"HostIp": "0.0.0.0", "HostPort": "56322"}, {"HostIp": "::", "HostPort": "56322"}]}},

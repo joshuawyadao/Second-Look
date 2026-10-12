@@ -194,6 +194,14 @@ def main():
                 fresh_path.write_text(json.dumps(dict(ui_fixture, freshPairing=True)))
                 print("Running native owner creation and invited-peer join against an empty synthetic space.", flush=True)
                 run(["python3", "scripts/verify-connected-native.py", "--fixture", str(fresh_path)])
+                run(["docker", "exec", f"supabase_db_{PROJECT}", "psql", "-U", "postgres", "-d", "postgres",
+                     "-v", "ON_ERROR_STOP=1", "-c",
+                     "truncate secondlook_private.command_receipts, secondlook_private.spaces;"], stdout=subprocess.DEVNULL)
+                access_loss_path = directory / "ui-access-loss.private.json"
+                access_loss_path.write_text(json.dumps(dict(ui_fixture, invitationAccessLoss=True)))
+                print("Running native invitation access-loss acceptance against an empty synthetic space.", flush=True)
+                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(access_loss_path),
+                     "--only-invitation-access-loss"])
         finally:
             process.terminate()
             process.wait(timeout=15)

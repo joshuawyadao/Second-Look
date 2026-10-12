@@ -18,6 +18,7 @@ final class ConnectedAppModel {
 
     #if SECONDLOOK_DEMO
     private(set) var commandAcceptanceStatus: String?
+    private(set) var accessInvalidatedForAcceptance = false
     @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
     @ObservationIgnored private var commandAcceptanceStarted = false
     #endif
@@ -217,10 +218,7 @@ final class ConnectedAppModel {
         } catch {
             if currentForegroundSession(epoch) {
                 let message = Self.safeMessage(error)
-                if error as? SharedStateFailure == .unauthenticated ||
-                    error as? SharedStateFailure == .forbidden {
-                    signOut()
-                } else {
+                if !clearSessionIfAccessLost(error) {
                     status = "Could not check private-space membership. Try again when connected."
                 }
                 errorMessage = message
@@ -241,7 +239,13 @@ final class ConnectedAppModel {
                              configuration: configuration, client: client)
             invitation = result
             busy = false
-        } catch { if currentForegroundSession(epoch) { errorMessage = Self.safeMessage(error); busy = false } }
+        } catch {
+            if currentForegroundSession(epoch) {
+                clearSessionIfAccessLost(error)
+                errorMessage = Self.safeMessage(error)
+                busy = false
+            }
+        }
     }
 
     func joinSpace(token: String) async {
@@ -253,7 +257,13 @@ final class ConnectedAppModel {
             guard currentForegroundSession(epoch) else { return }
             try publishSpace(result, accountID: accountID, configuration: configuration, client: client)
             busy = false
-        } catch { if currentForegroundSession(epoch) { errorMessage = Self.safeMessage(error); busy = false } }
+        } catch {
+            if currentForegroundSession(epoch) {
+                clearSessionIfAccessLost(error)
+                errorMessage = Self.safeMessage(error)
+                busy = false
+            }
+        }
     }
 
     private func publishSpace(_ incoming: SharedSnapshot, accountID: UUID,
@@ -279,6 +289,24 @@ final class ConnectedAppModel {
     }
 
     #if SECONDLOOK_DEMO
+    var canInvalidateAccessForAcceptance: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-ui-testing"), arguments.contains("-shared-testing"),
+              arguments.contains("-shared-test-access-loss"), let configuration,
+              snapshot?.members.count == 1, snapshot?.members.first == accountID else { return false }
+        return [configuration.authURL, configuration.serverURL].allSatisfy {
+            $0.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains($0.host ?? "")
+        }
+    }
+
+    func invalidateAccessForAcceptance() async {
+        guard canInvalidateAccessForAcceptance, canUseForeground, !busy, let vault else { return }
+        let epoch = generation
+        await vault.useInvalidAccessForAcceptance()
+        guard currentForegroundSession(epoch) else { return }
+        accessInvalidatedForAcceptance = true
+    }
+
     private var commandChecksRequested: Bool {
         let arguments = ProcessInfo.processInfo.arguments
         return arguments.contains("-ui-testing") && arguments.contains("-shared-testing") &&
@@ -363,14 +391,11 @@ final class ConnectedAppModel {
         } catch {
             if currentForegroundSession(epoch) {
                 let message = Self.safeMessage(error)
-                let accessLost = error as? SharedStateFailure == .forbidden ||
-                    error as? SharedStateFailure == .unauthenticated
-                if accessLost {
-                    signOut()
-                } else if quietly {
+                let accessLost = clearSessionIfAccessLost(error)
+                if !accessLost && quietly {
                     status = "Could not synchronize. Retrying when connected."
                     retryMembership = snapshot == nil
-                } else {
+                } else if !accessLost {
                     retryMembership = snapshot == nil
                 }
                 if !quietly || accessLost { errorMessage = message }
@@ -473,14 +498,22 @@ final class ConnectedAppModel {
             if currentForegroundSession(epoch) {
                 snapshot = coordinator.snapshot
                 let message = Self.safeMessage(error)
-                if error as? SharedStateFailure == .forbidden || error as? SharedStateFailure == .unauthenticated {
-                    signOut()
-                }
+                clearSessionIfAccessLost(error)
                 errorMessage = message
                 if error as? SharedStateFailure == .staleState { await refresh() }
             }
             return nil
         }
+    }
+
+    /// Call only after the response's foreground/session epoch was checked.
+    /// Domain command denials do not change the authenticated identity.
+    @discardableResult
+    private func clearSessionIfAccessLost(_ error: Error) -> Bool {
+        guard let failure = error as? SharedStateFailure,
+              failure == .unauthenticated || failure == .forbidden else { return false }
+        signOut()
+        return true
     }
 
     func signOut() {
@@ -493,6 +526,7 @@ final class ConnectedAppModel {
         #if SECONDLOOK_DEMO
         cancelCommandAcceptance()
         commandAcceptanceStarted = false
+        accessInvalidatedForAcceptance = false
         #endif
         generation &+= 1
         foregroundRevalidationPending = false

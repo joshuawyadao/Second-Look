@@ -15,11 +15,16 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture", required=True)
-    parser.add_argument("--only-shared-commands", action="store_true",
-                        help="Run command checks against an already-paired synthetic localhost fixture.")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--only-shared-commands", action="store_true",
+                           help="Run command checks against an already-paired synthetic localhost fixture.")
+    selection.add_argument("--only-invitation-access-loss", action="store_true",
+                           help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     args = parser.parse_args()
     fixture_path = Path(args.fixture).resolve()
     fixture = json.loads(fixture_path.read_text())
+    if args.only_invitation_access_loss and fixture.get("invitationAccessLoss") is not True:
+        raise RuntimeError("Invitation access-loss acceptance requires its dedicated synthetic fixture.")
     for key in ("authURL", "serverURL"):
         url = urlsplit(fixture[key])
         if url.scheme != "http" or url.hostname not in ("127.0.0.1", "localhost", "::1"):
@@ -38,7 +43,8 @@ def main():
     derived = Path(os.environ.get("SECONDLOOK_DERIVED_DATA", str(fixture_path.parent / "native-build"))).resolve()
     common = ["-destination", "platform=iOS Simulator,id=" + selected,
               "-derivedDataPath", str(derived), "-parallel-testing-enabled", "NO", "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-"]
-    mode = "fresh" if fixture.get("freshPairing") else "paired"
+    mode = ("access-loss" if args.only_invitation_access_loss else
+            "fresh" if fixture.get("freshPairing") else "paired")
     log_path = fixture_path.parent / ("native-" + mode + ".private.log")
     with log_path.open("w") as log:
         subprocess.run(["xcodebuild", "-project", "SecondLook.xcodeproj", "-scheme", "SecondLook",
@@ -62,15 +68,19 @@ def main():
         temporary = derived / "Build/Products/SecondLook.connected.private.xctestrun"
         temporary.write_bytes(plistlib.dumps(run))
         try:
-            selected_tests = ["-only-testing:SecondLookUITests/SharedCommandAcceptanceUITests"]
-            if not args.only_shared_commands:
-                selected_tests.insert(0, "-only-testing:SecondLookUITests/ConnectedSharedStateUITests")
+            if args.only_invitation_access_loss:
+                selected_tests = ["-only-testing:SecondLookUITests/SharedInvitationAccessLossUITests"]
+            else:
+                selected_tests = ["-only-testing:SecondLookUITests/SharedCommandAcceptanceUITests"]
+                if not args.only_shared_commands:
+                    selected_tests.insert(0, "-only-testing:SecondLookUITests/ConnectedSharedStateUITests")
             subprocess.run(["xcodebuild", "-xctestrun", str(temporary), *common, *selected_tests,
                             "test-without-building"], cwd=ROOT, check=True,
                            stdout=log, stderr=subprocess.STDOUT)
         finally:
             temporary.unlink(missing_ok=True)
-    scenario = ("shared commands" if args.only_shared_commands else
+    scenario = ("invitation access loss" if args.only_invitation_access_loss else
+                "shared commands" if args.only_shared_commands else
                 "fresh pairing" if fixture.get("freshPairing") else "owner write, peer convergence and outsider denial")
     print("Authenticated native " + scenario + " acceptance passed on " + selected + ".")
     print("Private simulator log retained outside Git; this is localhost evidence, not hosted/device acceptance.")

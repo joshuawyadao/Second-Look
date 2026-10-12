@@ -240,6 +240,11 @@ actor AuthSessionVault {
             refreshToken: refreshValue, expiresAt: expiresAt, configuration: config)
     }
 
+    func useInvalidAccessForAcceptance() {
+        guard !invalidated, !Task.isCancelled else { return }
+        access = "M2-SYNTHETIC-INVALID-TOKEN"
+        expiresAt = .distantFuture
+    }
     #endif
 
     func invalidate() { invalidated = true; refreshTask?.cancel(); refreshTask = nil; access = ""; refreshValue = "" }

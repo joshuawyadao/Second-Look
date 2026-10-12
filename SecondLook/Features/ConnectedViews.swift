@@ -249,6 +249,19 @@ private struct ConnectedAccountSettingsView: View {
                         .disabled(model.accountID == nil)
                         .accessibilityIdentifier("sharedSignOut")
                 }
+                #if SECONDLOOK_DEMO
+                if model.canInvalidateAccessForAcceptance {
+                    Section("Synthetic local acceptance") {
+                        Button(model.accessInvalidatedForAcceptance ? "Test access token invalidated" :
+                               "Invalidate access token for test") {
+                            model.enqueue { await model.invalidateAccessForAcceptance() }
+                        }
+                        .accessibilityIdentifier("testSharedInvalidateAccess")
+                        .disabled(model.busy || model.accessInvalidatedForAcceptance)
+                        Text("For the isolated localhost access-denial test.")
+                    }
+                }
+                #endif
                 Section("Storage") {
                     Text("Shared lists live on the private service. This app keeps connected lists in memory and verifies the account and membership again after relaunch.")
                     Text("No local lists or synthetic demo evidence are uploaded. Real photo capture and notifications are not available yet.")

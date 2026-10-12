@@ -13,6 +13,8 @@ Milestone 1 established a native, local iPhone app. The checked-in `SecondLook.x
 
 Pass time explicitly to core commands and use fixed timestamps in tests; no expiry scheduler runs yet. Commands should change state only after actor, item, run, and expected submission-version checks. Persist the result before presenting it as durable; a save error must remain visible and recoverable. A local draft must never be labeled sent.
 
+Restoration correlates each text-only archive with its closed run: fixed participants, title/routine/start, ordered item text/priority/check times and prior decisions must match. Any retained final decision uses the last submission version and the assigned reviewer; a completed high-priority item requires its final approval. Both local loading and connected snapshot validation use this rule. Archive items store neither item IDs nor a separate review-status field; the validator does not invent absent metadata.
+
 ## Key records and invariants
 
 Withdrawal takes an expected submission version through the core and native confirmation path. It rejects an old intent before mutation and retains a separately prepared replacement draft. Relaunch preserves that draft, and sending it advances the submission version rather than reusing the withdrawn version.

@@ -266,6 +266,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 guard let archive, let outcome = run.outcome, let closedAt = run.closedAt,
                       archive.outcome == outcome, archive.closedAt == closedAt,
                       archive.cleanupStatus == run.cleanupStatus,
+                      Self.archiveMatchesClosedRun(archive, run: run),
                       run.items.allSatisfy({ $0.submission == nil && $0.preview == nil }) else {
                     throw SecondLookError.corruptDocument
                 }
@@ -274,6 +275,40 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         guard archives.allSatisfy({ archive in runs.contains { $0.id == archive.id && !$0.isOpen } }) else {
             throw SecondLookError.corruptDocument
         }
+    }
+
+    /// Closure retains the run's text and decision history while discarding current media.
+    /// The only decision absent from a closed RunItem is its final current submission's decision.
+    private static func archiveMatchesClosedRun(_ archive: TextArchive, run: ChecklistRun) -> Bool {
+        guard archive.title == run.title,
+              archive.routineID == run.routineID,
+              archive.performerID == run.performerID,
+              archive.reviewerID == run.reviewerID,
+              archive.startedAt == run.startedAt,
+              archive.items.count == run.items.count else { return false }
+
+        for (item, archived) in zip(run.items, archive.items) {
+            guard archived.title == item.title,
+                  archived.priority == item.priority,
+                  archived.checkedAt == item.checkedAt,
+                  archived.decisions.count >= item.priorDecisions.count,
+                  archived.decisions.count <= item.priorDecisions.count + 1,
+                  Array(archived.decisions.prefix(item.priorDecisions.count)) == item.priorDecisions,
+                  archived.decisions.allSatisfy({ $0.actorID == run.reviewerID }) else {
+                return false
+            }
+
+            let currentDecision = archived.decisions.dropFirst(item.priorDecisions.count).first
+            if item.priority == .standard {
+                guard archived.decisions.isEmpty else { return false }
+            } else if let currentDecision {
+                guard currentDecision.submissionVersion == item.lastVersion else { return false }
+            }
+            if run.outcome == .completed, item.priority == .high {
+                guard currentDecision?.verdict == .approved else { return false }
+            }
+        }
+        return true
     }
 
     private static func validateRestoredEvidence(_ item: RunItem, reviewerID: UUID?) throws {

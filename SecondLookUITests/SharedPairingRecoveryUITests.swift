@@ -61,6 +61,23 @@ final class SharedPairingRecoveryUITests: XCTestCase {
         XCTAssertTrue(codeField.waitForExistence(timeout: 20))
         guard codeField.exists else { return }
         codeField.tap()
+        let invalidCode = "invalid-synthetic-code"
+        codeField.typeText(invalidCode)
+        tap("joinPrivateSpace", in: app)
+        let invalidAlert = app.alerts["Shared action not completed"]
+        XCTAssertTrue(invalidAlert.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["This invitation is invalid or has expired."].exists)
+        invalidAlert.buttons["OK"].tap()
+        XCTAssertFalse(app.buttons["createPrivateSpace"].isEnabled)
+        XCTAssertFalse(app.buttons["joinPrivateSpace"].isEnabled)
+        tap("sharedCheckPairing", in: app)
+        let absentConfirmed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: app.buttons["joinPrivateSpace"]
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [absentConfirmed], timeout: 20), .completed,
+                       "Only a genuine absent-membership lookup should re-enable pairing")
+        codeField.tap()
+        codeField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: invalidCode.count))
         codeField.typeText(code)
         tap("joinPrivateSpace", in: app)
         dismissExpectedReplyLoss(in: app)

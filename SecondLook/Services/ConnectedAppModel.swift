@@ -266,6 +266,7 @@ final class ConnectedAppModel {
                 snapshot = nil
                 invitation = nil
                 confirmedNoSpace = true
+                retryMembership = false
                 status = "Signed in. Create a private space or enter an invitation."
                 busy = false
             }
@@ -318,6 +319,8 @@ final class ConnectedAppModel {
     func joinSpace(token: String) async {
         guard canJoinPrivateSpace, !busy, let client, let accountID, let configuration else { return }
         let epoch = generation
+        confirmedNoSpace = false
+        retryMembership = true
         busy = true
         do {
             let result = try await client.joinSpace(inviteToken: token.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -334,7 +337,10 @@ final class ConnectedAppModel {
             busy = false
         } catch {
             if currentForegroundSession(epoch) {
-                if !clearSessionIfAccessLost(error) { errorMessage = Self.safeMessage(error) }
+                if !clearSessionIfAccessLost(error) {
+                    status = "Could not confirm pairing. Checking membership before retrying."
+                    errorMessage = Self.safeMessage(error)
+                }
                 busy = false
             }
         }

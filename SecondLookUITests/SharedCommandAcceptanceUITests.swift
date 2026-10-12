@@ -34,7 +34,7 @@ final class SharedCommandAcceptanceUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo", "-shared-command-checks"]
+        app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo", "-shared-command-checks", "-shared-no-periodic-poll"]
         app.launchEnvironment = [
             "SECONDLOOK_TEST_AUTH_URL": fixture.authURL,
             "SECONDLOOK_TEST_PUBLISHABLE_KEY": fixture.publishableKey,

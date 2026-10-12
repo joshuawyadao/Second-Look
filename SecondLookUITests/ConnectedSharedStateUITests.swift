@@ -28,7 +28,7 @@ final class ConnectedSharedStateUITests: XCTestCase {
         let routineTitle = try XCTUnwrap(fixture.syntheticRoutineTitle)
         let outsider = try XCTUnwrap(fixture.outsider)
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo"]
+        app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo", "-shared-no-periodic-poll"]
         app.launchEnvironment = [
             "SECONDLOOK_TEST_AUTH_URL": fixture.authURL,
             "SECONDLOOK_TEST_PUBLISHABLE_KEY": fixture.publishableKey,
@@ -69,7 +69,7 @@ final class ConnectedSharedStateUITests: XCTestCase {
         // Relaunch without the Debug reset flag: the test-scoped public configuration and
         // Keychain session must be revalidated before shared state is fetched again.
         app.terminate()
-        app.launchArguments = ["-ui-testing", "-shared-testing"]
+        app.launchArguments = ["-ui-testing", "-shared-testing", "-shared-no-periodic-poll"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Private space connected."].waitForExistence(timeout: 20),
                       "Relaunch must restore the account through provider and membership checks")
@@ -106,7 +106,7 @@ final class ConnectedSharedStateUITests: XCTestCase {
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         guard fixture.freshPairing == true else { throw XCTSkip("Fresh pairing fixture was not supplied") }
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo"]
+        app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo", "-shared-no-periodic-poll"]
         app.launchEnvironment = [
             "SECONDLOOK_TEST_AUTH_URL": fixture.authURL,
             "SECONDLOOK_TEST_PUBLISHABLE_KEY": fixture.publishableKey,

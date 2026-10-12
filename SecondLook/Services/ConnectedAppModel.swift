@@ -136,10 +136,15 @@ final class ConnectedAppModel {
             let candidate = AuthSessionVault.fresh(response, configuration: configuration)
             pendingSessionID = candidate.sessionID
             ConnectedKeychain.bind(configuration: configuration, sessionID: candidate.sessionID)
+            #if SECONDLOOK_DEMO
+            if commandChecksRequested { try await candidate.verifyRefreshForAcceptance() }
+            else { try await candidate.verify() }
+            #else
             try await candidate.verify()
+            #endif
             guard currentForegroundSession(epoch) else { return }
-            try ConnectedKeychain.save(response, configuration: configuration,
-                                       sessionID: candidate.sessionID)
+            try await candidate.persistVerifiedCredentials()
+            guard currentForegroundSession(epoch) else { return }
             install(candidate, accountID: response.user.id, configuration: configuration)
             await discoverSpace(epoch: epoch)
         } catch {
@@ -274,17 +279,27 @@ final class ConnectedAppModel {
     }
 
     #if SECONDLOOK_DEMO
+    private var commandChecksRequested: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-ui-testing") && arguments.contains("-shared-testing") &&
+            arguments.contains("-shared-command-checks")
+    }
+
     /// Explicit UI-test opt-in uses the installed account client; no credential is exported.
     private func startCommandAcceptanceIfRequested() {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard arguments.contains("-ui-testing"), arguments.contains("-shared-testing"),
-              arguments.contains("-shared-command-checks"), !commandAcceptanceStarted,
+        guard commandChecksRequested, !commandAcceptanceStarted,
               peerJoined, canUseForeground, let client, let vault, let accountID else { return }
         commandAcceptanceStarted = true
         let epoch = generation
         commandAcceptanceTask = Task { [weak self] in
             guard let self, self.currentForegroundSession(epoch) else { return }
             self.busy = true
+            guard await vault.storedCredentialsMatchForAcceptance() else {
+                guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
+                self.commandAcceptanceStatus = "Shared command checks failed: refreshedCredentialPersistence"
+                self.busy = false
+                return
+            }
             do {
                 try await vault.verifyRefreshForAcceptance()
             } catch {

@@ -75,6 +75,11 @@ struct ConnectedRootView: View {
         }
         .task(id: scenePhase) {
             if scenePhase == .active { await model.revalidateAfterActivation() }
+            #if SECONDLOOK_DEMO
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("-ui-testing") && arguments.contains("-shared-testing") &&
+                arguments.contains("-shared-no-periodic-poll") { return }
+            #endif
             // Poll only a known, authenticated space while the scene is active. The root's
             // generation identity cancels this task when the account or environment changes.
             while !Task.isCancelled {

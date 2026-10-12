@@ -37,7 +37,7 @@ struct ConnectedConfiguration: Codable, Equatable {
     }
 }
 
-private struct StoredCredentials: Codable {
+fileprivate struct StoredCredentials: Codable, Sendable {
     let accountID: UUID
     let accessToken: String
     let refreshToken: String
@@ -79,6 +79,11 @@ enum ConnectedKeychain {
             ?? Date().addingTimeInterval(TimeInterval(session.expires_in ?? 3600))
         let value = StoredCredentials(accountID: session.user.id, accessToken: session.access_token,
                                       refreshToken: session.refresh_token, expiresAt: expiration)
+        try save(value, configuration: configuration, sessionID: sessionID)
+    }
+
+    fileprivate static func save(_ value: StoredCredentials, configuration: ConnectedConfiguration,
+                                 sessionID: UUID) throws {
         let data = try JSONEncoder().encode(value)
         registry.lock.lock()
         defer { registry.lock.unlock() }
@@ -121,6 +126,23 @@ enum ConnectedKeychain {
     static func delete(configuration: ConnectedConfiguration) {
         SecItemDelete(key(configuration) as CFDictionary)
     }
+
+    #if SECONDLOOK_DEMO
+    /// Compare inside the process; never return stored credentials to the acceptance UI.
+    static func matchesForAcceptance(accountID: UUID, accessToken: String,
+                                     refreshToken: String, expiresAt: Date,
+                                     configuration: ConnectedConfiguration) -> Bool {
+        var query = key(configuration)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let stored = try? JSONDecoder().decode(StoredCredentials.self, from: data) else { return false }
+        return stored.accountID == accountID && stored.accessToken == accessToken &&
+            stored.refreshToken == refreshToken && stored.expiresAt == expiresAt
+    }
+    #endif
 
     private static func key(_ configuration: ConnectedConfiguration) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
@@ -195,6 +217,14 @@ actor AuthSessionVault {
         guard !invalidated, user.id == accountID else { throw SharedStateFailure.unauthenticated }
     }
 
+    /// Persist this actor's current session after verification may have rotated its tokens.
+    func persistVerifiedCredentials() throws {
+        guard !invalidated else { throw SharedStateFailure.sessionChanged }
+        try Task.checkCancellation()
+        try ConnectedKeychain.save(StoredCredentials(accountID: accountID, accessToken: access,
+            refreshToken: refreshValue, expiresAt: expiresAt), configuration: config, sessionID: sessionID)
+    }
+
     #if SECONDLOOK_DEMO
     /// Drive the existing near-expiry refresh path against Auth during explicit acceptance.
     func verifyRefreshForAcceptance() async throws {
@@ -203,6 +233,13 @@ actor AuthSessionVault {
         try await verify()
         try Task.checkCancellation()
     }
+
+    func storedCredentialsMatchForAcceptance() -> Bool {
+        guard !invalidated, !Task.isCancelled else { return false }
+        return ConnectedKeychain.matchesForAcceptance(accountID: accountID, accessToken: access,
+            refreshToken: refreshValue, expiresAt: expiresAt, configuration: config)
+    }
+
     #endif
 
     func invalidate() { invalidated = true; refreshTask?.cancel(); refreshTask = nil; access = ""; refreshValue = "" }

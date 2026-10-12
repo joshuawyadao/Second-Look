@@ -33,6 +33,9 @@ final class ConnectedAppModel {
     @ObservationIgnored private var didDropRenewalReply = false
     @ObservationIgnored private var didDropJoinReply = false
     @ObservationIgnored private var didTriggerRestoreRace = false
+    private(set) var simulatedRefreshDelay = false
+    @ObservationIgnored private var delayNextRefreshForAcceptance = false
+    @ObservationIgnored private var refreshContinuationForAcceptance: CheckedContinuation<Void, Never>?
     #endif
 
     @ObservationIgnored private let coordinator = SharedStateCoordinator()
@@ -385,6 +388,33 @@ final class ConnectedAppModel {
         localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-restore-race")
     }
 
+    var refreshDelayChecksRequested: Bool {
+        localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-delayed-refresh")
+    }
+
+    var refreshMismatchChecksRequested: Bool {
+        localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-refresh-account-mismatch")
+    }
+
+    func beginDelayedRefreshForAcceptance() {
+        guard refreshDelayChecksRequested, canUseForeground, !busy, snapshot != nil else { return }
+        delayNextRefreshForAcceptance = true
+        enqueue { _ = await self.refresh() }
+    }
+
+    func resumeRefreshForAcceptance() {
+        let continuation = refreshContinuationForAcceptance
+        refreshContinuationForAcceptance = nil
+        simulatedRefreshDelay = false
+        continuation?.resume()
+    }
+
+    func refreshWithMismatchedAccountForAcceptance() async {
+        guard refreshMismatchChecksRequested, canUseForeground, !busy, let vault else { return }
+        await vault.useMismatchedRefreshAccountForAcceptance()
+        _ = await refresh()
+    }
+
     var canInvalidateAccessForAcceptance: Bool {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-ui-testing"), arguments.contains("-shared-testing"),
@@ -461,6 +491,15 @@ final class ConnectedAppModel {
             let incoming = try await client.currentSpace()
             guard currentForegroundSession(epoch) else { return false }
             try incoming.validate(for: accountID)
+            #if SECONDLOOK_DEMO
+            if refreshDelayChecksRequested && delayNextRefreshForAcceptance {
+                delayNextRefreshForAcceptance = false
+                simulatedRefreshDelay = true
+                // Authentication/membership were fetched genuinely; delaying publication is simulated.
+                await withCheckedContinuation { refreshContinuationForAcceptance = $0 }
+                guard currentForegroundSession(epoch) else { return false }
+            }
+            #endif
             if snapshot?.spaceID != incoming.spaceID {
                 try publishSpace(incoming, accountID: accountID,
                                  configuration: configuration, client: client)
@@ -507,6 +546,9 @@ final class ConnectedAppModel {
     /// sign-in before an account is installed and discovery before a snapshot is available.
     /// Installed credentials remain bound to this account for foreground revalidation.
     func holdForValidation() {
+        #if SECONDLOOK_DEMO
+        resumeRefreshForAcceptance()
+        #endif
         let wasEligible = foregroundEligible
         foregroundEligible = false
         confirmedNoSpace = false
@@ -679,6 +721,8 @@ final class ConnectedAppModel {
         simulatedMembershipFailure = false
         didSimulateMembershipFailure = false
         simulatedPairingReplyLoss = false
+        resumeRefreshForAcceptance()
+        delayNextRefreshForAcceptance = false
         restoreCandidateCount = 0
         didDropRenewalReply = false
         didDropJoinReply = false

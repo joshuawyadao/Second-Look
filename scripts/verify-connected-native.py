@@ -38,7 +38,7 @@ def main():
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     selection.add_argument("--only-pairing-recovery", action="store_true",
                            help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
-    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore"),
+    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity"),
                         help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
     if args.only_pairing_recovery != (args.recovery_case is not None):
@@ -97,10 +97,15 @@ def main():
         temporary.write_bytes(plistlib.dumps(run))
         try:
             if args.only_pairing_recovery:
-                selected_tests = ["-only-testing:SecondLookUITests/SharedPairingRecoveryUITests/" + {
+                suite = ("SharedMutationRecoveryUITests" if args.recovery_case in ("busy", "draft", "identity")
+                         else "SharedPairingRecoveryUITests")
+                selected_tests = ["-only-testing:SecondLookUITests/" + suite + "/" + {
                     "invitation": "testRenewalReplyLossInvalidatesOldInvitation",
                     "join": "testJoinReplyLossKeepsPairingDisabledUntilMembershipCheck",
-                    "restore": "testRacingRestoreAttemptsOneCandidate"
+                    "restore": "testRacingRestoreAttemptsOneCandidate",
+                    "busy": "testBusyRefreshDisablesMutationUntilRefreshCompletes",
+                    "draft": "testRejectedOneOffPreservesEditorDraft",
+                    "identity": "testRefreshAccountMismatchClearsProtectedState"
                 }[args.recovery_case]]
             elif args.only_invitation_access_loss:
                 selected_tests = ["-only-testing:SecondLookUITests/SharedInvitationAccessLossUITests"]

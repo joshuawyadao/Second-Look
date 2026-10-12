@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -67,6 +68,26 @@ def start_stack(directory, env):
             raise RuntimeError(startup_failure_message(stack_log)) from None
 
 
+def apply_pending_local_migrations():
+    """Apply only checked-in migrations to the exact named synthetic database."""
+    docker = ["docker", "exec", "-i", f"supabase_db_{PROJECT}", "psql", "-U", "postgres",
+              "-d", "postgres", "-v", "ON_ERROR_STOP=1"]
+    for migration in sorted((ROOT / "supabase/migrations").glob("*.sql")):
+        matched = re.fullmatch(r"(\d{12,14})_([a-z0-9_]+)\.sql", migration.name)
+        if not matched:
+            raise RuntimeError("Unsupported local migration filename.")
+        version, name = matched.groups()
+        check = run(docker + ["-At", "-c", "select count(*) from supabase_migrations.schema_migrations "
+                    "where version = '" + version + "';"], capture_output=True).stdout.decode().strip()
+        if check == "1":
+            continue
+        if check != "0":
+            raise RuntimeError("Unexpected local migration status.")
+        sql = ("begin;\n" + migration.read_text() + "\ninsert into supabase_migrations.schema_migrations "
+               "(version, name) values ('" + version + "', '" + name + "');\ncommit;\n")
+        run(docker, input=sql.encode(), stdout=subprocess.DEVNULL)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native", action="store_true", help="Also run paired and fresh-pairing iPhone simulator acceptance (macOS/Xcode).")
@@ -107,6 +128,7 @@ def main():
     # Refuse to reset anything other than this named localhost-only synthetic project.
     if provider != "http://127.0.0.1:56321":
         raise RuntimeError("Unexpected integration provider URL.")
+    apply_pending_local_migrations()
     run(["docker", "exec", f"supabase_db_{PROJECT}", "psql", "-U", "postgres", "-d", "postgres",
          "-v", "ON_ERROR_STOP=1", "-c",
          "truncate secondlook_private.command_receipts, secondlook_private.spaces;"], stdout=subprocess.DEVNULL)
@@ -206,6 +228,9 @@ def main():
                     ("invitation", "committed invitation renewal with a lost reply"),
                     ("join", "committed peer join with a lost reply"),
                     ("restore", "concurrent account restoration"),
+                    ("busy", "mutation controls during a delayed refresh"),
+                    ("draft", "editor draft after a genuine one-off rejection"),
+                    ("identity", "protected-state clearing after a refresh identity mismatch"),
                 )
                 for recovery_case, description in recovery_cases:
                     # Each scenario needs its own empty space. Truncate only the exact

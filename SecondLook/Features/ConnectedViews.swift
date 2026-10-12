@@ -24,6 +24,11 @@ struct ConnectedRootView: View {
             .background(.thinMaterial)
 
             #if SECONDLOOK_DEMO
+            if model.refreshMismatchChecksRequested {
+                Text("Refresh account mismatch (simulated for acceptance)").font(.caption)
+                    .accessibilityIdentifier("sharedSimulatedRefreshIdentityMismatch")
+            }
+            SharedRefreshAcceptanceControls()
             if model.simulatedPairingReplyLoss {
                 Text("Pairing reply loss (simulated for acceptance)").font(.caption)
                     .accessibilityIdentifier("sharedSimulatedPairingReplyLoss")
@@ -288,6 +293,16 @@ private struct ConnectedAccountSettingsView: View {
                         .accessibilityIdentifier("sharedSignOut")
                 }
                 #if SECONDLOOK_DEMO
+                if model.refreshMismatchChecksRequested, model.accountID != nil {
+                    Section("Synthetic local acceptance") {
+                        Button("Test refresh account mismatch") {
+                            model.enqueue { await model.refreshWithMismatchedAccountForAcceptance() }
+                        }
+                        .disabled(model.busy)
+                        .accessibilityIdentifier("testSharedRefreshMismatch")
+                        Text("Refresh account mismatch (simulated for acceptance)")
+                    }
+                }
                 if model.canInvalidateAccessForAcceptance {
                     Section("Synthetic local acceptance") {
                         Button(model.accessInvalidatedForAcceptance ? "Test access token invalidated" :
@@ -359,6 +374,7 @@ private struct ConnectedRoutinesView: View {
                                 if model.latestOpenRun(routine.id) != nil { startChoice = routine }
                                 else { start(routine) }
                             }.buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("sharedStartRoutine-\(routine.title)")
                             Button("Edit") { editor = ConnectedEditorRequest(routine: routine, oneOff: false) }
                                 .buttonStyle(.bordered)
                             Button(role: .destructive) { deleteChoice = routine } label: {
@@ -434,6 +450,9 @@ private struct ConnectedRoutineEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                #if SECONDLOOK_DEMO
+                SharedRefreshAcceptanceControls()
+                #endif
                 Section("Name") {
                     TextField("Checklist name", text: $title)
                         .accessibilityIdentifier("sharedRoutineTitle")
@@ -495,6 +514,29 @@ private struct ConnectedRoutineEditorView: View {
         }
     }
 }
+
+#if SECONDLOOK_DEMO
+private struct SharedRefreshAcceptanceControls: View {
+    @Environment(ConnectedAppModel.self) private var model
+
+    var body: some View {
+        if model.refreshDelayChecksRequested && model.snapshot != nil {
+            VStack {
+                if model.simulatedRefreshDelay {
+                    Text("Shared refresh delay (simulated for acceptance)").font(.caption)
+                        .accessibilityIdentifier("sharedSimulatedRefreshDelay")
+                    Button("Complete delayed refresh") { model.resumeRefreshForAcceptance() }
+                        .accessibilityIdentifier("testResumeSharedRefresh")
+                } else {
+                    Button("Delay next refresh for test") { model.beginDelayedRefreshForAcceptance() }
+                        .disabled(model.busy)
+                        .accessibilityIdentifier("testDelaySharedRefresh")
+                }
+            }
+        }
+    }
+}
+#endif
 
 private struct ConnectedChecklistView: View {
     @Environment(ConnectedAppModel.self) private var model

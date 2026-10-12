@@ -179,6 +179,9 @@ actor AuthSessionVault {
     private let auth: SharedAuthClient
     private var invalidated = false
     private var refreshTask: Task<SharedAuthSession, Error>?
+    #if SECONDLOOK_DEMO
+    private var mismatchedRefreshAccountForAcceptance = false
+    #endif
 
     init(accountID: UUID, accessToken: String, refreshToken: String, expiresAt: Date,
          configuration: ConnectedConfiguration) {
@@ -215,7 +218,15 @@ actor AuthSessionVault {
                 self.refreshTask = nil
                 throw error
             }
-            guard !invalidated, updated.user.id == accountID else {
+            var refreshedAccountID = updated.user.id
+            #if SECONDLOOK_DEMO
+            if mismatchedRefreshAccountForAcceptance {
+                mismatchedRefreshAccountForAcceptance = false
+                // The Auth refresh is genuine; this decoded identity mismatch is simulated.
+                refreshedAccountID = UUID(uuidString: "20000000-0000-0000-0000-000000000099")!
+            }
+            #endif
+            guard !invalidated, refreshedAccountID == accountID else {
                 throw SharedStateFailure.sessionChanged
             }
             try ConnectedKeychain.save(updated, configuration: config, sessionID: sessionID)
@@ -260,6 +271,17 @@ actor AuthSessionVault {
         guard !invalidated, !Task.isCancelled else { return }
         access = "M2-SYNTHETIC-INVALID-TOKEN"
         expiresAt = .distantFuture
+    }
+
+    func useMismatchedRefreshAccountForAcceptance() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard !invalidated, arguments.contains("-ui-testing"), arguments.contains("-shared-testing"),
+              arguments.contains("-shared-test-refresh-account-mismatch"),
+              [config.authURL, config.serverURL].allSatisfy({
+                  $0.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains($0.host ?? "")
+              }) else { return }
+        mismatchedRefreshAccountForAcceptance = true
+        expiresAt = .distantPast
     }
     #endif
 

@@ -321,6 +321,161 @@ private actor ConflictingFetchClient: SharedStateClient {
     }
 }
 
+private actor LostReplySharedClient: SharedStateClient {
+    private var current: SharedSnapshot
+    private var receipt: SharedCommandResult?
+    private var originalEnvelope: SharedCommandEnvelope?
+    private var sent: [SharedCommandEnvelope] = []
+    private let actorID: UUID
+    private let now: Date
+    private var dropFirstReply: Bool
+    private var rejectFirstAsStale: Bool
+
+    init(snapshot: SharedSnapshot, actorID: UUID, now: Date,
+         dropFirstReply: Bool = false, rejectFirstAsStale: Bool = false) {
+        current = snapshot
+        self.actorID = actorID
+        self.now = now
+        self.dropFirstReply = dropFirstReply
+        self.rejectFirstAsStale = rejectFirstAsStale
+    }
+
+    func fetch(spaceID: UUID) async throws -> SharedSnapshot { current }
+
+    func execute(_ envelope: SharedCommandEnvelope) async throws -> SharedCommandResult {
+        sent.append(envelope)
+        if rejectFirstAsStale {
+            rejectFirstAsStale = false
+            throw SharedStateFailure.staleState
+        }
+        if let originalEnvelope, envelope.commandID == originalEnvelope.commandID {
+            guard envelope == originalEnvelope, let receipt else { throw SharedStateFailure.invalidResponse }
+            return SharedCommandResult(snapshot: current, createdID: receipt.createdID)
+        }
+        let result = try SharedCommandProcessor.apply(envelope, to: current,
+                                                      actorID: actorID, now: now)
+        current = result.snapshot
+        originalEnvelope = envelope
+        receipt = result
+        if dropFirstReply {
+            dropFirstReply = false
+            throw SharedStateFailure.serviceUnavailable
+        }
+        return result
+    }
+
+    func sentEnvelopes() -> [SharedCommandEnvelope] { sent }
+    func currentSnapshot() -> SharedSnapshot { current }
+}
+
+private actor DeferredCommandSharedClient: SharedStateClient {
+    let initial: SharedSnapshot
+    private var pending: CheckedContinuation<SharedCommandResult, Error>?
+    private var started: CheckedContinuation<Void, Never>?
+
+    init(initial: SharedSnapshot) { self.initial = initial }
+
+    func fetch(spaceID: UUID) async throws -> SharedSnapshot { initial }
+
+    func execute(_ envelope: SharedCommandEnvelope) async throws -> SharedCommandResult {
+        try await withCheckedThrowingContinuation { continuation in
+            pending = continuation
+            started?.resume()
+            started = nil
+        }
+    }
+
+    func waitUntilStarted() async {
+        if pending != nil { return }
+        await withCheckedContinuation { started = $0 }
+    }
+
+    func finish(_ result: Result<SharedCommandResult, Error>) {
+        let waiting = pending
+        pending = nil
+        waiting?.resume(with: result)
+    }
+}
+
+private actor LaggingReceiptSharedClient: SharedStateClient {
+    private let initial: SharedSnapshot
+    private let newer: SharedSnapshot
+    private let receipt: SharedCommandResult
+    private var fetched = false
+    private var pending: CheckedContinuation<SharedCommandResult, Error>?
+    private var started: CheckedContinuation<Void, Never>?
+
+    init(initial: SharedSnapshot, newer: SharedSnapshot, receipt: SharedCommandResult) {
+        self.initial = initial
+        self.newer = newer
+        self.receipt = receipt
+    }
+
+    func fetch(spaceID: UUID) async throws -> SharedSnapshot {
+        if !fetched {
+            fetched = true
+            return initial
+        }
+        return newer
+    }
+
+    func execute(_ envelope: SharedCommandEnvelope) async throws -> SharedCommandResult {
+        try await withCheckedThrowingContinuation { continuation in
+            pending = continuation
+            started?.resume()
+            started = nil
+        }
+    }
+
+    func waitUntilStarted() async {
+        if pending != nil { return }
+        await withCheckedContinuation { started = $0 }
+    }
+
+    func releaseReceipt() {
+        let waiting = pending
+        pending = nil
+        waiting?.resume(returning: receipt)
+    }
+}
+
+private actor ConcurrentUnavailableSharedClient: SharedStateClient {
+    private let initial: SharedSnapshot
+    private var sent: [SharedCommandEnvelope] = []
+    private var pending: [CheckedContinuation<SharedCommandResult, Error>] = []
+    private var twoStarted: CheckedContinuation<Void, Never>?
+
+    init(initial: SharedSnapshot) { self.initial = initial }
+
+    func fetch(spaceID: UUID) async throws -> SharedSnapshot { initial }
+
+    func execute(_ envelope: SharedCommandEnvelope) async throws -> SharedCommandResult {
+        try await withCheckedThrowingContinuation { continuation in
+            sent.append(envelope)
+            pending.append(continuation)
+            if pending.count == 2 {
+                twoStarted?.resume()
+                twoStarted = nil
+            }
+        }
+    }
+
+    func waitForBoth() async {
+        if pending.count == 2 { return }
+        await withCheckedContinuation { twoStarted = $0 }
+    }
+
+    func sentEnvelopes() -> [SharedCommandEnvelope] { sent }
+
+    func failBoth() {
+        let waiting = pending
+        pending = []
+        for continuation in waiting {
+            continuation.resume(throwing: SharedStateFailure.serviceUnavailable)
+        }
+    }
+}
+
 @MainActor
 final class SharedStateCoordinatorTests: XCTestCase {
     private let accountA = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
@@ -336,6 +491,162 @@ final class SharedStateCoordinatorTests: XCTestCase {
         SharedSnapshot(spaceID: space, revision: 0, members: [accountA, accountB], state: .init())
     }
 
+    private func oneOffCommand() -> SharedCommand {
+        .startOneOff(title: "Invented exit", items: [RoutineItem(title: "Keys")], settings: .init())
+    }
+
+    func testLostCreationReplyRetainsEnvelopeAcrossRefreshAndReturnsOriginalCreatedID() async throws {
+        let client = LostReplySharedClient(snapshot: baseline(), actorID: accountA, now: now,
+                                           dropFirstReply: true)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope(accountA), client: client)
+        _ = try await coordinator.refresh()
+        let command = oneOffCommand()
+        do {
+            _ = try await coordinator.execute(command)
+            XCTFail("The first reply should be lost after the server commits")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable)
+        }
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(command))
+        let refreshed = try await coordinator.refresh()
+        XCTAssertTrue(refreshed)
+        let retryCreatedID = try await coordinator.execute(command)
+        let createdID = try XCTUnwrap(retryCreatedID)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(command))
+        let sent = await client.sentEnvelopes()
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(sent[0], sent[1], "A retry must keep the original ID, body and revision")
+        XCTAssertEqual(coordinator.snapshot?.state.runs.count, 1)
+        XCTAssertEqual(coordinator.snapshot?.state.runs.first?.id, createdID)
+        let serverSnapshot = await client.currentSnapshot()
+        XCTAssertEqual(serverSnapshot.state.runs.count, 1)
+    }
+
+    func testDefiniteStaleRejectionPermitsNewEnvelopeAfterRefresh() async throws {
+        let client = LostReplySharedClient(snapshot: baseline(), actorID: accountA, now: now,
+                                           rejectFirstAsStale: true)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope(accountA), client: client)
+        _ = try await coordinator.refresh()
+        let command = oneOffCommand()
+        do {
+            _ = try await coordinator.execute(command)
+            XCTFail("The server should definitively reject the first attempt")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .staleState)
+        }
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(command))
+        _ = try await coordinator.refresh()
+        _ = try await coordinator.execute(command)
+        let sent = await client.sentEnvelopes()
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertNotEqual(sent[0].commandID, sent[1].commandID)
+    }
+
+    func testAccountSwitchDropsOldRetryAndLateResponseCannotClearNewPendingIntent() async throws {
+        let oldClient = DeferredCommandSharedClient(initial: baseline())
+        let newClient = LostReplySharedClient(snapshot: baseline(), actorID: accountB, now: now,
+                                              dropFirstReply: true)
+        let coordinator = SharedStateCoordinator()
+        let command = oneOffCommand()
+        coordinator.beginSession(scope: scope(accountA), client: oldClient)
+        _ = try await coordinator.refresh()
+        let oldRequest = Task { try await coordinator.execute(command) }
+        await oldClient.waitUntilStarted()
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(command))
+
+        coordinator.beginSession(scope: scope(accountB), client: newClient)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(command))
+        _ = try await coordinator.refresh()
+        do { _ = try await coordinator.execute(command) }
+        catch { XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable) }
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(command))
+        await oldClient.finish(.success(SharedCommandResult(snapshot: baseline())))
+        do {
+            _ = try await oldRequest.value
+            XCTFail("A prior account's response cannot publish")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .sessionChanged)
+        }
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(command))
+        _ = try await coordinator.refresh()
+        _ = try await coordinator.execute(command)
+        let sent = await newClient.sentEnvelopes()
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(sent[0], sent[1])
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(command))
+    }
+
+    func testConfirmedReceiptAfterNewerFetchReturnsCreatedIDWithoutReplacingSnapshot() async throws {
+        let command = oneOffCommand()
+        let applied = try SharedCommandProcessor.apply(
+            SharedCommandEnvelope(spaceID: space, commandID: UUID(),
+                                  expectedSpaceRevision: 0, command: command),
+            to: baseline(), actorID: accountA, now: now)
+        var newer = applied.snapshot
+        newer.revision += 1
+        let client = LaggingReceiptSharedClient(initial: baseline(), newer: newer, receipt: applied)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope(accountA), client: client)
+        _ = try await coordinator.refresh()
+        let request = Task { try await coordinator.execute(command) }
+        await client.waitUntilStarted()
+        _ = try await coordinator.refresh()
+        XCTAssertEqual(coordinator.snapshot, newer)
+        await client.releaseReceipt()
+        let createdID = try await request.value
+        XCTAssertEqual(createdID, applied.createdID)
+        XCTAssertEqual(coordinator.snapshot, newer)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(command))
+    }
+
+    func testExplicitSameIDReusesEnvelopeAndDifferentIDStartsNewIntent() async throws {
+        let client = LostReplySharedClient(snapshot: baseline(), actorID: accountA, now: now,
+                                           dropFirstReply: true)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope(accountA), client: client)
+        _ = try await coordinator.refresh()
+        let command = oneOffCommand()
+        let originalID = UUID()
+        do { _ = try await coordinator.execute(command, commandID: originalID) }
+        catch { XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable) }
+        _ = try await coordinator.refresh()
+        let createdID = try await coordinator.execute(command, commandID: originalID)
+        XCTAssertNotNil(createdID)
+        let newIntentID = UUID()
+        let secondCreatedID = try await coordinator.execute(command, commandID: newIntentID)
+        XCTAssertNotEqual(secondCreatedID, createdID)
+        let sent = await client.sentEnvelopes()
+        XCTAssertEqual(sent.count, 3)
+        XCTAssertEqual(sent[0], sent[1])
+        XCTAssertEqual(sent[0].commandID, originalID)
+        XCTAssertEqual(sent[2].commandID, newIntentID)
+        XCTAssertEqual(sent[2].expectedSpaceRevision, 1)
+    }
+
+    func testOverlappingDefaultCallsShareOneEnvelopeBeforeEitherReply() async throws {
+        let client = ConcurrentUnavailableSharedClient(initial: baseline())
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope(accountA), client: client)
+        _ = try await coordinator.refresh()
+        let command = oneOffCommand()
+        let first = Task { try await coordinator.execute(command) }
+        let second = Task { try await coordinator.execute(command) }
+        await client.waitForBoth()
+        let sent = await client.sentEnvelopes()
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(sent[0], sent[1])
+        await client.failBoth()
+        do { _ = try await first.value } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable)
+        }
+        do { _ = try await second.value } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable)
+        }
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(command))
+    }
+
     func testTwoCoordinatorsConvergeAfterAlternatingWrites() async throws {
         let source = baseline()
         let sharedStore = SharedTestStore(snapshot: source, now: now)
@@ -346,7 +657,7 @@ final class SharedStateCoordinatorTests: XCTestCase {
         let firstRefresh = try await a.refresh()
         XCTAssertTrue(firstRefresh)
         let routine = Routine(title: "Shared", items: [RoutineItem(title: "Keys")])
-        try await a.execute(.saveRoutine(definition: routine, expectedDefinitionVersion: nil))
+        _ = try await a.execute(.saveRoutine(definition: routine, expectedDefinitionVersion: nil))
         let b = SharedStateCoordinator()
         b.beginSession(scope: scope(accountB), client: backendB)
         let secondRefresh = try await b.refresh()
@@ -454,15 +765,17 @@ final class SharedStateCoordinatorTests: XCTestCase {
         let executeDenial = DenyingSharedClient(initial: baseline())
         coordinator.beginSession(scope: scope(accountA), client: executeDenial)
         _ = try await coordinator.refresh()
+        let deniedCommand = SharedCommand.startOneOff(title: "Keys",
+                                                        items: [RoutineItem(title: "Carry keys")],
+                                                        settings: .init())
         do {
-            _ = try await coordinator.execute(.startOneOff(title: "Keys",
-                                                            items: [RoutineItem(title: "Carry keys")],
-                                                            settings: .init()))
+            _ = try await coordinator.execute(deniedCommand)
             XCTFail("Expired credentials must clear protected state")
         } catch {
             XCTAssertEqual(error as? SharedStateFailure, .unauthenticated)
         }
         XCTAssertNil(coordinator.snapshot)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(deniedCommand))
 
         var changed = SecondLookState()
         try changed.saveRoutine(Routine(title: "Different", items: [RoutineItem(title: "Other")]))
@@ -471,15 +784,17 @@ final class SharedStateCoordinatorTests: XCTestCase {
         coordinator.beginSession(scope: scope(accountA), client: ConflictingSharedClient(
             initial: baseline(), conflict: sameRevisionConflict))
         _ = try await coordinator.refresh()
+        let malformedReplyCommand = SharedCommand.startOneOff(title: "Keys",
+                                                                 items: [RoutineItem(title: "Carry keys")],
+                                                                 settings: .init())
         do {
-            _ = try await coordinator.execute(.startOneOff(title: "Keys",
-                                                            items: [RoutineItem(title: "Carry keys")],
-                                                            settings: .init()))
+            _ = try await coordinator.execute(malformedReplyCommand)
             XCTFail("A command must advance the space revision")
         } catch {
             XCTAssertEqual(error as? SharedStateFailure, .invalidResponse)
         }
         XCTAssertEqual(coordinator.snapshot, baseline())
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(malformedReplyCommand))
 
         coordinator.beginSession(scope: scope(accountA), client: ConflictingFetchClient(
             initial: baseline(), conflict: sameRevisionConflict))

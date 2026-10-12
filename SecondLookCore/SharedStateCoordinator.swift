@@ -7,12 +7,16 @@ public final class SharedStateCoordinator {
     public private(set) var scope: SharedAccountScope?
     public private(set) var generation: UInt64 = 0
     private var client: (any SharedStateClient)?
+    /// A command with an unknown outcome must keep its full original request for receipt lookup.
+    /// This is session memory only; durable offline intent belongs to a later milestone.
+    private var unconfirmedCommands: [SharedCommandEnvelope] = []
 
     public init() {}
 
     public func beginSession(scope: SharedAccountScope, client: any SharedStateClient) {
         generation &+= 1
         snapshot = nil
+        unconfirmedCommands = []
         self.scope = scope
         self.client = client
     }
@@ -20,6 +24,7 @@ public final class SharedStateCoordinator {
     public func endSession() {
         generation &+= 1
         snapshot = nil
+        unconfirmedCommands = []
         scope = nil
         client = nil
     }
@@ -39,13 +44,29 @@ public final class SharedStateCoordinator {
         }
     }
 
+    public func hasUnconfirmedCommand(_ command: SharedCommand) -> Bool {
+        unconfirmedCommands.contains { $0.command == command }
+    }
+
     @discardableResult
-    public func execute(_ command: SharedCommand, commandID: UUID = UUID()) async throws -> UUID? {
+    public func execute(_ command: SharedCommand, commandID: UUID? = nil) async throws -> UUID? {
         guard let scope, let client else { throw SharedStateFailure.unauthenticated }
         guard let snapshot else { throw SharedStateFailure.notPaired }
         let capturedGeneration = generation
-        let envelope = SharedCommandEnvelope(spaceID: scope.spaceID, commandID: commandID,
+        let envelope: SharedCommandEnvelope
+        if let commandID, let pending = unconfirmedCommands.first(where: { $0.commandID == commandID }) {
+            guard pending.command == command, pending.spaceID == scope.spaceID else {
+                throw SharedStateFailure.invalidResponse
+            }
+            envelope = pending
+        } else if commandID == nil, let pending = unconfirmedCommands.first(where: { $0.command == command }) {
+            envelope = pending
+        } else {
+            envelope = SharedCommandEnvelope(spaceID: scope.spaceID, commandID: commandID ?? UUID(),
                                              expectedSpaceRevision: snapshot.revision, command: command)
+            // Register before awaiting the client so simultaneous default retries share this ID.
+            unconfirmedCommands.append(envelope)
+        }
         do {
             let result = try await client.execute(envelope)
             try requireCurrent(scope: scope, generation: capturedGeneration)
@@ -53,10 +74,16 @@ public final class SharedStateCoordinator {
             guard result.snapshot.revision > envelope.expectedSpaceRevision else {
                 throw SharedStateFailure.invalidResponse
             }
-            let published = try publish(result.snapshot)
-            guard published || result.snapshot == self.snapshot else { throw SharedStateFailure.staleState }
+            // A concurrent refresh may already have published a newer view. The receipt is still
+            // confirmed and carries the original created ID; never replace the newer snapshot.
+            _ = try publish(result.snapshot)
+            unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
             return result.createdID
         } catch {
+            try requireCurrent(scope: scope, generation: capturedGeneration)
+            if isDefiniteRejection(error) {
+                unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
+            }
             try handle(error, scope: scope, generation: capturedGeneration)
             throw error
         }
@@ -91,6 +118,18 @@ public final class SharedStateCoordinator {
         if let failure = error as? SharedStateFailure,
            failure == .unauthenticated || failure == .forbidden {
             snapshot = nil
+            unconfirmedCommands = []
+        }
+    }
+
+    private func isDefiniteRejection(_ error: Error) -> Bool {
+        guard let failure = error as? SharedStateFailure else { return false }
+        switch failure {
+        case .serviceUnavailable, .invalidResponse, .scopeMismatch:
+            return false
+        case .unauthenticated, .forbidden, .notPaired, .invalidInvite, .pairingUnavailable,
+             .staleState, .sessionChanged, .domain:
+            return true
         }
     }
 }

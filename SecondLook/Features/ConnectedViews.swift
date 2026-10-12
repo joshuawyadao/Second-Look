@@ -438,7 +438,7 @@ private struct ConnectedRoutineEditorView: View {
 
     private func save() {
         let epoch = model.generation
-        let routine = Routine(id: request.routine?.id ?? UUID(), title: title, items: items,
+        let routine = Routine(id: request.routine?.id ?? request.id, title: title, items: items,
                               settings: settings,
                               definitionVersion: request.routine?.definitionVersion ?? 1)
         saving = true

@@ -497,7 +497,9 @@ final class ConnectedAppModel {
         } catch {
             if currentForegroundSession(epoch) {
                 snapshot = coordinator.snapshot
-                let message = Self.safeMessage(error)
+                let message = coordinator.hasUnconfirmedCommand(command)
+                    ? "Could not confirm this action. Retry the same action to check its result."
+                    : Self.safeMessage(error)
                 clearSessionIfAccessLost(error)
                 errorMessage = message
                 if error as? SharedStateFailure == .staleState { await refresh() }

@@ -57,6 +57,15 @@ final class ArchiveIntegrityTests: XCTestCase {
         return state
     }
 
+    private func canceledNeverSubmittedState() throws -> SecondLookState {
+        var state = SecondLookState()
+        let runID = try state.startOneOff(title: "Canceled before evidence", items: [
+            RoutineItem(title: "Photo step", priority: .high),
+        ], performerID: performer, reviewerID: reviewer, now: now)
+        try state.cancel(runID: runID, actorID: performer, now: now.addingTimeInterval(1))
+        return state
+    }
+
     private func mutatedArchive(_ original: SecondLookState,
                                 _ change: (inout TextArchive) -> Void) -> SecondLookState {
         var archive = original.archives[0]
@@ -115,10 +124,27 @@ final class ArchiveIntegrityTests: XCTestCase {
         for change in changes { try assertRejected(mutatedArchive(original, change)) }
     }
 
+    func testRejectsFinalDecisionForNeverSubmittedItem() throws {
+        let original = try canceledNeverSubmittedState()
+        var inventedDecision = try canceledState(reviewed: true).archives[0].items[0].decisions[0]
+        inventedDecision.submissionVersion = 0
+        try assertRejected(mutatedArchive(original) { $0.items[0].decisions = [inventedDecision] })
+    }
+
+    func testRejectsFinalDecisionWithInvalidVerdictNote() throws {
+        let requested = try canceledState(reviewed: true)
+        try assertRejected(mutatedArchive(requested) { $0.items[0].decisions[0].note = nil })
+        try assertRejected(mutatedArchive(requested) { $0.items[0].decisions[0].note = "  \n  " })
+
+        let approved = try completedMixedState()
+        try assertRejected(mutatedArchive(approved) { $0.items[1].decisions[1].note = "Unexpected note" })
+    }
+
     func testValidTerminalArchivesRestoreAndCleanupAcknowledgmentPersists() throws {
         var completed = try completedMixedState()
         var canceled = try canceledState()
         let canceledAfterReview = try canceledState(reviewed: true)
+        let canceledBeforeEvidence = try canceledNeverSubmittedState()
         var standardOnly = SecondLookState()
         let standardRunID = try standardOnly.startOneOff(title: "Simple", items: [RoutineItem(title: "Door")],
                                                          performerID: performer, reviewerID: nil, now: now)
@@ -127,8 +153,10 @@ final class ArchiveIntegrityTests: XCTestCase {
         XCTAssertEqual(completed.archives[0].items[1].decisions.map(\.submissionVersion), [1, 2])
         XCTAssertTrue(canceled.archives[0].items[0].decisions.isEmpty)
         XCTAssertEqual(canceledAfterReview.archives[0].items[0].decisions.map(\.verdict), [.requestedAnother])
+        XCTAssertEqual(canceledBeforeEvidence.runs[0].items[0].lastVersion, 0)
+        XCTAssertTrue(canceledBeforeEvidence.archives[0].items[0].decisions.isEmpty)
         XCTAssertTrue(standardOnly.archives[0].items[0].decisions.isEmpty)
-        for state in [completed, canceled, canceledAfterReview, standardOnly] {
+        for state in [completed, canceled, canceledAfterReview, canceledBeforeEvidence, standardOnly] {
             try state.validateForLoad()
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: directory) }

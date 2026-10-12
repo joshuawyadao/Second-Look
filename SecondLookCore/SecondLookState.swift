@@ -302,7 +302,15 @@ public struct SecondLookState: Codable, Equatable, Sendable {
             if item.priority == .standard {
                 guard archived.decisions.isEmpty else { return false }
             } else if let currentDecision {
-                guard currentDecision.submissionVersion == item.lastVersion else { return false }
+                guard currentDecision.submissionVersion > 0,
+                      currentDecision.submissionVersion == item.lastVersion else { return false }
+                switch currentDecision.verdict {
+                case .approved:
+                    guard currentDecision.note == nil else { return false }
+                case .requestedAnother:
+                    guard let note = currentDecision.note,
+                          !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+                }
             }
             if run.outcome == .completed, item.priority == .high {
                 guard currentDecision?.verdict == .approved else { return false }

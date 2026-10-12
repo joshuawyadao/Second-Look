@@ -23,13 +23,7 @@ struct ConnectedConfiguration: Codable, Equatable {
 
     func validate(allowLocalHTTP: Bool) throws {
         for url in [authURL, serverURL] {
-            let local = allowLocalHTTP && url.scheme == "http" &&
-                ["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? "")
-            guard url.scheme == "https" || local,
-                  url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
-                  url.path.isEmpty || url.path == "/" else {
-                throw SharedStateFailure.invalidResponse
-            }
+            try SharedEndpointValidation.validate(url, allowLocalHTTP: allowLocalHTTP)
         }
         guard !publishableKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SharedStateFailure.invalidResponse

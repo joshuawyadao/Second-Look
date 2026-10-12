@@ -4,6 +4,17 @@ import FoundationNetworking
 #endif
 import SecondLookCore
 
+/// One endpoint contract is used before saving native settings and before sending HTTP.
+public enum SharedEndpointValidation {
+    public static func validate(_ url: URL, allowLocalHTTP: Bool = false) throws {
+        let local = allowLocalHTTP && url.scheme == "http" &&
+            ["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? "")
+        guard let host = url.host, !host.isEmpty, url.scheme == "https" || local,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+              url.path.isEmpty || url.path == "/" else { throw SharedStateFailure.invalidResponse }
+    }
+}
+
 public struct PairingInvitation: Codable, Equatable, Sendable {
     public let snapshot: SharedSnapshot
     public let inviteToken: String
@@ -123,12 +134,8 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
     func send<Request: Encodable, Response: Decodable>(path: [String], method: String,
                                                        token: String?, query: [URLQueryItem] = [],
                                                        body: Request?) async throws -> Response {
-        guard let scheme = baseURL.scheme?.lowercased(),
-              (scheme == "https" || (allowLocalHTTP && scheme == "http" &&
-                ["localhost", "127.0.0.1", "::1"].contains(baseURL.host?.lowercased() ?? ""))),
-              baseURL.user == nil, baseURL.password == nil,
-              baseURL.query == nil, baseURL.fragment == nil,
-              !path.contains(where: { $0 == ".." || $0.contains("/") }),
+        try SharedEndpointValidation.validate(baseURL, allowLocalHTTP: allowLocalHTTP)
+        guard !path.contains(where: { $0 == ".." || $0.contains("/") }),
               apiKey.map({ !$0.isEmpty }) ?? true else { throw SharedStateFailure.invalidResponse }
         var url = baseURL
         for part in path { url.appendPathComponent(part) }

@@ -7,6 +7,22 @@ import SecondLookCore
 import SecondLookTransport
 
 final class SharedAuthTransportTests: XCTestCase {
+    func testHostlessEndpointsFailBeforeAuthOrCommandRequests() async throws {
+        for raw in ["https:", "https:///"] {
+            let endpoint = try XCTUnwrap(URL(string: raw))
+            do {
+                _ = try await SharedAuthClient(authURL: endpoint, publishableKey: "public-test-key",
+                    session: session()).signIn(email: "person@example.test", password: "invented-password")
+                XCTFail("Hostless Auth URL must be rejected")
+            } catch { XCTAssertEqual(error as? SharedStateFailure, .invalidResponse) }
+            do {
+                _ = try await SharedHTTPClient(serverURL: endpoint, accessToken: "invented-token",
+                    session: session()).currentSpace()
+                XCTFail("Hostless command URL must be rejected")
+            } catch { XCTAssertEqual(error as? SharedStateFailure, .invalidResponse) }
+        }
+    }
+
     func testHostedInvalidCredentialsShapeBecomesTypedAuthFailure() async throws {
         let auth = client(host: "invalid-credentials.test")
         do {

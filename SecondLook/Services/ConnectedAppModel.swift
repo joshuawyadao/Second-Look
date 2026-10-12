@@ -62,14 +62,14 @@ final class ConnectedAppModel {
         #if SECONDLOOK_DEMO
         if arguments.contains("-ui-testing") && arguments.contains("-shared-testing") &&
             arguments.contains("-reset-demo") {
-            if let configuration { ConnectedKeychain.delete(configuration: configuration) }
+            if let configuration { try? ConnectedKeychain.delete(configuration: configuration) }
             let environment = ProcessInfo.processInfo.environment
             if let auth = environment["SECONDLOOK_TEST_AUTH_URL"].flatMap({ URL(string: $0) }),
                let server = environment["SECONDLOOK_TEST_SERVER_URL"].flatMap({ URL(string: $0) }) {
                 let testConfiguration = ConnectedConfiguration(authURL: auth,
                     publishableKey: environment["SECONDLOOK_TEST_PUBLISHABLE_KEY"] ?? "",
                     serverURL: server)
-                ConnectedKeychain.delete(configuration: testConfiguration)
+                try? ConnectedKeychain.delete(configuration: testConfiguration)
             }
         }
         #endif
@@ -119,7 +119,7 @@ final class ConnectedAppModel {
         if configuration != next {
             let oldConfiguration = configuration
             resetSession()
-            if let oldConfiguration { ConnectedKeychain.delete(configuration: oldConfiguration) }
+            if let oldConfiguration { try ConnectedKeychain.delete(configuration: oldConfiguration) }
             configuration = next
             UserDefaults.standard.set(try JSONEncoder().encode(next), forKey: Self.configKey)
         }
@@ -190,8 +190,16 @@ final class ConnectedAppModel {
         } catch {
             if currentForegroundSession(epoch) {
                 if error as? SharedStateFailure == .unauthenticated {
-                    ConnectedKeychain.delete(configuration: configuration)
+                    do { try ConnectedKeychain.delete(configuration: configuration) }
+                    catch {
+                        status = "Signed out. Saved session cleanup needs another attempt."
+                        errorMessage = Self.safeMessage(error)
+                        busy = false
+                        return
+                    }
                     status = "Sign in again to reconnect."
+                } else if error as? ConnectedIdentityFailure == .secureSessionRemovalFailed {
+                    status = "Signed out. Saved session cleanup needs another attempt."
                 } else { status = "Could not reconnect. Try again when the service is available." }
                 errorMessage = Self.safeMessage(error)
                 busy = false
@@ -241,8 +249,8 @@ final class ConnectedAppModel {
                 if !clearSessionIfAccessLost(error) {
                     retryMembership = true
                     status = "Could not check private-space membership. Try again when connected."
+                    errorMessage = message
                 }
-                errorMessage = message
                 busy = false
             }
         }
@@ -261,8 +269,7 @@ final class ConnectedAppModel {
             busy = false
         } catch {
             if currentForegroundSession(epoch) {
-                clearSessionIfAccessLost(error)
-                errorMessage = Self.safeMessage(error)
+                if !clearSessionIfAccessLost(error) { errorMessage = Self.safeMessage(error) }
                 busy = false
             }
         }
@@ -279,8 +286,7 @@ final class ConnectedAppModel {
             busy = false
         } catch {
             if currentForegroundSession(epoch) {
-                clearSessionIfAccessLost(error)
-                errorMessage = Self.safeMessage(error)
+                if !clearSessionIfAccessLost(error) { errorMessage = Self.safeMessage(error) }
                 busy = false
             }
         }
@@ -422,7 +428,7 @@ final class ConnectedAppModel {
                 } else if !accessLost {
                     retryMembership = snapshot == nil
                 }
-                if !quietly || accessLost { errorMessage = message }
+                if !quietly && !accessLost { errorMessage = message }
                 busy = false
             }
         }
@@ -525,8 +531,7 @@ final class ConnectedAppModel {
                 let message = coordinator.hasUnconfirmedCommand(command)
                     ? "Could not confirm this action. Retry the same action to check its result."
                     : Self.safeMessage(error)
-                clearSessionIfAccessLost(error)
-                errorMessage = message
+                if !clearSessionIfAccessLost(error) { errorMessage = message }
                 if error as? SharedStateFailure == .staleState { await refresh() }
             }
             return nil
@@ -540,13 +545,20 @@ final class ConnectedAppModel {
         guard let failure = error as? SharedStateFailure,
               failure == .unauthenticated || failure == .forbidden else { return false }
         signOut()
+        if errorMessage == nil { errorMessage = Self.safeMessage(error) }
         return true
     }
 
     func signOut() {
         let oldConfiguration = configuration
         resetSession()
-        if let oldConfiguration { ConnectedKeychain.delete(configuration: oldConfiguration) }
+        if let oldConfiguration {
+            do { try ConnectedKeychain.delete(configuration: oldConfiguration) }
+            catch {
+                status = "Signed out. Saved session cleanup needs another attempt."
+                errorMessage = Self.safeMessage(error)
+            }
+        }
     }
 
     private func resetSession() {
@@ -576,8 +588,13 @@ final class ConnectedAppModel {
                 return "Email or password is incorrect. Check both and try again."
             }
         }
-        if error is ConnectedIdentityFailure {
-            return "Secure session storage is unavailable on this device."
+        if let failure = error as? ConnectedIdentityFailure {
+            switch failure {
+            case .secureStorageUnavailable:
+                return "Secure session storage is unavailable on this device."
+            case .secureSessionRemovalFailed:
+                return "You are signed out. This device could not clear its saved session. Reopen the app to retry cleanup."
+            }
         }
         guard let failure = error as? SharedStateFailure else {
             return "Connection failed. Check the service and try again."

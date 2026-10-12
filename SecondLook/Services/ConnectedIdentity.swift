@@ -36,7 +36,7 @@ fileprivate struct StoredCredentials: Codable, Sendable {
     let expiresAt: Date
 }
 
-enum ConnectedIdentityFailure: Error { case secureStorageUnavailable }
+enum ConnectedIdentityFailure: Error, Equatable { case secureStorageUnavailable, secureSessionRemovalFailed }
 
 enum ConnectedKeychain {
     private final class SessionRegistry: @unchecked Sendable {
@@ -82,41 +82,65 @@ enum ConnectedKeychain {
         guard registry.current[configuration.keychainService] == sessionID else {
             throw SharedStateFailure.sessionChanged
         }
-        let query = key(configuration)
-        SecItemDelete(query as CFDictionary)
-        var attributes = query
-        attributes[kSecValueData as String] = data
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            #if SECONDLOOK_DEMO
-            let args = ProcessInfo.processInfo.arguments
-            if args.contains("-ui-testing") && args.contains("-shared-testing") {
-                NSLog("Second Look local test Keychain status: %d", status)
+        try barrier(configuration).persistCredentials {
+            let query = key(configuration)
+            let value: [String: Any] = [
+                kSecValueData as String: data,
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            ]
+            var status = SecItemUpdate(query as CFDictionary, value as CFDictionary)
+            if status == errSecItemNotFound {
+                let attributes = query.merging(value) { _, new in new }
+                status = SecItemAdd(attributes as CFDictionary, nil)
             }
-            #endif
-            throw ConnectedIdentityFailure.secureStorageUnavailable
+            guard status == errSecSuccess else {
+                #if SECONDLOOK_DEMO
+                let args = ProcessInfo.processInfo.arguments
+                if args.contains("-ui-testing") && args.contains("-shared-testing") {
+                    NSLog("Second Look local test Keychain status: %d", status)
+                }
+                #endif
+                throw ConnectedIdentityFailure.secureStorageUnavailable
+            }
         }
     }
 
     static func restore(configuration: ConnectedConfiguration) throws -> AuthSessionVault? {
-        var query = key(configuration)
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data,
-              let value = try? JSONDecoder().decode(StoredCredentials.self, from: data) else {
-            throw ConnectedIdentityFailure.secureStorageUnavailable
-        }
-        return AuthSessionVault(accountID: value.accountID, accessToken: value.accessToken,
-                                refreshToken: value.refreshToken, expiresAt: value.expiresAt,
-                                configuration: configuration)
+        registry.lock.lock()
+        defer { registry.lock.unlock() }
+        return try barrier(configuration).restoreCredentials(read: {
+            var query = key(configuration)
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            if status == errSecItemNotFound { return nil }
+            guard status == errSecSuccess, let data = result as? Data,
+                  let value = try? JSONDecoder().decode(StoredCredentials.self, from: data) else {
+                throw ConnectedIdentityFailure.secureStorageUnavailable
+            }
+            return AuthSessionVault(accountID: value.accountID, accessToken: value.accessToken,
+                                    refreshToken: value.refreshToken, expiresAt: value.expiresAt,
+                                    configuration: configuration)
+        }, delete: { try removeItem(configuration) })
     }
 
-    static func delete(configuration: ConnectedConfiguration) {
-        SecItemDelete(key(configuration) as CFDictionary)
+    static func delete(configuration: ConnectedConfiguration) throws {
+        registry.lock.lock()
+        defer { registry.lock.unlock() }
+        registry.current.removeValue(forKey: configuration.keychainService)
+        try barrier(configuration).deleteCredentials { try removeItem(configuration) }
+    }
+
+    private static func barrier(_ configuration: ConnectedConfiguration) -> SessionRestorationBarrier {
+        SessionRestorationBarrier(scope: configuration.keychainService)
+    }
+
+    private static func removeItem(_ configuration: ConnectedConfiguration) throws {
+        let status = SecItemDelete(key(configuration) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw ConnectedIdentityFailure.secureSessionRemovalFailed
+        }
     }
 
     #if SECONDLOOK_DEMO

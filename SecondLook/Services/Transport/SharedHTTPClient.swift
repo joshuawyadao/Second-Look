@@ -218,15 +218,17 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
             default: return SharedStateFailure.invalidResponse
             }
         }
-        return Self.serviceFailure(status: status, data: data)
+        return Self.serviceFailure(status: status, data: data, format: failureFormat)
     }
 
-    private static func serviceFailure(status: Int, data: Data) -> SharedStateFailure {
+    private static func serviceFailure(status: Int, data: Data,
+                                       format: HTTPFailureFormat) -> SharedStateFailure {
         let code = (try? SharedWireCodec.decode(ServiceError.self, from: data))?.code
         switch status {
         case 401: return .unauthenticated
         case 403: return .forbidden
-        case 404: return .notPaired
+        case 404:
+            return format == .commandService && code == "notPaired" ? .notPaired : .serviceUnavailable
         case 409: return code == "pairingUnavailable" ? .pairingUnavailable : .staleState
         case 400:
             switch code {

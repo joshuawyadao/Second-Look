@@ -76,3 +76,5 @@ When real media arrives, closure must write cleanup intent with the logical term
 Open `SecondLook.xcodeproj` in Xcode or use a discovered iOS Simulator destination with `xcodebuild`; run `swift test` for the portable package and `./scripts/verify-repository.sh` for public repository safety. Exact successful commands, destinations, and limitations are recorded in [Verification.md](Verification.md). Real-device media and deletion checks require later milestones.
 
 Completed text archives require a check timestamp for every standard item; canceled histories may retain unchecked items. The shared loading validator enforces this even if both run and archive contain matching corrupt values.
+
+Only a command-service response explicitly coded notPaired establishes absent membership. Auth user/refresh404 and uncoded or unknown command404 are service unavailability; they preserve unconfirmed membership and cannot enable pairing as if absence were verified.

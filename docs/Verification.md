@@ -96,6 +96,8 @@ The later review completes at00:49:02UTC after its bounded polling window, raisi
 
 The completed-standard archive regression produces three red assertions through direct validation, JSON loading and connected snapshot validation when both run/archive checks are nil. The validator now requires a timestamp for every completed standard item. All6 archive cases and44 Core cases pass; canceled unchecked standard history remains valid. A concurrent full-package attempt encounters the other worker's six intentionally red Auth404 assertions, so it is not credited as a full package pass.
 
+Auth404 regression yields six red assertions across genuine transport seams with synthetic URLProtocol replies: getUser and refresh missing-route/forged-notPaired bodies, and uncoded/unknown command404. Only a command-formatted404 with code:notPaired remains absent membership. After repair, all **14 focused Auth transport cases** pass. The first restricted SwiftPM attempt fails sandbox_apply; the permitted focused run succeeds. These are simulated HTTP replies, not observed hosted outages. Complete current package/native/hosted gates remain pending.
+
 ## Supabase and Render Free setup — October 6–7, 2026
 
 The operator signed in and created a dedicated **Second Look** project in the existing **Free** organization, in **West US (Oregon)**. The dashboard reports Healthy and Nano compute. Database password entry/submission was performed privately by the operator. No paid upgrade, add-on or Storage bucket was provisioned; the Swift host was added separately on October 7 as described below. [Supabase Free Setup](Supabase-Free-Setup.md) records the remaining operator steps and official cost-control sources.

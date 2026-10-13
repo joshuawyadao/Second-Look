@@ -128,6 +128,46 @@ final class SharedAuthTransportTests: XCTestCase {
         }
     }
 
+    func testAuthUserAndRefreshNotFoundNeverMeanAbsentMembership() async throws {
+        for host in ["auth-user-missing-route.test", "auth-user-false-not-paired.test"] {
+            do {
+                _ = try await client(host: host).getUser(accessToken: "invented-access-token")
+                XCTFail("Expected provider user-route failure for \(host)")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable, host)
+            }
+        }
+        for host in ["auth-refresh-missing-route.test", "auth-refresh-false-not-paired.test"] {
+            do {
+                _ = try await client(host: host).refresh(refreshToken: "invented-refresh-token")
+                XCTFail("Expected provider refresh-route failure for \(host)")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable, host)
+            }
+        }
+    }
+
+    func testOnlyCodedCommandServiceNotPairedMeansAbsentMembership() async throws {
+        for host in ["service-missing-route.test", "service-unknown-not-found.test"] {
+            let service = SharedHTTPClient(serverURL: url(host: host),
+                                           accessToken: "invented-access-token", session: session())
+            do {
+                _ = try await service.currentSpace()
+                XCTFail("Expected command-service route failure for \(host)")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable, host)
+            }
+        }
+        let service = SharedHTTPClient(serverURL: url(host: "service-coded-not-paired.test"),
+                                       accessToken: "invented-access-token", session: session())
+        do {
+            _ = try await service.currentSpace()
+            XCTFail("Expected coded absent-membership response")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .notPaired)
+        }
+    }
+
     func testSuccessfulSignInDecodesSessionAndSendsPublicKeyAndPasswordGrant() async throws {
         let result = try await client(host: "successful-sign-in.test").signIn(
             email: "person@example.test", password: "invented-password")
@@ -192,6 +232,14 @@ private final class SyntheticTransportProtocol: URLProtocol {
             result = (400, #"{"error_code":"invalid_credentials"}"#)
         case "auth-unauthorized.test":
             result = (401, #"{"code":401,"error_code":"invalid_token"}"#)
+        case "auth-user-missing-route.test", "auth-refresh-missing-route.test",
+             "service-missing-route.test":
+            result = (404, #"{"message":"route not found"}"#)
+        case "auth-user-false-not-paired.test", "auth-refresh-false-not-paired.test",
+             "service-coded-not-paired.test":
+            result = (404, #"{"code":"notPaired"}"#)
+        case "service-unknown-not-found.test":
+            result = (404, #"{"code":"unknownRoute"}"#)
         case "successful-sign-in.test":
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
             let valid = url.path == "/auth/v1/token" &&

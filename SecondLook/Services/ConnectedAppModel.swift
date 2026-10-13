@@ -51,6 +51,12 @@ final class ConnectedAppModel {
     @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
     @ObservationIgnored private var commandAcceptanceStarted = false
     private(set) var simulatedPairingReplyLoss = false
+    private(set) var simulatedCommandReplyLoss = false
+    private(set) var invitationReceiptAcceptanceStatus: String?
+    @ObservationIgnored private var invitationReceiptAcceptanceStarted = false
+    @ObservationIgnored private var invitationReceiptAcceptanceTask: Task<Void, Never>?
+    @ObservationIgnored private var invitationReceiptActionID: UUID?
+    @ObservationIgnored private var invitationReceiptCreatedID: UUID?
     private(set) var restoreCandidateCount = 0
     @ObservationIgnored private var didDropRenewalReply = false
     @ObservationIgnored private var didDropJoinReply = false
@@ -283,8 +289,9 @@ final class ConnectedAppModel {
             #endif
             let incoming = try await client.currentSpace()
             guard currentForegroundSession(epoch) else { return }
-            try publishSpace(incoming, accountID: accountID, configuration: configuration,
-                             client: client)
+            try await publishSpace(incoming, accountID: accountID, configuration: configuration,
+                                   client: client, epoch: epoch)
+            guard currentForegroundSession(epoch) else { return }
             busy = false
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
@@ -331,10 +338,16 @@ final class ConnectedAppModel {
                 throw SharedStateFailure.serviceUnavailable
             }
             #endif
-            try publishSpace(result.snapshot, accountID: accountID,
-                             configuration: configuration, client: client)
-            invitation = result
+            try await publishSpace(result.snapshot, accountID: accountID,
+                                   configuration: configuration, client: client, epoch: epoch)
+            guard currentForegroundSession(epoch) else { return }
+            // A concurrent fetch may have observed a newer rotation or join. Never
+            // display this reply's token against a different published snapshot.
+            invitation = snapshot == result.snapshot ? result : nil
             busy = false
+            #if SECONDLOOK_DEMO
+            startInvitationReceiptAcceptanceIfRequested()
+            #endif
         } catch {
             if currentForegroundSession(epoch) {
                 if !clearSessionIfAccessLost(error) { errorMessage = Self.safeMessage(error) }
@@ -360,7 +373,9 @@ final class ConnectedAppModel {
                 throw SharedStateFailure.serviceUnavailable
             }
             #endif
-            try publishSpace(result, accountID: accountID, configuration: configuration, client: client)
+            try await publishSpace(result, accountID: accountID,
+                                   configuration: configuration, client: client, epoch: epoch)
+            guard currentForegroundSession(epoch) else { return }
             busy = false
         } catch {
             if currentForegroundSession(epoch) {
@@ -375,23 +390,34 @@ final class ConnectedAppModel {
 
     private func publishSpace(_ incoming: SharedSnapshot, accountID: UUID,
                               configuration: ConnectedConfiguration,
-                              client: SharedHTTPClient) throws {
+                              client: SharedHTTPClient, epoch: UInt64) async throws {
         try incoming.validate(for: accountID)
-        if let snapshot, snapshot.spaceID == incoming.spaceID {
-            guard incoming.revision >= snapshot.revision,
-                  incoming.revision != snapshot.revision || incoming == snapshot else {
+        guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
+        let scope = SharedAccountScope(backend: configuration.backendID,
+                                       accountID: accountID, spaceID: incoming.spaceID)
+        if coordinator.scope == scope {
+            // Renewing an invitation is a write to the same space. Fetch through
+            // the existing coordinator so unknown command outcomes keep their
+            // original envelopes and explicit retry IDs.
+            let floor = max(snapshot?.revision ?? 0, incoming.revision)
+            try await coordinator.refresh()
+            guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
+            guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
                 throw SharedStateFailure.staleState
             }
+            if refreshed.revision == incoming.revision && refreshed != incoming {
+                throw SharedStateFailure.invalidResponse
+            }
+            snapshot = refreshed
+        } else {
+            coordinator.beginSession(scope: scope, client: client)
+            unconfirmedActions = []
+            // The first authenticated space lookup is already validated and held only in memory.
+            snapshot = incoming
         }
-        coordinator.beginSession(scope: SharedAccountScope(backend: configuration.backendID,
-                                                            accountID: accountID,
-                                                            spaceID: incoming.spaceID), client: client)
-        unconfirmedActions = []
-        // The first authenticated space lookup is already validated and held only in memory.
-        snapshot = incoming
         confirmedNoSpace = false
         retryMembership = false
-        status = incoming.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
+        status = snapshot?.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
         #if SECONDLOOK_DEMO
         simulatedMembershipFailure = false
         startCommandAcceptanceIfRequested()
@@ -472,6 +498,102 @@ final class ConnectedAppModel {
             arguments.contains("-shared-command-checks")
     }
 
+    private var invitationReceiptChecksRequested: Bool {
+        localRecoveryChecksRequested &&
+            ProcessInfo.processInfo.arguments.contains("-shared-test-invitation-receipts")
+    }
+
+    private func startInvitationReceiptAcceptanceIfRequested() {
+        guard invitationReceiptChecksRequested, !invitationReceiptAcceptanceStarted,
+              let snapshot, snapshot.members.count == 1,
+              snapshot.members.first == accountID,
+              let client, let configuration, let accountID else { return }
+        invitationReceiptAcceptanceStarted = true
+        let epoch = generation
+        invitationReceiptAcceptanceTask = Task { [weak self] in
+            guard let self, self.currentForegroundSession(epoch) else { return }
+            let actionID = UUID()
+            let adapter = SharedInvitationReceiptLossClient(base: client, targetCommandID: actionID)
+            let scope = SharedAccountScope(backend: configuration.backendID,
+                                           accountID: accountID, spaceID: snapshot.spaceID)
+            self.coordinator.beginSession(scope: scope, client: adapter)
+            do {
+                try await self.coordinator.refresh()
+                guard !Task.isCancelled, self.currentForegroundSession(epoch),
+                      let initial = self.coordinator.snapshot,
+                      initial.revision >= snapshot.revision else { return }
+                self.snapshot = initial
+            } catch {
+                self.failInvitationReceiptAcceptance("initialFetch", epoch: epoch)
+                return
+            }
+
+            let command = SharedCommand.startOneOff(
+                title: "Synthetic receipt preservation",
+                items: [RoutineItem(title: "Invented checklist step")], settings: .init())
+            let first = await self.execute(command, commandID: actionID)
+            guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
+            guard first == nil,
+                  self.coordinator.hasUnconfirmedCommand(commandID: actionID),
+                  self.unconfirmedActions.contains(where: { $0.id == actionID }),
+                  let createdID = await adapter.committedCreatedID() else {
+                self.failInvitationReceiptAcceptance("lostReply", epoch: epoch)
+                return
+            }
+            self.simulatedCommandReplyLoss = true
+            guard await self.refresh(), !Task.isCancelled,
+                  self.currentForegroundSession(epoch),
+                  let beforeRenewal = self.snapshot else {
+                self.failInvitationReceiptAcceptance("reconcile", epoch: epoch)
+                return
+            }
+            await self.createSpace()
+            guard !Task.isCancelled, self.currentForegroundSession(epoch),
+                  let renewed = self.snapshot,
+                  renewed.spaceID == beforeRenewal.spaceID,
+                  renewed.revision >= beforeRenewal.revision + 1 else {
+                self.failInvitationReceiptAcceptance("renewal", epoch: epoch)
+                return
+            }
+            guard self.coordinator.hasUnconfirmedCommand(commandID: actionID),
+                  self.unconfirmedActions.contains(where: { $0.id == actionID }),
+                  self.canRetryUnconfirmedAction(actionID) else {
+                self.failInvitationReceiptAcceptance("pendingAfterRenewal", epoch: epoch)
+                return
+            }
+            self.invitationReceiptActionID = actionID
+            self.invitationReceiptCreatedID = createdID
+            self.invitationReceiptAcceptanceStatus = "Invitation receipt checks ready for retry"
+        }
+    }
+
+    private func failInvitationReceiptAcceptance(_ step: String, epoch: UInt64) {
+        guard !Task.isCancelled, currentForegroundSession(epoch) else { return }
+        invitationReceiptAcceptanceStatus = "Invitation receipt checks failed: " + step
+    }
+
+    private func finishInvitationReceiptAcceptance(_ receipt: ActionReceipt?, actionID: UUID,
+                                                   epoch: UInt64) async {
+        guard currentForegroundSession(epoch), !Task.isCancelled,
+              actionID == invitationReceiptActionID,
+              let expectedID = invitationReceiptCreatedID else { return }
+        guard receipt?.createdID == expectedID else {
+            failInvitationReceiptAcceptance("originalReceipt", epoch: epoch)
+            return
+        }
+        guard await refresh(), currentForegroundSession(epoch),
+              let snapshot else {
+            failInvitationReceiptAcceptance("finalRefresh", epoch: epoch)
+            return
+        }
+        let matchingRuns = snapshot.state.runs.filter { $0.title == "Synthetic receipt preservation" }
+        guard matchingRuns.count == 1, matchingRuns.first?.id == expectedID else {
+            failInvitationReceiptAcceptance("singleRun", epoch: epoch)
+            return
+        }
+        invitationReceiptAcceptanceStatus = "Invitation receipt checks passed"
+    }
+
     /// Explicit UI-test opt-in uses the installed account client; no credential is exported.
     private func startCommandAcceptanceIfRequested() {
         guard commandChecksRequested, !commandAcceptanceStarted,
@@ -544,8 +666,9 @@ final class ConnectedAppModel {
             }
             #endif
             if snapshot?.spaceID != incoming.spaceID {
-                try publishSpace(incoming, accountID: accountID,
-                                 configuration: configuration, client: client)
+                try await publishSpace(incoming, accountID: accountID,
+                                       configuration: configuration, client: client, epoch: epoch)
+                guard currentForegroundSession(epoch) else { return false }
             } else {
                 let floor = max(snapshot?.revision ?? 0, incoming.revision)
                 try await coordinator.refresh()
@@ -686,7 +809,14 @@ final class ConnectedAppModel {
         guard canRetryUnconfirmedAction(id),
               let action = unconfirmedActions.first(where: { $0.id == id }) else { return nil }
         errorMessage = nil
-        return await execute(action.command, commandID: action.id)
+        let epoch = generation
+        let receipt = await execute(action.command, commandID: action.id)
+        #if SECONDLOOK_DEMO
+        if invitationReceiptChecksRequested && id == invitationReceiptActionID {
+            await finishInvitationReceiptAcceptance(receipt, actionID: id, epoch: epoch)
+        }
+        #endif
+        return receipt
     }
 
     @discardableResult
@@ -768,6 +898,13 @@ final class ConnectedAppModel {
         simulatedMembershipFailure = false
         didSimulateMembershipFailure = false
         simulatedPairingReplyLoss = false
+        invitationReceiptAcceptanceTask?.cancel()
+        invitationReceiptAcceptanceTask = nil
+        invitationReceiptAcceptanceStarted = false
+        invitationReceiptAcceptanceStatus = nil
+        invitationReceiptActionID = nil
+        invitationReceiptCreatedID = nil
+        simulatedCommandReplyLoss = false
         resumeRefreshForAcceptance()
         delayNextRefreshForAcceptance = false
         restoreCandidateCount = 0

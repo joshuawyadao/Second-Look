@@ -33,6 +33,14 @@ struct ConnectedRootView: View {
                 Text("Pairing reply loss (simulated for acceptance)").font(.caption)
                     .accessibilityIdentifier("sharedSimulatedPairingReplyLoss")
             }
+            if model.simulatedCommandReplyLoss {
+                Text("Command reply loss (simulated for acceptance)").font(.caption)
+                    .accessibilityIdentifier("sharedSimulatedCommandReplyLoss")
+            }
+            if let result = model.invitationReceiptAcceptanceStatus {
+                Text(result).font(.caption)
+                    .accessibilityIdentifier("sharedInvitationReceiptResult")
+            }
             if model.restoreRaceChecksRequested {
                 VStack {
                     Text("Concurrent reconnect triggers (simulated for acceptance)").font(.caption)

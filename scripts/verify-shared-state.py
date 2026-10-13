@@ -231,6 +231,7 @@ def main():
                     ("busy", "mutation controls during a delayed refresh"),
                     ("draft", "editor draft after a genuine one-off rejection"),
                     ("identity", "protected-state clearing after a refresh identity mismatch"),
+                    ("receipt", "original command receipt after invitation renewal"),
                 )
                 for recovery_case, description in recovery_cases:
                     # Each scenario needs its own empty space. Truncate only the exact

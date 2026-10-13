@@ -82,3 +82,5 @@ Only a command-service response explicitly coded notPaired establishes absent me
 Prior review decisions must use the assigned reviewer, positive increasing versions within the item history and domain verdict/note semantics. Current and archived decisions reuse the same semantic helper. A removed current submission may leave its reviewed version equal to lastVersion in canceled history; an existing submission must follow prior versions.
 
 A run stores either no routine source ID/version for a one-off, or a routine ID with a positive immutable source version. Creation and local/connected loading share this rule. Deleting or editing the live source routine does not invalidate the run snapshot.
+
+Invitation renewal in the same backend/account/space refreshes the existing coordinator, preserving original unconfirmed command envelopes and explicit retry IDs. Async publication checks its session epoch and revision floor; caller mutations recheck the epoch. Only a matching published snapshot displays the renewed invitation. A real scope change clears pending memory.

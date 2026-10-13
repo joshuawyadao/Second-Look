@@ -269,10 +269,10 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 }
             } else {
                 guard let archive, let outcome = run.outcome, let closedAt = run.closedAt,
-                      outcome != .canceled || !run.isSatisfied,
                       archive.outcome == outcome, archive.closedAt == closedAt,
                       archive.cleanupStatus == run.cleanupStatus,
                       Self.archiveMatchesClosedRun(archive, run: run),
+                      outcome != .canceled || !Self.closedRunIsSatisfied(archive, run: run),
                       run.items.allSatisfy({ $0.submission == nil && $0.preview == nil }) else {
                     throw SecondLookError.corruptDocument
                 }
@@ -288,6 +288,18 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         case (nil, nil): return true
         case (.some, .some(let version)): return version > 0
         default: return false
+        }
+    }
+
+    /// Call after archiveMatchesClosedRun has established the final-decision boundary.
+    /// Closed runs have no current submission, so RunItem.isSatisfied cannot recover approval.
+    private static func closedRunIsSatisfied(_ archive: TextArchive, run: ChecklistRun) -> Bool {
+        !run.items.isEmpty && zip(run.items, archive.items).allSatisfy { item, archived in
+            switch item.priority {
+            case .standard: return item.checkedAt != nil
+            case .high:
+                return archived.decisions.dropFirst(item.priorDecisions.count).first?.verdict == .approved
+            }
         }
     }
 

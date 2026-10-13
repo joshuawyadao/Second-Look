@@ -162,11 +162,12 @@ public final class SharedStateCoordinator {
             let receipt = ConfirmedCommandReceipt(commandID: commandID, command: command,
                 snapshotRevision: result.snapshot.revision, createdID: result.createdID)
             if let existing = confirmedCommands.first(where: { $0.receipt.commandID == commandID }) {
-                guard existing.scope == scope, existing.receipt == receipt else {
+                guard existing.scope == scope, sameCommittedCommand(existing.receipt, receipt) else {
                     throw SharedStateFailure.invalidResponse
                 }
             }
-            if let acknowledged = acknowledgedInFlight[attemptKey], acknowledged != receipt {
+            if let acknowledged = acknowledgedInFlight[attemptKey],
+               !sameCommittedCommand(acknowledged, receipt) {
                 throw SharedStateFailure.invalidResponse
             }
             // A concurrent refresh may already have published a newer view. The receipt is still
@@ -207,6 +208,15 @@ public final class SharedStateCoordinator {
         } else {
             inFlightAttempts[key] = count - 1
         }
+    }
+
+    /// A request-bound replay may include a newer current space view after a
+    /// peer's write. Its original command and created ID must remain stable;
+    /// the first receipt retains its own minimum verified revision.
+    private func sameCommittedCommand(_ first: ConfirmedCommandReceipt,
+                                      _ replay: ConfirmedCommandReceipt) -> Bool {
+        first.commandID == replay.commandID && first.command == replay.command &&
+        first.createdID == replay.createdID
     }
 
     private func verifiedConfirmedRecord(commandID: UUID,

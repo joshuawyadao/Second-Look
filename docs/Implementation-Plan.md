@@ -112,7 +112,7 @@ Final checkpoint0259e70 is pushed and receipt comment4255046754 has thumbs-up re
 
 Review5507805708 posted at17:57:19UTC after the bounded request6151577720 timeout; it adds six findings (59 total). The prior executable0259e70 seven-phase evidence remains recorded; any subsequent fixes need new saved-source evidence. No product decisions are needed for these bounded response and privacy repairs. Docker-dependent acceptance remains blocked on the requested full quit/reopen reply.
 
-- [ ] 4262173360: accept identical command/result receipt replays with a newer current snapshot while preserving one-shot consumption and monotonic revisions; meaningful overlapping genuine-processor regression, separate save/push/reaction.
+- [x] 4262173360: accept identical command/result receipt replays with a newer current snapshot while preserving one-shot consumption and monotonic revisions; two genuine-processor later-peer-revision regressions fail before the stable-identity comparison, then all12 focused receipt tests pass; separate save/push/reaction.
 - [ ] 4262173373: validate creation/noncreation result ID shape and returned run identity before receipt confirmation/envelope removal; preserve legitimate later-current receipt snapshots, separate regressions/save/push/reaction.
 - [x] 4262173384: classify only documented command-service409 staleState/pairingUnavailable authoritatively; unknown responses keep the original command envelope, three red classification assertions, all17 Auth/command transport cases green; separate save/push/reaction.
 - [ ] 4262173390: bound every connected run item submission counter below Int.max; corrupt/open snapshots rejected before increment, valid finite values preserved; regression/save/push/reaction.

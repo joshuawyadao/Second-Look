@@ -142,6 +142,26 @@ private actor StaggeredConfirmedClient: SharedStateClient {
         }
         waiters.removeFirst().1.resume(returning: committedResult)
     }
+
+    func commitPeerRoutine(reviewerID: UUID) throws {
+        let definition = Routine(id: UUID(), title: "Peer's invented routine",
+                                 items: [RoutineItem(title: "Bag")])
+        let envelope = SharedCommandEnvelope(
+            spaceID: current.spaceID, commandID: UUID(), expectedSpaceRevision: current.revision,
+            command: .saveRoutine(definition: definition, expectedDefinitionVersion: nil)
+        )
+        current = try SharedCommandProcessor.apply(envelope, to: current,
+                                                   actorID: reviewerID, now: now).snapshot
+    }
+
+    func releaseSecondSuccessWithCurrentSnapshot() throws {
+        guard waiters.count == 1, let committedResult else {
+            throw SharedStateFailure.invalidResponse
+        }
+        waiters.removeFirst().1.resume(returning: SharedCommandResult(
+            snapshot: current, createdID: committedResult.createdID
+        ))
+    }
 }
 
 @MainActor
@@ -353,6 +373,66 @@ final class ConfirmedReceiptRecoveryTests: XCTestCase {
         XCTAssertEqual(secondID, firstID)
         XCTAssertNil(coordinator.takeConfirmedReceipt(commandID: actionID, command: command),
                      "A response from the same already-admitted request cannot restore its used receipt")
+    }
+
+    func testLaterPeerRevisionInMatchingReplayKeepsOriginalCreationReceipt() async throws {
+        let client = StaggeredConfirmedClient(snapshot: initial, actorID: actorID,
+                                              now: Date(timeIntervalSince1970: 1_700_000_000))
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        let command = SharedCommand.startOneOff(title: "Invented checklist",
+                                                 items: [RoutineItem(title: "Keys")], settings: .init())
+        let actionID = UUID()
+        let first = Task { try await coordinator.execute(command, commandID: actionID) }
+        await client.waitUntilFirstAdmitted()
+        let replay = Task { try await coordinator.execute(command, commandID: actionID) }
+        await client.waitUntilBothAdmitted()
+        try await client.releaseFirstSuccess()
+        let firstResult = try await first.value
+        let createdID = try XCTUnwrap(firstResult)
+        XCTAssertEqual(coordinator.snapshot?.revision, 1)
+
+        try await client.commitPeerRoutine(reviewerID: reviewerID)
+        try await client.releaseSecondSuccessWithCurrentSnapshot()
+        let replayedID = try await replay.value
+        XCTAssertEqual(replayedID, createdID)
+        XCTAssertEqual(coordinator.snapshot?.revision, 2)
+        XCTAssertEqual(coordinator.snapshot?.state.runs.map(\.id), [createdID])
+        XCTAssertEqual(coordinator.snapshot?.state.routines.count, 1)
+        let receipt = coordinator.takeConfirmedReceipt(commandID: actionID, command: command)
+        XCTAssertEqual(receipt?.createdID, createdID)
+        XCTAssertEqual(receipt?.snapshotRevision, 1,
+                       "The original commit revision remains the receipt's minimum safe view")
+        XCTAssertNil(coordinator.takeConfirmedReceipt(commandID: actionID, command: command))
+    }
+
+    func testLaterPeerRevisionCannotRestoreConsumedCreationReceipt() async throws {
+        let client = StaggeredConfirmedClient(snapshot: initial, actorID: actorID,
+                                              now: Date(timeIntervalSince1970: 1_700_000_000))
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        let command = SharedCommand.startOneOff(title: "Invented checklist",
+                                                 items: [RoutineItem(title: "Keys")], settings: .init())
+        let actionID = UUID()
+        let first = Task { try await coordinator.execute(command, commandID: actionID) }
+        await client.waitUntilFirstAdmitted()
+        let replay = Task { try await coordinator.execute(command, commandID: actionID) }
+        await client.waitUntilBothAdmitted()
+        try await client.releaseFirstSuccess()
+        let firstResult = try await first.value
+        let createdID = try XCTUnwrap(firstResult)
+        XCTAssertEqual(coordinator.takeConfirmedReceipt(commandID: actionID,
+                                                        command: command)?.createdID, createdID)
+
+        try await client.commitPeerRoutine(reviewerID: reviewerID)
+        try await client.releaseSecondSuccessWithCurrentSnapshot()
+        let replayedID = try await replay.value
+        XCTAssertEqual(replayedID, createdID)
+        XCTAssertEqual(coordinator.snapshot?.revision, 2)
+        XCTAssertNil(coordinator.takeConfirmedReceipt(commandID: actionID, command: command),
+                     "A later view of the same committed command cannot restore its used receipt")
     }
 
     func testConsumedReceiptStillKeepsRevisionFloorAcrossSuspension() async throws {

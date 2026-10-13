@@ -184,6 +184,9 @@ def main():
                     selected_tests = ["-only-testing:SecondLookUITests/ConnectedDraftLifecycleUITests"]
                 if args.recovery_case == "creation":
                     selected_tests = ["-only-testing:SecondLookUITests/SharedCreationReceiptRecoveryUITests"]
+                if args.recovery_case == "lifecycle":
+                    selected_tests.append("-only-testing:SecondLookUITests/SharedInvitationReceiptRecoveryUITests/"
+                                          "testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation")
             elif args.only_invitation_access_loss:
                 selected_tests = ["-only-testing:SecondLookUITests/SharedInvitationAccessLossUITests"]
             else:

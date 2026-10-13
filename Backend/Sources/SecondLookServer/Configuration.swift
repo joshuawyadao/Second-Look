@@ -49,11 +49,12 @@ struct ServerConfiguration: Sendable {
         ["localhost", "127.0.0.1", "::1"].contains(url.host?.lowercased() ?? "")
     }
 
-    /// Both keys become HTTP field values. Reject controls at startup, including CR from
-    /// CRLF-sourced environment files, before Foundation or NIO tries to construct a request.
+    /// Both keys become HTTP field values. Reject whitespace and controls at startup, including
+    /// CR from CRLF-sourced environment files, without trimming or exposing either key.
     private static func isSafeHeaderValue(_ value: String) -> Bool {
         !value.isEmpty && value.unicodeScalars.allSatisfy {
-            !CharacterSet.controlCharacters.contains($0)
+            !CharacterSet.controlCharacters.contains($0) &&
+                !CharacterSet.whitespacesAndNewlines.contains($0)
         }
     }
 }

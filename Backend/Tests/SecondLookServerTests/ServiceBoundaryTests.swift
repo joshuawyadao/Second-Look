@@ -58,10 +58,38 @@ import SecondLookCore
         }
     }
 
+    @Test func providerKeysRejectWhitespaceWithoutChangingTheStoredKey() throws {
+        for field in ["SECONDLOOK_PUBLISHABLE_KEY", "SECONDLOOK_SERVICE_KEY"] {
+            let key = environment()[field]!
+            let invalid: [(String, String)] = [
+                ("empty", ""),
+                ("ASCII space-only", "   "),
+                ("ASCII tab-only", "\t"),
+                ("Unicode whitespace-only", "\u{00A0}\u{2003}"),
+                ("leading ASCII space", " " + key),
+                ("trailing ASCII space", key + " "),
+                ("leading Unicode whitespace", "\u{00A0}" + key),
+                ("trailing Unicode whitespace", key + "\u{2003}"),
+                ("interior whitespace", "invented key")
+            ]
+            for (caseName, candidate) in invalid {
+                var env = environment()
+                env[field] = candidate
+                let rejected: Bool
+                do { _ = try ServerConfiguration(environment: env); rejected = false }
+                catch is ConfigurationFailure { rejected = true }
+                catch { rejected = false }
+                #expect(rejected, "\(field) must reject \(caseName) without exposing the key")
+            }
+        }
+    }
+
     @Test func providerKeysAcceptValidModernAndLegacyFormats() throws {
         let validPairs = [
             ("sb_publishable_invented-for-test", "sb_secret_invented-for-test"),
-            ("invented-local-anon-jwt", "invented-local-service-jwt")
+            ("invented-local-anon-jwt", "invented-local-service-jwt"),
+            ("eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.invented-anon-signature",
+             "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.invented-service-signature")
         ]
         for (publishable, service) in validPairs {
             var env = environment()

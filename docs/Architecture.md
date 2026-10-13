@@ -74,3 +74,5 @@ When real media arrives, closure must write cleanup intent with the logical term
 ## Build and verification workflow
 
 Open `SecondLook.xcodeproj` in Xcode or use a discovered iOS Simulator destination with `xcodebuild`; run `swift test` for the portable package and `./scripts/verify-repository.sh` for public repository safety. Exact successful commands, destinations, and limitations are recorded in [Verification.md](Verification.md). Real-device media and deletion checks require later milestones.
+
+Completed text archives require a check timestamp for every standard item; canceled histories may retain unchecked items. The shared loading validator enforces this even if both run and archive contain matching corrupt values.

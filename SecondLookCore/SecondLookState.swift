@@ -300,7 +300,8 @@ public struct SecondLookState: Codable, Equatable, Sendable {
 
             let currentDecision = archived.decisions.dropFirst(item.priorDecisions.count).first
             if item.priority == .standard {
-                guard archived.decisions.isEmpty else { return false }
+                guard archived.decisions.isEmpty,
+                      run.outcome != .completed || item.checkedAt != nil else { return false }
             } else if let currentDecision {
                 guard currentDecision.submissionVersion > 0,
                       currentDecision.submissionVersion == item.lastVersion else { return false }

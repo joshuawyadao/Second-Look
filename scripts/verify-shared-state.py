@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import re
+import signal
 from pathlib import Path
 import secrets
 import subprocess
@@ -23,10 +24,98 @@ CLI = ["npx", "--yes", "supabase@2.119.0"]
 PROJECT = "secondlook-m2-local"
 NETWORK = "secondlook_m2_local"
 EXCLUDED = "realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor"
+DEADLINES = {"inventory": 20, "docker": 60, "stack_start": 300, "cli_status": 30,
+             "stack_stop": 60, "schema": 120, "build": 600, "bin_path": 30,
+             "integration": 600, "native": 780}
+
+
+class VerifierFailure(RuntimeError):
+    def __init__(self, code: str):
+        self.code = code
+
+
+def deadline_for(command):
+    """Accept only this verifier's known local commands with a finite phase limit."""
+    phase = None
+    if command[:3] == ["docker", "network", "inspect"] and command[3:] == [NETWORK]:
+        phase = "inventory"
+    elif command[:3] == ["docker", "network", "create"] and command[-1:] == [NETWORK]:
+        phase = "docker"
+    elif command[:2] == ["docker", "inspect"] and command[2:] and all(
+            item in {f"supabase_db_{PROJECT}", f"supabase_kong_{PROJECT}",
+                     f"supabase_auth_{PROJECT}"} for item in command[2:]):
+        phase = "inventory"
+    elif command[:2] == ["docker", "exec"] and len(command) > 3 and command[2 + (command[2] == "-i")] == f"supabase_db_{PROJECT}":
+        phase = "schema"
+    elif command[:2] == ["python3", "scripts/local-docker-binding.py"] and \
+            command[2:2 + len(CLI) + 1] == [*CLI, "start"]:
+        phase = "stack_start"
+    elif command[:len(CLI) + 1] == [*CLI, "status"]:
+        phase = "cli_status"
+    elif command[:len(CLI) + 1] == [*CLI, "stop"]:
+        phase = "stack_stop"
+    elif command[:2] == ["swift", "build"]:
+        phase = "bin_path" if "--show-bin-path" in command else "build"
+    elif command[:2] == ["swift", "test"]:
+        phase = "integration"
+    elif command[:2] == ["python3", "scripts/verify-connected-native.py"]:
+        phase = "native"
+    if phase is None:
+        raise VerifierFailure("unsupported_command")
+    return phase, DEADLINES[phase]
+
+
+def stop_owned_process(process, grace=5):
+    """Stop the process group, including descendants after its leader exits, and reap it."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.communicate(timeout=grace)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        process.communicate(timeout=grace)
+    except subprocess.TimeoutExpired:
+        try:
+            process.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            raise VerifierFailure("cleanup") from None
+
+
+def stop_owned_server(process):
+    stop_owned_process(process, grace=15)
+
+
+def run_owned(command, timeout, phase, *, grace=5, check=True, capture_output=False,
+              input=None, stdin=None, stdout=None, stderr=None, env=None):
+    if input is not None and stdin is not None:
+        raise VerifierFailure("unsupported_command")
+    try:
+        process = subprocess.Popen(command, cwd=ROOT, env=env, start_new_session=True,
+                                   stdin=subprocess.PIPE if input is not None else stdin or subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE if capture_output else stdout or subprocess.DEVNULL,
+                                   stderr=subprocess.PIPE if capture_output else stderr or subprocess.DEVNULL)
+    except OSError:
+        raise VerifierFailure(phase + "_failed") from None
+    try:
+        output, error = process.communicate(input=input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        stop_owned_process(process, grace=grace)
+        raise VerifierFailure(phase + "_timeout") from None
+    if check and process.returncode != 0:
+        raise VerifierFailure(phase + "_failed")
+    return subprocess.CompletedProcess(command, process.returncode, output, error)
 
 
 def run(command, **kwargs):
-    return subprocess.run(command, cwd=ROOT, check=True, **kwargs)
+    phase, timeout = deadline_for(command)
+    return run_owned(command, timeout, phase, **kwargs)
 
 
 def request(url, payload=None, key=None, token=None):
@@ -63,6 +152,11 @@ def start_stack(directory, env):
         try:
             run(["python3", "scripts/local-docker-binding.py"] + CLI + ["start", "--debug", "--network-id", NETWORK, "--exclude", EXCLUDED], env=env,
                 stdout=log, stderr=subprocess.STDOUT)
+        except VerifierFailure as failure:
+            log.flush()
+            if failure.code == "stack_start_timeout":
+                raise RuntimeError("Local Supabase startup timed out; owned process group stopped; inspect the private stack log.") from None
+            raise RuntimeError(startup_failure_message(stack_log)) from None
         except subprocess.CalledProcessError:
             log.flush()
             raise RuntimeError(startup_failure_message(stack_log)) from None
@@ -97,7 +191,7 @@ def main():
     directory = Path(tempfile.mkdtemp(prefix="secondlook-m2-"))
     env = dict(os.environ, SUPABASE_TELEMETRY_DISABLED="1")
     # The custom network binds published ports to loopback, including database ports.
-    inspected = subprocess.run(["docker", "network", "inspect", NETWORK], capture_output=True)
+    inspected = run(["docker", "network", "inspect", NETWORK], capture_output=True, check=False)
     if inspected.returncode:
         run(["docker", "network", "create", "--opt",
              "com.docker.network.bridge.host_binding_ipv4=127.0.0.1", NETWORK], stdout=subprocess.DEVNULL)
@@ -190,32 +284,35 @@ def main():
                     SECONDLOOK_RESTART_EXPECTED=str(directory / "expected.private.json"))
     test_command = ["swift", "test", "--package-path", "Backend", "--scratch-path", scratch,
                     "-j", "8", "--filter", "LocalIntegrationTests"]
-    with (directory / "server.private.log").open("w") as log:
+    with (directory / "server.private.log").open("w") as log, \
+            (directory / "integration.private.log").open("w") as integration_log:
         process = subprocess.Popen([str(Path(binary_dir) / "SecondLookServer")], cwd=ROOT, env=server_env,
-                                   stdout=log, stderr=subprocess.STDOUT)
+                                   stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             wait_server(process, fixture["serverURL"])
-            run(test_command, env=test_env)
+            run(test_command, env=test_env, stdout=integration_log, stderr=subprocess.STDOUT)
         finally:
-            process.terminate()
-            process.wait(timeout=15)
+            stop_owned_server(process)
         print("Restarting the command server to verify persisted database state.", flush=True)
         process = subprocess.Popen([str(Path(binary_dir) / "SecondLookServer")], cwd=ROOT, env=server_env,
-                                   stdout=log, stderr=subprocess.STDOUT)
+                                   stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             wait_server(process, fixture["serverURL"])
             run(test_command + ["--skip", "testPrivateSharedState"],
-                env=dict(test_env, SECONDLOOK_RESTART_CHECK="1"))
+                env=dict(test_env, SECONDLOOK_RESTART_CHECK="1"),
+                stdout=integration_log, stderr=subprocess.STDOUT)
             if args.native:
                 print("Running native write/convergence/foreground acceptance against the synthetic server.", flush=True)
-                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(ui_fixture_path)])
+                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(ui_fixture_path)],
+                    stdout=integration_log, stderr=subprocess.STDOUT)
                 run(["docker", "exec", f"supabase_db_{PROJECT}", "psql", "-U", "postgres", "-d", "postgres",
                      "-v", "ON_ERROR_STOP=1", "-c",
                      "truncate secondlook_private.command_receipts, secondlook_private.spaces;"], stdout=subprocess.DEVNULL)
                 fresh_path = directory / "ui-fresh.private.json"
                 fresh_path.write_text(json.dumps(dict(ui_fixture, freshPairing=True)))
                 print("Running native owner creation and invited-peer join against an empty synthetic space.", flush=True)
-                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(fresh_path)])
+                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(fresh_path)],
+                    stdout=integration_log, stderr=subprocess.STDOUT)
                 run(["docker", "exec", f"supabase_db_{PROJECT}", "psql", "-U", "postgres", "-d", "postgres",
                      "-v", "ON_ERROR_STOP=1", "-c",
                      "truncate secondlook_private.command_receipts, secondlook_private.spaces;"], stdout=subprocess.DEVNULL)
@@ -223,7 +320,7 @@ def main():
                 access_loss_path.write_text(json.dumps(dict(ui_fixture, invitationAccessLoss=True)))
                 print("Running native invitation access-loss acceptance against an empty synthetic space.", flush=True)
                 run(["python3", "scripts/verify-connected-native.py", "--fixture", str(access_loss_path),
-                     "--only-invitation-access-loss"])
+                     "--only-invitation-access-loss"], stdout=integration_log, stderr=subprocess.STDOUT)
                 recovery_cases = (
                     ("invitation", "committed invitation renewal with a lost reply"),
                     ("join", "committed peer join with a lost reply"),
@@ -251,18 +348,50 @@ def main():
                                                              recoveryCase=recovery_case)))
                     print(f"Running native {description} against an empty synthetic space.", flush=True)
                     run(["python3", "scripts/verify-connected-native.py", "--fixture", str(recovery_path),
-                         "--only-pairing-recovery", "--recovery-case", recovery_case])
+                         "--only-pairing-recovery", "--recovery-case", recovery_case],
+                        stdout=integration_log, stderr=subprocess.STDOUT)
         finally:
-            process.terminate()
-            process.wait(timeout=15)
+            stop_owned_server(process)
     print("Local Auth/Postgres/HTTP integration and server-restart checks passed. Hosted/device acceptance is unverified.")
     print("Synthetic stack remains running; stop with npx --yes supabase@2.119.0 stop (preserves local volumes).")
+
+
+def safe_failure_message(error):
+    """Public result text uses fixed categories, never command arguments or provider data."""
+    if isinstance(error, VerifierFailure):
+        if error.code == "cleanup":
+            return "Owned process cleanup did not complete; inspect private logs."
+        labels = {"inventory": "Docker inventory", "docker": "local Docker setup",
+                  "stack_start": "local Supabase startup", "cli_status": "local Supabase status",
+                  "stack_stop": "local Supabase stop", "schema": "local schema checks",
+                  "build": "Swift server build", "bin_path": "Swift binary lookup",
+                  "integration": "local HTTP integration tests", "native": "native acceptance wrapper"}
+        for phase, label in labels.items():
+            if error.code == phase + "_timeout":
+                return label + " timed out; owned process group stopped; inspect private logs."
+            if error.code == phase + "_failed":
+                return label + " failed; inspect private logs."
+        return "Local command unavailable; inspect private logs."
+    message = str(error)
+    fixed = {
+        "Unsupported local migration filename.", "Unexpected local migration status.",
+        "Local test network is not bound to loopback.",
+        "A local test service was exposed beyond loopback; synthetic stack stopped.",
+        "The local stack did not supply modern API keys.", "Unexpected integration provider URL.",
+        "No local signing secret for expired-token negative test.",
+        "Local Swift server exited; private build/runtime log retained.",
+        "Local Swift server did not become ready.",
+        "Local Supabase startup timed out; owned process group stopped; inspect the private stack log.",
+    }
+    if message in fixed or message.startswith("Local Supabase startup failed:") or \
+            re.fullmatch(r"Local provider HTTP \d{3}", message):
+        return message
+    return "Local verification unavailable; inspect private logs."
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError) as error:
-        # Do not print subprocess output, request contents, credentials, or provider diagnostics.
-        print(f"Shared-state verification failed: {error}", flush=True)
+    except Exception as error:
+        print("Shared-state verification failed: " + safe_failure_message(error), flush=True)
         raise SystemExit(1)

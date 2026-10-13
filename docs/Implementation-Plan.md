@@ -87,7 +87,7 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 
 - [ ] 4255046754: retain confirmed-but-unconsumed creation receipts through same-scope revalidation; exact createdID/one object, access-loss purge and old-response fencing regressions. Define coordinator/model acknowledgment interface before implementation.
 - [x] 4255046761: require coded command-service401 before clearing credentials, retaining provider Auth semantics; transport red/green.
-- [ ] 4255046765: bound every shared verifier subprocess by phase, including Docker/Swift/tests, with owned process-group TERM/KILL/reap cleanup and private fixed failure categories; meaningful spawned-descendant regressions.
+- [x] 4255046765: bound every shared verifier subprocess by phase, including Docker/Swift/tests, with owned process-group TERM/KILL/reap cleanup and private fixed failure categories; meaningful spawned-descendant regressions.
 - [x] 4255046774: require notNeeded cleanup for every all-standard archive; malformed direct/JSON/connected and valid positive histories.
 - [x] 4255046779: enforce exact Debug connected synthetic evidence fixture/source provenance; malformed snapshots rejected, known synthetic metadata accepted, local demo fixtures preserved.
 - [ ] 4255046783: reject server snapshot membership outside its configured current allowlist at every authenticated space boundary; no allowlist changes or hosted deployment.

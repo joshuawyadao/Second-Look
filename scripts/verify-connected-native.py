@@ -57,7 +57,9 @@ def main():
     inventory = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
     selected = os.environ.get("SECONDLOOK_SIMULATOR_ID")
     if not selected:
-        for runtime in sorted(inventory["devices"], reverse=True):
+        for runtime in sorted(inventory["devices"],
+                              key=lambda value: tuple(map(int, re.findall(r"\d+", value))),
+                              reverse=True):
             if ".iOS-" in runtime:
                 selected = next((item["udid"] for item in inventory["devices"][runtime]
                                  if item.get("isAvailable") and item["name"].startswith("iPhone")), None)

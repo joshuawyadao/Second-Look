@@ -118,6 +118,39 @@ class NativeRunSelectionTests(unittest.TestCase):
             self.assertFalse((products / OLD_NAME).exists())
             self.assert_unrelated_preserved(unrelated)
 
+    def test_connected_main_selects_numeric_newest_runtime_and_respects_override(self):
+        inventory = {"devices": {
+            "com.apple.CoreSimulator.SimRuntime.iOS-18-9": [
+                {"isAvailable": True, "name": "iPhone synthetic", "udid": "OLDER"}],
+            "com.apple.CoreSimulator.SimRuntime.iOS-18-10": [
+                {"isAvailable": True, "name": "iPhone synthetic", "udid": "NEWEST"}],
+        }}
+        for override, expected in ((None, "NEWEST"), (SIMULATOR, SIMULATOR)):
+            with self.subTest(override=override), tempfile.TemporaryDirectory() as directory:
+                runner = load_runner("verify-connected-native.py")
+                derived, products, _ = self.make_products(directory)
+                fixture = Path(directory) / "fixture.json"
+                fixture.write_text(json.dumps({"authURL": "http://127.0.0.1:56321",
+                                               "serverURL": "http://127.0.0.1:58080"}))
+                destinations = []
+
+                def fake_xcodebuild(command, **_kwargs):
+                    destinations.append(command[command.index("-destination") + 1])
+                    if "build-for-testing" in command:
+                        (products / CURRENT_NAME).write_bytes(plistlib.dumps(CURRENT_CONFIG))
+                    return subprocess.CompletedProcess(command, 0)
+
+                environment = {"SECONDLOOK_DERIVED_DATA": str(derived)}
+                if override:
+                    environment["SECONDLOOK_SIMULATOR_ID"] = override
+                with patch.object(sys, "argv", ["verify-connected-native.py", "--fixture", str(fixture)]), \
+                        patch.dict(os.environ, environment, clear=True), \
+                        patch.object(runner.subprocess, "check_output", return_value=json.dumps(inventory).encode()), \
+                        patch.object(runner.subprocess, "run", side_effect=fake_xcodebuild), \
+                        redirect_stdout(io.StringIO()):
+                    runner.main()
+                self.assertEqual(destinations, ["platform=iOS Simulator,id=" + expected] * 2)
+
     def test_each_runner_replaces_only_generated_second_look_simulator_configurations(self):
         for filename in ("verify-connected-native.py", "verify-hosted-native.py"):
             with self.subTest(runner=filename), tempfile.TemporaryDirectory() as directory:

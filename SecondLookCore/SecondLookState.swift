@@ -192,6 +192,9 @@ public struct SecondLookState: Codable, Equatable, Sendable {
     private mutating func start(title: String, items: [RoutineItem], settings: RunSettings,
                                 routineID: UUID?, routineVersion: Int?, performerID: UUID,
                                 reviewerID: UUID?, now: Date) throws -> UUID {
+        guard Self.validRunProvenance(routineID: routineID, routineVersion: routineVersion) else {
+            throw SecondLookError.invalidDefinition
+        }
         try Self.validate(title: title, items: items)
         try Self.validate(settings: settings)
         if items.contains(where: { $0.priority == .high }) {
@@ -243,6 +246,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         for run in runs {
             guard !run.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !run.items.isEmpty,
+                  Self.validRunProvenance(routineID: run.routineID, routineVersion: run.routineVersion),
                   Set(run.items.map(\.id)).count == run.items.count,
                   run.items.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
                 throw SecondLookError.corruptDocument
@@ -274,6 +278,14 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         }
         guard archives.allSatisfy({ archive in runs.contains { $0.id == archive.id && !$0.isOpen } }) else {
             throw SecondLookError.corruptDocument
+        }
+    }
+
+    private static func validRunProvenance(routineID: UUID?, routineVersion: Int?) -> Bool {
+        switch (routineID, routineVersion) {
+        case (nil, nil): return true
+        case (.some, .some(let version)): return version > 0
+        default: return false
         }
     }
 

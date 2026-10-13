@@ -1,6 +1,6 @@
 # Plan
 
-Resolve the remaining Milestone 2 native and CI failures, complete available hosted acceptance, and shepherd draft PR #2. Address the forty-one actionable Codex findings with narrow regressions and an item-by-item save/push/reaction. Preserve private accounts and records; M2 stays incomplete until required evidence is verified.
+Resolve the remaining Milestone 2 native and CI failures, complete available hosted acceptance, and shepherd draft PR #2. Address the forty-seven actionable Codex findings with narrow regressions and an item-by-item save/push/reaction. Preserve private accounts and records; M2 stays incomplete until required evidence is verified.
 
 ## Scope
 
@@ -71,3 +71,14 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 ## Open questions
 
 - None for implementation. The operator completed excluded-account sign-in and fully quit/reopened Docker. No allowlist change is authorized or needed. Resolving addressed PR2 review threads requires separate explicit authorization under the feedback skill; main requires resolved threads before merge, and this workflow leaves the PR unmerged.
+
+## Late review on eba7177 and recovery validation
+
+- [ ] 4254910158: reject recognizable legacy JWT key role inversions; focused red/green, Debug/Release server validation, separate save/push/reaction.
+- [ ] 4254910166: require coded command-service forbidden before access-loss handling, preserving provider Auth denial; transport red/green, separate save/push/reaction.
+- [ ] 4254910171: reject non-nil self reviewers for all runs; direct/JSON/connected and creation regression, separate save/push/reaction.
+- [ ] 4254910179: reject checked timestamps on high-priority items; load and connected behavior regression, separate save/push/reaction.
+- [ ] 4254910185: evaluate canceled satisfaction from archived final approvals after submissions are stripped; reject impossible terminal history while preserving partial cancellation, separate save/push/reaction.
+- [ ] 4254910191: reject notNeeded cleanup on completed high-priority runs; direct/JSON/connected regression, separate save/push/reaction.
+- [ ] Diagnose the observed local join recovery timeout at the genuine absent-membership retry. Preserve original authorization and timing assertions. Align lifecycle receipt privacy checks with retained hidden presentation using an opaque gate and blocked interaction; keep public retry controls absent and exact receipt/two-foreground assertions.
+- [ ] Complete current-source 21 connected native cases, both key-mode integration/restart, preserved hosted clients, required checks, Brooks follow-up and Codex review; record incomplete attempts without crediting them as complete. Thread resolution still requires the pending explicit user reply.

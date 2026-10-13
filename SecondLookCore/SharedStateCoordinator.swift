@@ -159,6 +159,9 @@ public final class SharedStateCoordinator {
             guard result.snapshot.revision > envelope.expectedSpaceRevision else {
                 throw SharedStateFailure.invalidResponse
             }
+            try validateCreatedID(result.createdID, for: command, in: result.snapshot,
+                                  accountID: scope.accountID,
+                                  expectedSpaceRevision: envelope.expectedSpaceRevision)
             let receipt = ConfirmedCommandReceipt(commandID: commandID, command: command,
                 snapshotRevision: result.snapshot.revision, createdID: result.createdID)
             if let existing = confirmedCommands.first(where: { $0.receipt.commandID == commandID }) {
@@ -198,6 +201,43 @@ public final class SharedStateCoordinator {
     private func validate(_ incoming: SharedSnapshot, for scope: SharedAccountScope) throws {
         guard incoming.spaceID == scope.spaceID else { throw SharedStateFailure.scopeMismatch }
         try incoming.validate(for: scope.accountID)
+    }
+
+    private func validateCreatedID(_ createdID: UUID?, for command: SharedCommand,
+                                   in snapshot: SharedSnapshot,
+                                   accountID: UUID,
+                                   expectedSpaceRevision: Int) throws {
+        switch command {
+        case let .startRun(routineID, _):
+            guard let createdID,
+                  let run = snapshot.state.runs.first(where: { $0.id == createdID }),
+                  run.performerID == accountID, run.routineID == routineID else {
+                throw SharedStateFailure.invalidResponse
+            }
+        case .startOneOff:
+            guard let createdID,
+                  let run = snapshot.state.runs.first(where: { $0.id == createdID }),
+                  run.performerID == accountID, run.routineID == nil else {
+                throw SharedStateFailure.invalidResponse
+            }
+        case let .repeatRun(sourceID, _):
+            guard let createdID, createdID != sourceID,
+                  let source = snapshot.state.runs.first(where: { $0.id == sourceID }),
+                  let run = snapshot.state.runs.first(where: { $0.id == createdID }),
+                  run.performerID == accountID, run.routineID == source.routineID else {
+                throw SharedStateFailure.invalidResponse
+            }
+        case .saveRunAsRoutine:
+            guard let createdID else { throw SharedStateFailure.invalidResponse }
+            // An exact commit view must contain the new routine. A receipt replay
+            // may carry a later current view after that routine was deleted.
+            if snapshot.revision - expectedSpaceRevision == 1,
+               !snapshot.state.routines.contains(where: { $0.id == createdID }) {
+                throw SharedStateFailure.invalidResponse
+            }
+        default:
+            guard createdID == nil else { throw SharedStateFailure.invalidResponse }
+        }
     }
 
     private func finishAttempt(_ key: AttemptKey) {

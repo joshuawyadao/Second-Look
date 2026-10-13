@@ -232,6 +232,7 @@ def main():
                     ("draft", "editor draft after a genuine one-off rejection"),
                     ("identity", "protected-state clearing after a refresh identity mismatch"),
                     ("receipt", "original command receipt after invitation renewal"),
+                    ("create", "membership discovery after an initial creation reply is lost"),
                 )
                 for recovery_case, description in recovery_cases:
                     # Each scenario needs its own empty space. Truncate only the exact

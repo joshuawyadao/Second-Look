@@ -59,6 +59,7 @@ final class ConnectedAppModel {
     @ObservationIgnored private var invitationReceiptCreatedID: UUID?
     private(set) var restoreCandidateCount = 0
     @ObservationIgnored private var didDropRenewalReply = false
+    @ObservationIgnored private var didDropCreateReply = false
     @ObservationIgnored private var didDropJoinReply = false
     @ObservationIgnored private var didTriggerRestoreRace = false
     private(set) var simulatedRefreshDelay = false
@@ -321,9 +322,13 @@ final class ConnectedAppModel {
         guard canCreatePrivateSpace, !busy, let client, let accountID, let configuration else { return }
         let epoch = generation
         #if SECONDLOOK_DEMO
+        let dropCreateReply = localRecoveryChecksRequested && snapshot == nil &&
+            !didDropCreateReply && ProcessInfo.processInfo.arguments.contains("-shared-test-create-reply-loss")
         let dropRenewalReply = localRecoveryChecksRequested && invitation != nil && !didDropRenewalReply &&
             ProcessInfo.processInfo.arguments.contains("-shared-test-renewal-reply-loss")
         #endif
+        confirmedNoSpace = false
+        retryMembership = true
         // Once renewal starts, the server may rotate the old code even if its reply is lost.
         invitation = nil
         busy = true
@@ -331,6 +336,12 @@ final class ConnectedAppModel {
             let result = try await client.createSpace(expectedSpaceRevision: snapshot?.revision)
             guard currentForegroundSession(epoch) else { return }
             #if SECONDLOOK_DEMO
+            if dropCreateReply {
+                didDropCreateReply = true
+                simulatedPairingReplyLoss = true
+                // The initial server create committed; only its decoded reply is discarded.
+                throw SharedStateFailure.serviceUnavailable
+            }
             if dropRenewalReply {
                 didDropRenewalReply = true
                 simulatedPairingReplyLoss = true
@@ -909,6 +920,7 @@ final class ConnectedAppModel {
         delayNextRefreshForAcceptance = false
         restoreCandidateCount = 0
         didDropRenewalReply = false
+        didDropCreateReply = false
         didDropJoinReply = false
         didTriggerRestoreRace = false
         #endif

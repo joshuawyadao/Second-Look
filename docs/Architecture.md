@@ -27,6 +27,12 @@ Restoration binds each current decision to the assigned reviewer and exact curre
 
 The shared native preference fields initialize an enabled snooze one hour ahead, constrain new selections to the future, and show an expired saved value without renewing it. This editable example is saved with the routine/run settings; it does not create a reminder scheduler or an agreed cadence.
 
+Completed text archives require a check timestamp for every standard item; canceled histories may retain unchecked items. The shared loading validator enforces this even if both run and archive contain matching corrupt values.
+
+Prior review decisions must use the assigned reviewer, positive increasing versions within the item history and domain verdict/note semantics. Current and archived decisions reuse the same semantic helper. A removed current submission may leave its reviewed version equal to lastVersion in canceled history; an existing submission must follow prior versions.
+
+A run stores either no routine source ID/version for a one-off, or a routine ID with a positive immutable source version. Creation and local/connected loading share this rule. Deleting or editing the live source routine does not invalidate the run snapshot.
+
 ## Native privacy cover
 
 Each scene owns an opaque privacy window above its presented sheets and alerts. Scene/app deactivation shows the cover; activation removes it. The cover does not become the key window or replace editor state. Scene attachment and disconnection manage its lifetime independently of sheet navigation. This protects local checklist content as well as future media; it is not an access-control mechanism.
@@ -41,7 +47,11 @@ The private Postgres schema holds one shared space with at most two distinct acc
 
 The core coordinator retains the original command ID, body, space and expected revision when a reply is ambiguous. A fresh action always receives a fresh command ID, even when its body equals an earlier action. Only an explicit retry ID reuses the original envelope after a newer snapshot arrives. The native model retains each unconfirmed action's ID/body and offers Retry this action in its error alert plus a Retry unconfirmed action menu; ordinary taps create new intent. A confirmed receipt clears that action, and a lagging receipt can return the original created ID without replacing newer displayed state. Account/session invalidation clears this memory. The native routine editor separately retains its definition's creation ID. This is session-scoped reconciliation, not a durable offline queue; background transitions or process termination can end that session.
 
+Invitation renewal in the same backend/account/space refreshes the existing coordinator, preserving original unconfirmed command envelopes and explicit retry IDs. Async publication checks its session epoch and revision floor; caller mutations recheck the epoch. Only a matching published snapshot displays the renewed invitation. A real scope change clears pending memory.
+
 The native form permits Create/Join only after a successful lookup confirms no space, or permits owner invitation renewal from a verified one-member snapshot. A failed lookup leaves pairing mutations disabled and offers a manual retry. Beginning renewal clears any displayed invitation before awaiting the server, since rotation can commit even if the response is lost; only a confirmed new result supplies a shareable replacement. All native Auth/command base URLs use one validation contract before storage and before HTTP: a nonempty host, HTTPS except explicitly allowed loopback HTTP, no credentials/query/fragment, and no non-root path. Server configuration rejects malformed/empty allowlist fields, hostless provider URLs and control characters in either provider header key. Malformed client bodies return bounded HTTP400; invalid provider or stored responses return bounded HTTP503.
+
+Only a command-service response explicitly coded notPaired establishes absent membership. Auth user/refresh404 and uncoded or unknown command404 are service unavailability; they preserve unconfirmed membership and cannot enable pairing as if absence were verified.
 
 Starting a join marks membership unresolved and enables the active-scene recovery lookup before awaiting its response. Any non-access-loss failure, including a definite invalid invitation, requires an actual lookup before another pairing mutation: the error alone cannot prove the account still has no membership. A joined result publishes the space; a genuine not-paired result re-enables pairing and stops recovery polling. Authentication/membership loss still clears the protected session.
 
@@ -65,7 +75,7 @@ For one-member invitation recovery testing, a separate Debug hook requires `-ui-
 
 A separate membership-recovery acceptance hook requires all explicit Debug/UI/shared flags. After genuine Auth verification, it simulates one failed membership lookup and labels that simulation on screen. Create/Join stay disabled until manual retry obtains an actual server result. The hook changes no server membership and is excluded from Release.
 
-Dedicated localhost Debug recovery hooks can discard a decoded genuine invitation-renewal or join response once, or enqueue concurrent saved-session restores while forcing normal Auth refresh. These hooks label the reply loss or concurrent trigger as simulated; authentication and server writes are genuine local calls. All require explicit UI/shared/scenario flags and local HTTP configuration. They expose no credentials and are excluded from Release. Additional explicit localhost probes delay publication after genuine membership fetch or simulate a decoded identity mismatch after genuine Auth refresh; those triggers are labeled simulated. The editor-denial probe uses an actual missing-reviewer command rejection. Their fixture-gated tests and named synthetic-space resets belong to the local acceptance workflow.
+Dedicated localhost Debug recovery hooks can discard a decoded genuine initial-create, invitation-renewal or join response once, or enqueue concurrent saved-session restores while forcing normal Auth refresh. These hooks label the reply loss or concurrent trigger as simulated; authentication and server writes are genuine local calls. All require explicit UI/shared/scenario flags and local HTTP configuration. They expose no credentials and are excluded from Release. Additional explicit localhost probes delay publication after genuine membership fetch or simulate a decoded identity mismatch after genuine Auth refresh; those triggers are labeled simulated. The editor-denial probe uses an actual missing-reviewer command rejection. The receipt probe discards a decoded genuine command reply, then uses real refresh, conditional renewal and the original explicit UI retry to recover one created run; the loss is labeled simulated. Their fixture-gated tests and named synthetic-space resets belong to the local acceptance workflow.
 
 ## Future media and background work
 
@@ -74,13 +84,3 @@ When real media arrives, closure must write cleanup intent with the logical term
 ## Build and verification workflow
 
 Open `SecondLook.xcodeproj` in Xcode or use a discovered iOS Simulator destination with `xcodebuild`; run `swift test` for the portable package and `./scripts/verify-repository.sh` for public repository safety. Exact successful commands, destinations, and limitations are recorded in [Verification.md](Verification.md). Real-device media and deletion checks require later milestones.
-
-Completed text archives require a check timestamp for every standard item; canceled histories may retain unchecked items. The shared loading validator enforces this even if both run and archive contain matching corrupt values.
-
-Only a command-service response explicitly coded notPaired establishes absent membership. Auth user/refresh404 and uncoded or unknown command404 are service unavailability; they preserve unconfirmed membership and cannot enable pairing as if absence were verified.
-
-Prior review decisions must use the assigned reviewer, positive increasing versions within the item history and domain verdict/note semantics. Current and archived decisions reuse the same semantic helper. A removed current submission may leave its reviewed version equal to lastVersion in canceled history; an existing submission must follow prior versions.
-
-A run stores either no routine source ID/version for a one-off, or a routine ID with a positive immutable source version. Creation and local/connected loading share this rule. Deleting or editing the live source routine does not invalidate the run snapshot.
-
-Invitation renewal in the same backend/account/space refreshes the existing coordinator, preserving original unconfirmed command envelopes and explicit retry IDs. Async publication checks its session epoch and revision floor; caller mutations recheck the epoch. Only a matching published snapshot displays the renewed invitation. A real scope change clears pending memory.

@@ -17,6 +17,50 @@ final class SharedPairingRecoveryUITests: XCTestCase {
         let recoveryCase: String?
     }
 
+    func testInitialCreateReplyLossRequiresMembershipCheckBeforeRenewal() throws {
+        let fixture = try loadFixture(for: "create")
+        let app = launch(fixture, arguments: ["-reset-demo", "-shared-test-create-reply-loss"])
+        connectAndSignIn(fixture.owner, in: app)
+        tap("createPrivateSpace", in: app)
+        dismissExpectedReplyLoss(in: app)
+
+        let create = app.buttons["createPrivateSpace"]
+        let join = app.buttons["joinPrivateSpace"]
+        XCTAssertTrue(create.waitForExistence(timeout: 8))
+        XCTAssertTrue(join.exists)
+        XCTAssertFalse(create.isEnabled,
+                       "Unknown create outcome must block a second create until genuine discovery")
+        XCTAssertFalse(join.isEnabled,
+                       "Unknown create outcome must block joining until genuine discovery")
+        XCTAssertFalse(app.staticTexts["Waiting for your invited reviewer."].exists)
+
+        tap("sharedCheckPairing", in: app)
+        XCTAssertTrue(app.staticTexts["Waiting for your invited reviewer."].waitForExistence(timeout: 20),
+                      "A genuine membership lookup must discover the committed one-member space")
+        XCTAssertFalse(create.exists)
+        XCTAssertFalse(join.exists)
+
+        tap("Account settings", in: app)
+        tap("newPairingInvitation", in: app)
+        let invitation = app.staticTexts["pairingInvitation"]
+        XCTAssertTrue(invitation.waitForExistence(timeout: 20),
+                      "The owner must be able to issue a fresh invitation after discovery")
+        guard invitation.exists else { return }
+        let newCode = invitation.label
+        XCTAssertEqual(newCode.utf8.count, 72)
+        tap("sharedSignOut", in: app)
+        XCTAssertTrue(app.buttons["sharedSignIn"].waitForExistence(timeout: 8))
+
+        signIn(fixture.peer, in: app)
+        let codeField = app.textFields["invitationCode"]
+        XCTAssertTrue(codeField.waitForExistence(timeout: 20))
+        codeField.tap()
+        codeField.typeText(newCode)
+        tap("joinPrivateSpace", in: app)
+        XCTAssertTrue(app.staticTexts["Private space connected."].waitForExistence(timeout: 20),
+                      "The freshly renewed opaque invitation must be accepted for the peer")
+    }
+
     func testRenewalReplyLossInvalidatesOldInvitation() throws {
         let fixture = try loadFixture(for: "invitation")
         let app = launch(fixture, arguments: ["-reset-demo", "-shared-test-renewal-reply-loss"])
@@ -33,6 +77,14 @@ final class SharedPairingRecoveryUITests: XCTestCase {
         dismissExpectedReplyLoss(in: app, withinSettings: true)
         XCTAssertFalse(invitation.exists)
 
+        // Renewal is revision-conditional: discover the committed revision before a new intent.
+        tap("Refresh shared state", in: app)
+        let renewal = app.buttons["newPairingInvitation"]
+        let ready = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: renewal
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed)
+        XCTAssertFalse(invitation.exists, "Membership refresh cannot restore the invalidated code")
         tap("newPairingInvitation", in: app)
         XCTAssertTrue(invitation.waitForExistence(timeout: 20),
                       "A fresh renewal must recover after the ambiguous first reply")

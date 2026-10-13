@@ -200,6 +200,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         if items.contains(where: { $0.priority == .high }) {
             guard let reviewerID, reviewerID != performerID else { throw SecondLookError.reviewerRequired }
         }
+        guard reviewerID != performerID else { throw SecondLookError.invalidDefinition }
         let run = ChecklistRun(id: UUID(), routineID: routineID, routineVersion: routineVersion,
                                title: title, items: items.map(RunItem.init(definition:)), settings: settings,
                                performerID: performerID, reviewerID: reviewerID, startedAt: now,
@@ -253,10 +254,9 @@ public struct SecondLookState: Codable, Equatable, Sendable {
             }
             do { try Self.validate(settings: run.settings) }
             catch { throw SecondLookError.corruptDocument }
+            guard run.reviewerID != run.performerID else { throw SecondLookError.corruptDocument }
             if run.items.contains(where: { $0.priority == .high }) {
-                guard let reviewerID = run.reviewerID, reviewerID != run.performerID else {
-                    throw SecondLookError.corruptDocument
-                }
+                guard run.reviewerID != nil else { throw SecondLookError.corruptDocument }
             }
             for item in run.items {
                 try Self.validateRestoredEvidence(item, reviewerID: run.reviewerID)

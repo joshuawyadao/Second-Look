@@ -346,6 +346,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                   item.priorDecisions.isEmpty else { throw SecondLookError.corruptDocument }
             return
         }
+        guard item.checkedAt == nil else { throw SecondLookError.corruptDocument }
         var precedingVersion = 0
         for decision in item.priorDecisions {
             guard let reviewerID, decision.actorID == reviewerID,

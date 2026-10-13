@@ -22,23 +22,29 @@ struct PrivateSpaceService: Sendable {
         return account
     }
 
-    func validateSnapshot(_ snapshot: SharedSnapshot, actor: UUID) throws {
+    func validateSnapshot(_ snapshot: SharedSnapshot, actor: UUID,
+                          expectedSpaceID: UUID? = nil) throws {
         // The persisted membership must still match this server's current private allowlist.
         // A valid token for one member does not authorize publication of an excluded peer.
         guard snapshot.members.allSatisfy(configuration.allowedAccounts.contains) else {
             throw SharedStateFailure.forbidden
         }
         try snapshot.validate(for: actor)
+        // An explicit space or command is scoped by its request. A different, otherwise
+        // valid provider snapshot is a bad stored response, not a client scope error.
+        if let expectedSpaceID, snapshot.spaceID != expectedSpaceID {
+            throw SharedStateFailure.invalidResponse
+        }
     }
 
     func execute(_ envelope: SharedCommandEnvelope, actor: UUID) async throws -> SharedCommandResult {
         let digest = Self.digest(try SharedWireCodec.encode(envelope))
         if let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) {
-            try validateSnapshot(receipt.snapshot, actor: actor)
+            try validateSnapshot(receipt.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
             return receipt
         }
         let snapshot = try await store.read(actor: actor, space: envelope.spaceID)
-        try validateSnapshot(snapshot, actor: actor)
+        try validateSnapshot(snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
         let result: SharedCommandResult
         do {
             result = try SharedCommandProcessor.apply(envelope, to: snapshot, actorID: actor, now: Date())
@@ -46,14 +52,14 @@ struct PrivateSpaceService: Sendable {
             // An identical retry can miss its receipt just before the first request commits.
             // Recheck after the newer read; distinct actor/payload collisions still fail in SQL.
             if let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) {
-                try validateSnapshot(receipt.snapshot, actor: actor)
+                try validateSnapshot(receipt.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
                 return receipt
             }
             throw SharedStateFailure.staleState
         }
-        try validateSnapshot(result.snapshot, actor: actor)
+        try validateSnapshot(result.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
         let committed = try await store.commit(actor: actor, envelope: envelope, digest: digest, result: result)
-        try validateSnapshot(committed.snapshot, actor: actor)
+        try validateSnapshot(committed.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
         return committed
     }
 
@@ -126,8 +132,9 @@ func configure(_ app: Application, configuration: ServerConfiguration,
     app.get("v1", "spaces", ":space") { request async -> Response in
         await respond {
             let actor = try await service.actor(request)
-            let snapshot = try await service.store.read(actor: actor, space: try spaceID(request))
-            try service.validateSnapshot(snapshot, actor: actor)
+            let requestedSpace = try spaceID(request)
+            let snapshot = try await service.store.read(actor: actor, space: requestedSpace)
+            try service.validateSnapshot(snapshot, actor: actor, expectedSpaceID: requestedSpace)
             return try json(snapshot)
         }
     }
@@ -149,7 +156,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                 let body = try decode(SyntheticEvidence.self, request: request,
                     keys: ["spaceID", "runID", "itemID", "expectedSpaceRevision", "expectedRunRevision"])
                 let snapshot = try await service.store.read(actor: actor, space: body.spaceID)
-                try service.validateSnapshot(snapshot, actor: actor)
+                try service.validateSnapshot(snapshot, actor: actor, expectedSpaceID: body.spaceID)
                 guard snapshot.revision == body.expectedSpaceRevision,
                       snapshot.state.runs.first(where: { $0.id == body.runID })?.revision == body.expectedRunRevision else {
                     throw SharedStateFailure.staleState
@@ -166,10 +173,10 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                         expectedRunRevision: body.expectedRunRevision))
                 let result = SharedCommandResult(snapshot: .init(spaceID: snapshot.spaceID,
                     revision: snapshot.revision + 1, members: snapshot.members, state: state))
-                try service.validateSnapshot(result.snapshot, actor: actor)
+                try service.validateSnapshot(result.snapshot, actor: actor, expectedSpaceID: body.spaceID)
                 let committed = try await service.store.commit(actor: actor, envelope: envelope,
                     digest: PrivateSpaceService.digest(try SharedWireCodec.encode(body)), result: result)
-                try service.validateSnapshot(committed.snapshot, actor: actor)
+                try service.validateSnapshot(committed.snapshot, actor: actor, expectedSpaceID: body.spaceID)
                 return try json(committed.snapshot)
             }
         }

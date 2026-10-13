@@ -8,6 +8,10 @@ final class ConnectedAppModel {
     private(set) var selected: Bool
     private(set) var configuration: ConnectedConfiguration?
     private(set) var generation: UInt64 = 0
+    // Baseline interfaces for the lifecycle behavior regression; preservation follows its red run.
+    var presentationGeneration: UInt64 { generation }
+    var hasContentForPresentation: Bool { snapshot != nil }
+    var needsPresentationRevalidation: Bool { false }
     private(set) var accountID: UUID?
     private(set) var snapshot: SharedSnapshot? {
         didSet {
@@ -47,6 +51,12 @@ final class ConnectedAppModel {
     }
 
     #if SECONDLOOK_DEMO
+    private(set) var sharedCleanupProbeStatus: String?
+    private(set) var sharedReviewDraftProbeStatus: String?
+    private(set) var simulatedDraftRevalidationPause = false
+    private(set) var simulatedDraftAccessLoss = false
+    @ObservationIgnored private var pauseNextDraftRevalidation = false
+    @ObservationIgnored private var draftRevalidationContinuation: CheckedContinuation<Void, Never>?
     private(set) var commandAcceptanceStatus: String?
     private(set) var accessInvalidatedForAcceptance = false
     private(set) var simulatedMembershipFailure = false
@@ -506,6 +516,107 @@ final class ConnectedAppModel {
         }
     }
 
+    func runSharedCleanupProbe() async {
+        guard localRecoveryChecksRequested,
+              ProcessInfo.processInfo.arguments.contains("-shared-test-cleanup-status"),
+              canUseForeground, !busy, snapshot?.members.count == 2,
+              let configuration, let vault, let accountID else { return }
+        let epoch = generation
+        busy = true
+        sharedCleanupProbeStatus = nil
+        var phase = "startStandard"
+        do {
+            try await coordinator.refresh()
+            guard currentForegroundSession(epoch) else { return }
+            for high in [false, true] {
+                phase = high ? "startEvidence" : "startStandard"
+                let item = RoutineItem(title: "Invented cleanup step", priority: high ? .high : .standard)
+                let result = try await coordinator.execute(.startOneOff(
+                    title: high ? "Cleanup status evidence synthetic" : "Cleanup status standard synthetic",
+                    items: [item], settings: .init()))
+                guard currentForegroundSession(epoch), let id = result,
+                      let current = coordinator.snapshot,
+                      var run = current.state.runs.first(where: { $0.id == id }),
+                      let runItem = run.items.first else { throw SharedStateFailure.sessionChanged }
+                if high {
+                    phase = "submitMetadata"
+                    let submitted = try await SharedSyntheticEvidenceTestClient.submit(
+                        serverURL: configuration.serverURL, token: vault.token(), snapshot: current,
+                        run: run, itemID: runItem.id, actorID: accountID)
+                    guard currentForegroundSession(epoch) else { return }
+                    phase = "fetchMetadata"
+                    try await coordinator.refresh()
+                    guard currentForegroundSession(epoch), let fetched = coordinator.snapshot,
+                          fetched == submitted,
+                          let refreshedRun = fetched.state.runs.first(where: { $0.id == id }) else {
+                        throw SharedStateFailure.invalidResponse
+                    }
+                    run = refreshedRun
+                }
+                phase = high ? "cancelEvidence" : "cancelStandard"
+                _ = try await coordinator.execute(.cancel(runID: run.id, expectedRunRevision: run.revision))
+                guard currentForegroundSession(epoch), let closed = coordinator.snapshot,
+                      closed.state.archives.contains(where: {
+                          $0.id == id && $0.cleanupStatus == (high ? .pending : .notNeeded)
+                      }) else { throw SharedStateFailure.invalidResponse }
+                snapshot = closed
+            }
+            sharedCleanupProbeStatus = "Cleanup archive checks ready"
+        } catch {
+            if currentForegroundSession(epoch) { sharedCleanupProbeStatus = "Cleanup archive checks failed at " + phase }
+        }
+        if currentForegroundSession(epoch) { busy = false }
+    }
+
+    var draftLifecycleChecksRequested: Bool {
+        localRecoveryChecksRequested &&
+            ProcessInfo.processInfo.arguments.contains("-shared-test-draft-lifecycle")
+    }
+
+    func armDraftRevalidationPauseForAcceptance() {
+        guard draftLifecycleChecksRequested, canUseForeground, !busy, snapshot != nil else { return }
+        pauseNextDraftRevalidation = true
+    }
+
+    func resumeDraftRevalidationForAcceptance() {
+        guard draftLifecycleChecksRequested, canUseForeground, simulatedDraftRevalidationPause else { return }
+        let continuation = draftRevalidationContinuation
+        draftRevalidationContinuation = nil
+        simulatedDraftRevalidationPause = false
+        continuation?.resume()
+    }
+
+    func prepareSharedReviewDraftProbe() async {
+        guard draftLifecycleChecksRequested, canUseForeground, !busy,
+              snapshot?.members.count == 2, let vault, let configuration, let accountID else { return }
+        let epoch = generation
+        busy = true
+        sharedReviewDraftProbeStatus = nil
+        do {
+            try await coordinator.refresh()
+            guard currentForegroundSession(epoch) else { return }
+            let id = try await coordinator.execute(.startOneOff(title: "Review draft synthetic",
+                items: [RoutineItem(title: "Synthetic review draft step", priority: .high)], settings: .init()))
+            guard currentForegroundSession(epoch), let id, let current = coordinator.snapshot,
+                  let run = current.state.runs.first(where: { $0.id == id }), let item = run.items.first else {
+                throw SharedStateFailure.invalidResponse
+            }
+            let submitted = try await SharedSyntheticEvidenceTestClient.submit(
+                serverURL: configuration.serverURL, token: vault.token(), snapshot: current,
+                run: run, itemID: item.id, actorID: accountID)
+            guard currentForegroundSession(epoch) else { return }
+            try await coordinator.refresh()
+            guard currentForegroundSession(epoch), coordinator.snapshot == submitted else {
+                throw SharedStateFailure.invalidResponse
+            }
+            snapshot = submitted
+            sharedReviewDraftProbeStatus = "Review draft checks ready"
+        } catch {
+            if currentForegroundSession(epoch) { sharedReviewDraftProbeStatus = "Review draft checks failed" }
+        }
+        if currentForegroundSession(epoch) { busy = false }
+    }
+
     private var forbiddenRestoreChecksRequested: Bool {
         localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-forbidden-restore")
     }
@@ -788,6 +899,17 @@ final class ConnectedAppModel {
             guard currentForegroundSession(epoch) else { return false }
             try incoming.validate(for: accountID)
             #if SECONDLOOK_DEMO
+            if draftLifecycleChecksRequested && pauseNextDraftRevalidation {
+                pauseNextDraftRevalidation = false
+                if ProcessInfo.processInfo.arguments.contains("-shared-test-draft-access-loss") {
+                    simulatedDraftAccessLoss = true
+                    throw SharedStateFailure.forbidden
+                }
+                simulatedDraftRevalidationPause = true
+                // Access was genuinely fetched. Only native publication is paused for XCTest.
+                await withCheckedContinuation { draftRevalidationContinuation = $0 }
+                guard currentForegroundSession(epoch) else { return false }
+            }
             if lifecycleReceiptChecksRequested && pauseNextLifecycleRevalidation {
                 pauseNextLifecycleRevalidation = false
                 lifecycleRevalidationPauseCount += 1
@@ -854,6 +976,12 @@ final class ConnectedAppModel {
     /// Installed credentials remain bound to this account for foreground revalidation.
     func holdForValidation() {
         #if SECONDLOOK_DEMO
+        if draftLifecycleChecksRequested && draftRevalidationContinuation != nil {
+            pauseNextDraftRevalidation = true
+        }
+        draftRevalidationContinuation?.resume()
+        draftRevalidationContinuation = nil
+        simulatedDraftRevalidationPause = false
         resumeRefreshForAcceptance()
         if lifecycleReceiptChecksRequested && lifecycleRevalidationContinuation != nil {
             pauseNextLifecycleRevalidation = true
@@ -1117,6 +1245,13 @@ final class ConnectedAppModel {
 
     private func resetSession() {
         #if SECONDLOOK_DEMO
+        sharedCleanupProbeStatus = nil
+        sharedReviewDraftProbeStatus = nil
+        draftRevalidationContinuation?.resume()
+        draftRevalidationContinuation = nil
+        pauseNextDraftRevalidation = false
+        simulatedDraftRevalidationPause = false
+        simulatedDraftAccessLoss = false
         cancelCommandAcceptance()
         commandAcceptanceStarted = false
         accessInvalidatedForAcceptance = false

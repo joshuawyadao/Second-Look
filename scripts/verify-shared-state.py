@@ -236,6 +236,8 @@ def main():
                     ("lifecycle", "original command receipt across foreground revalidation"),
                     ("forbidden", "saved-session cleanup after a forbidden restoration"),
                     ("creation", "originating-flow completion after recovered creation receipts"),
+                    ("cleanup", "explicit synthetic archive cleanup status"),
+                    ("draft-lifecycle", "private drafts across verified foreground revalidation"),
                 )
                 for recovery_case, description in recovery_cases:
                     # Each scenario needs its own empty space. Truncate only the exact

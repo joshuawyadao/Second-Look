@@ -29,6 +29,50 @@ struct ConnectedRootView: View {
                     .accessibilityIdentifier("sharedSimulatedRefreshIdentityMismatch")
             }
             SharedRefreshAcceptanceControls()
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing") &&
+               ProcessInfo.processInfo.arguments.contains("-shared-testing") &&
+               (ProcessInfo.processInfo.arguments.contains("-shared-test-draft-lifecycle") ||
+                ProcessInfo.processInfo.arguments.contains("-shared-test-draft-access-loss")) {
+                if model.snapshot != nil {
+                    Button("Pause next draft revalidation for test") {
+                        model.armDraftRevalidationPauseForAcceptance()
+                    }
+                    .accessibilityIdentifier("armSharedDraftRevalidation")
+                    .disabled(model.busy)
+                    Button("Prepare synthetic review draft for test") {
+                        model.enqueue { await model.prepareSharedReviewDraftProbe() }
+                    }
+                    .accessibilityIdentifier("prepareSharedReviewDraftProbe")
+                    .disabled(model.busy || model.snapshot?.members.count != 2)
+                }
+                if model.simulatedDraftRevalidationPause {
+                    Text("Foreground draft revalidation paused (simulated for acceptance)")
+                        .font(.caption)
+                        .accessibilityIdentifier("sharedSimulatedDraftRevalidationPause")
+                    Button("Resume verified draft presentation") {
+                        model.resumeDraftRevalidationForAcceptance()
+                    }
+                    .accessibilityIdentifier("resumeSharedDraftRevalidation")
+                }
+                if let result = model.sharedReviewDraftProbeStatus {
+                    Text(result).font(.caption)
+                        .accessibilityIdentifier("sharedReviewDraftProbeStatus")
+                }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing") &&
+               ProcessInfo.processInfo.arguments.contains("-shared-testing") &&
+               ProcessInfo.processInfo.arguments.contains("-shared-test-cleanup-status") &&
+               model.snapshot?.members.count == 2 {
+                Button("Check synthetic archive cleanup statuses") {
+                    model.enqueue { await model.runSharedCleanupProbe() }
+                }
+                .disabled(model.busy)
+                .accessibilityIdentifier("runSharedCleanupProbe")
+                if let result = model.sharedCleanupProbeStatus {
+                    Text(result).font(.caption)
+                        .accessibilityIdentifier("sharedCleanupProbeStatus")
+                }
+            }
             if model.simulatedPairingReplyLoss {
                 Text("Pairing reply loss (simulated for acceptance)").font(.caption)
                     .accessibilityIdentifier("sharedSimulatedPairingReplyLoss")
@@ -883,6 +927,7 @@ private struct ConnectedHistoryView: View {
                         VStack(alignment: .leading) {
                             Text(archive.title).font(.headline)
                             Text(archive.outcome == .completed ? "Completed" : "Canceled")
+                            Text(archive.cleanupStatus.title).font(.caption)
                             Text(archive.closedAt, format: .dateTime.month().day().hour().minute())
                                 .font(.caption)
                         }
@@ -926,9 +971,17 @@ private struct ConnectedArchiveDetailView: View {
                             }
                         }
                     }
+                    Section("Cleanup") {
+                        Text(archive.cleanupStatus.title)
+                            .accessibilityIdentifier("sharedArchiveCleanupStatus")
+                        Text("This status describes synthetic test metadata only. No real photo is stored or deleted; connected cleanup jobs are not available yet.")
+                            .font(.footnote)
+                            .accessibilityIdentifier("sharedArchiveCleanupExplanation")
+                        Text("History contains no image, thumbnail, or live photo link.")
+                            .font(.footnote)
+                            .accessibilityIdentifier("sharedArchiveMediaExplanation")
+                    }
                     Section {
-                        Text("No image, thumbnail, or live photo link is kept in history.")
-                        Text("Any cleanup status here refers to synthetic test evidence. Real media deletion is not available yet.")
                         Button("Start new run") {
                             guard !model.hasUnconfirmedCreation(owner: completionOwner) else { return }
                             guard let source = model.state.runs.first(where: { $0.id == archive.id }) else {

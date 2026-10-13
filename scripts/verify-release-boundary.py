@@ -10,7 +10,16 @@ with (app / 'Info.plist').open('rb') as stream:
     info = plistlib.load(stream)
 assert info['CFBundleIdentifier'] == 'com.joshuawyadao.SecondLook.local', 'Unexpected Release identity'
 strings = subprocess.check_output(['strings', str(app / info['CFBundleExecutable'])], text=True)
-for forbidden in ('-shared-test-delayed-refresh', '-shared-test-refresh-account-mismatch',
+for forbidden in ('-shared-test-draft-lifecycle', '-shared-test-draft-access-loss',
+                  'armSharedDraftRevalidation', 'resumeSharedDraftRevalidation',
+                  'sharedSimulatedDraftRevalidationPause', 'sharedSimulatedDraftAccessLoss',
+                  'prepareSharedReviewDraftProbe', 'sharedReviewDraftProbeStatus',
+                  'Review draft checks ready', 'Review draft synthetic',
+                  'Foreground draft revalidation paused (simulated for acceptance)',
+                  '-shared-test-cleanup-status', 'runSharedCleanupProbe',
+                  'sharedCleanupProbeStatus', 'Cleanup archive checks ready',
+                  'SharedSyntheticEvidenceTestClient', '_testing/synthetic-evidence',
+                  '-shared-test-delayed-refresh', '-shared-test-refresh-account-mismatch',
                   'testDelaySharedRefresh', 'testResumeSharedRefresh', 'testSharedRefreshMismatch',
                   'sharedSimulatedRefreshDelay', 'sharedSimulatedRefreshIdentityMismatch',
                   'testDelaySharedRefreshInEditor', 'testResumeSharedRefreshInEditor',

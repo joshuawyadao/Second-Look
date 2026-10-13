@@ -91,7 +91,7 @@ def main():
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     selection.add_argument("--only-pairing-recovery", action="store_true",
                            help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
-    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "forbidden", "creation"),
+    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "forbidden", "creation", "cleanup", "draft-lifecycle"),
                         help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
     if args.only_pairing_recovery != (args.recovery_case is not None):
@@ -158,7 +158,9 @@ def main():
         temporary.write_bytes(plistlib.dumps(run))
         try:
             if args.only_pairing_recovery:
-                suite = ("SharedCreationReceiptRecoveryUITests" if args.recovery_case == "creation" else
+                suite = ("ConnectedDraftLifecycleUITests" if args.recovery_case == "draft-lifecycle" else
+                         "ConnectedCleanupStatusUITests" if args.recovery_case == "cleanup" else
+                         "SharedCreationReceiptRecoveryUITests" if args.recovery_case == "creation" else
                          "SharedForbiddenRestoreUITests" if args.recovery_case == "forbidden" else
                          "SharedInvitationReceiptRecoveryUITests" if args.recovery_case in ("receipt", "lifecycle") else
                          "SharedMutationRecoveryUITests" if args.recovery_case in ("busy", "draft", "identity")
@@ -174,8 +176,12 @@ def main():
                     "create": "testInitialCreateReplyLossRequiresMembershipCheckBeforeRenewal",
                     "lifecycle": "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership",
                     "forbidden": "testForbiddenRestoreClearsSavedCredentialsBeforeRelaunch",
+                    "draft-lifecycle": "testEditorDraftSurvivesVerifiedForegroundReturn",
+                    "cleanup": "testConnectedArchivesShowDistinctSyntheticCleanupStates",
                     "creation": "testOneOffRetryOpensOriginalCreatedChecklist"
                 }[args.recovery_case]]
+                if args.recovery_case == "draft-lifecycle":
+                    selected_tests = ["-only-testing:SecondLookUITests/ConnectedDraftLifecycleUITests"]
                 if args.recovery_case == "creation":
                     selected_tests = ["-only-testing:SecondLookUITests/SharedCreationReceiptRecoveryUITests"]
             elif args.only_invitation_access_loss:

@@ -263,7 +263,8 @@ public struct SecondLookState: Codable, Equatable, Sendable {
             }
             let archive = archives.first(where: { $0.id == run.id })
             if run.isOpen {
-                guard run.closedAt == nil, run.cleanupStatus == nil, archive == nil else {
+                guard !run.isSatisfied,
+                      run.closedAt == nil, run.cleanupStatus == nil, archive == nil else {
                     throw SecondLookError.corruptDocument
                 }
             } else {

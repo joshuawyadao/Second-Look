@@ -273,6 +273,8 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                       archive.cleanupStatus == run.cleanupStatus,
                       Self.archiveMatchesClosedRun(archive, run: run),
                       outcome != .canceled || !Self.closedRunIsSatisfied(archive, run: run),
+                      outcome != .completed || !run.items.contains(where: { $0.priority == .high }) ||
+                          run.cleanupStatus != .notNeeded,
                       run.items.allSatisfy({ $0.submission == nil && $0.preview == nil }) else {
                     throw SecondLookError.corruptDocument
                 }

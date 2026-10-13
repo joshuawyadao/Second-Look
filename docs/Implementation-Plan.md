@@ -79,6 +79,6 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 - [x] 4254910171: reject non-nil self reviewers for all runs; direct/JSON/connected and creation regression, separate save/push/reaction.
 - [x] 4254910179: reject checked timestamps on high-priority items; load and connected behavior regression, separate save/push/reaction.
 - [x] 4254910185: evaluate canceled satisfaction from archived final approvals after submissions are stripped; reject impossible terminal history while preserving partial cancellation, separate save/push/reaction.
-- [ ] 4254910191: reject notNeeded cleanup on completed high-priority runs; direct/JSON/connected regression, separate save/push/reaction.
+- [x] 4254910191: reject notNeeded cleanup on completed high-priority runs; direct/JSON/connected regression, separate save/push/reaction.
 - [ ] Diagnose the observed local join recovery timeout at the genuine absent-membership retry. Preserve original authorization and timing assertions. Align lifecycle receipt privacy checks with retained hidden presentation using an opaque gate and blocked interaction; keep public retry controls absent and exact receipt/two-foreground assertions.
 - [ ] Complete current-source 21 connected native cases, both key-mode integration/restart, preserved hosted clients, required checks, Brooks follow-up and Codex review; record incomplete attempts without crediting them as complete. Thread resolution still requires the pending explicit user reply.

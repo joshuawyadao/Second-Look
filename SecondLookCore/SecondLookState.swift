@@ -269,6 +269,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 }
             } else {
                 guard let archive, let outcome = run.outcome, let closedAt = run.closedAt,
+                      outcome != .canceled || !run.isSatisfied,
                       archive.outcome == outcome, archive.closedAt == closedAt,
                       archive.cleanupStatus == run.cleanupStatus,
                       Self.archiveMatchesClosedRun(archive, run: run),

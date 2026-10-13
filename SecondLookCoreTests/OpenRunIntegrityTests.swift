@@ -99,6 +99,23 @@ final class OpenRunIntegrityTests: XCTestCase {
         try assertRejected(malformed)
     }
 
+    func testRejectsSatisfiedCanceledRunEvenWhenArchiveMirrorsEveryCheck() throws {
+        var canceled = try partiallyCheckedStandardRun()
+        try canceled.cancel(runID: canceled.runs[0].id, actorID: performer, now: now)
+        XCTAssertEqual(canceled.runs[0].outcome, .canceled)
+        XCTAssertFalse(canceled.runs[0].isSatisfied)
+        try assertAccepted(canceled)
+
+        var run = canceled.runs[0]
+        var archive = canceled.archives[0]
+        run.items[1].checkedAt = now
+        archive.items[1].checkedAt = now
+        let malformed = SecondLookState(routines: canceled.routines, runs: [run], archives: [archive])
+        XCTAssertEqual(malformed.runs[0].outcome, .canceled)
+        XCTAssertTrue(malformed.runs[0].isSatisfied)
+        try assertRejected(malformed)
+    }
+
     func testValidUnsatisfiedOpenAndClosedHistoryStillLoads() throws {
         let partialStandards = try partiallyCheckedStandardRun()
         let approvedHighWithUncheckedStandard = try reviewedHighPriorityRun()

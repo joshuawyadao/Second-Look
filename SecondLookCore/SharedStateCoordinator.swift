@@ -7,6 +7,7 @@ public final class SharedStateCoordinator {
     public private(set) var scope: SharedAccountScope?
     public private(set) var generation: UInt64 = 0
     private var client: (any SharedStateClient)?
+    private var suspendedScope: SharedAccountScope?
     /// A command with an unknown outcome must keep its full original request for receipt lookup.
     /// This is session memory only; durable offline intent belongs to a later milestone.
     private var unconfirmedCommands: [SharedCommandEnvelope] = []
@@ -16,15 +17,28 @@ public final class SharedStateCoordinator {
     public func beginSession(scope: SharedAccountScope, client: any SharedStateClient) {
         generation &+= 1
         snapshot = nil
-        unconfirmedCommands = []
+        if suspendedScope != scope { unconfirmedCommands = [] }
+        suspendedScope = nil
         self.scope = scope
         self.client = client
+    }
+
+    /// Hide protected state while retaining only requests already sent in this session.
+    /// A later validated same-scope beginSession can recover their original receipts.
+    public func suspendSession() {
+        guard let scope else { return }
+        generation &+= 1
+        suspendedScope = scope
+        snapshot = nil
+        self.scope = nil
+        client = nil
     }
 
     public func endSession() {
         generation &+= 1
         snapshot = nil
         unconfirmedCommands = []
+        suspendedScope = nil
         scope = nil
         client = nil
     }
@@ -45,7 +59,7 @@ public final class SharedStateCoordinator {
     }
 
     public func hasUnconfirmedCommand(commandID: UUID) -> Bool {
-        unconfirmedCommands.contains { $0.commandID == commandID }
+        scope != nil && unconfirmedCommands.contains { $0.commandID == commandID }
     }
 
     @discardableResult

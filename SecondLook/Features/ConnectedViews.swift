@@ -41,6 +41,17 @@ struct ConnectedRootView: View {
                 Text(result).font(.caption)
                     .accessibilityIdentifier("sharedInvitationReceiptResult")
             }
+            if model.lifecycleReceiptChecksRequested && model.simulatedLifecycleRevalidationPause {
+                Text("Foreground membership publication paused (simulated for acceptance)")
+                    .font(.caption)
+                    .accessibilityIdentifier(model.lifecycleRevalidationPauseCount > 1
+                        ? "sharedSimulatedSecondLifecycleRevalidationPause"
+                        : "sharedSimulatedLifecycleRevalidationPause")
+                Button("Resume verified membership") {
+                    model.resumeLifecycleRevalidationForAcceptance()
+                }
+                .accessibilityIdentifier("resumeSharedLifecycleRevalidation")
+            }
             if model.restoreRaceChecksRequested {
                 VStack {
                     Text("Concurrent reconnect triggers (simulated for acceptance)").font(.caption)

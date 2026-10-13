@@ -27,6 +27,8 @@ final class ConnectedAppModel {
     }
     private(set) var retryActionForError: UUID?
     private(set) var unconfirmedActions: [UnconfirmedAction] = []
+    @ObservationIgnored private var issuedActions: [UnconfirmedAction] = []
+    @ObservationIgnored private var suspendedScope: SharedAccountScope?
     private var errorSheetIDs: [UUID] = []
     var busy = false
 
@@ -57,6 +59,10 @@ final class ConnectedAppModel {
     @ObservationIgnored private var invitationReceiptAcceptanceTask: Task<Void, Never>?
     @ObservationIgnored private var invitationReceiptActionID: UUID?
     @ObservationIgnored private var invitationReceiptCreatedID: UUID?
+    private(set) var simulatedLifecycleRevalidationPause = false
+    private(set) var lifecycleRevalidationPauseCount = 0
+    @ObservationIgnored private var pauseNextLifecycleRevalidation = false
+    @ObservationIgnored private var lifecycleRevalidationContinuation: CheckedContinuation<Void, Never>?
     private(set) var restoreCandidateCount = 0
     @ObservationIgnored private var didDropRenewalReply = false
     @ObservationIgnored private var didDropCreateReply = false
@@ -297,6 +303,8 @@ final class ConnectedAppModel {
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession()
+                issuedActions = []
+                suspendedScope = nil
                 unconfirmedActions = []
                 snapshot = nil
                 invitation = nil
@@ -420,12 +428,32 @@ final class ConnectedAppModel {
                 throw SharedStateFailure.invalidResponse
             }
             snapshot = refreshed
+            publishIssuedActionsAfterVerification()
         } else {
+            let restoringSameScope = suspendedScope == scope
             coordinator.beginSession(scope: scope, client: client)
-            unconfirmedActions = []
-            // The first authenticated space lookup is already validated and held only in memory.
-            snapshot = incoming
+            if restoringSameScope {
+                // Core retains only issued envelopes for this verified account/space.
+                // Do not expose retry metadata until its fetch also succeeds.
+                try await coordinator.refresh()
+                guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
+                guard let refreshed = coordinator.snapshot,
+                      refreshed.revision >= incoming.revision else {
+                    throw SharedStateFailure.staleState
+                }
+                if refreshed.revision == incoming.revision && refreshed != incoming {
+                    throw SharedStateFailure.invalidResponse
+                }
+                snapshot = refreshed
+                publishIssuedActionsAfterVerification()
+            } else {
+                issuedActions = []
+                unconfirmedActions = []
+                // The first authenticated space lookup is already validated and held only in memory.
+                snapshot = incoming
+            }
         }
+        suspendedScope = nil
         confirmedNoSpace = false
         retryMembership = false
         status = snapshot?.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
@@ -433,6 +461,11 @@ final class ConnectedAppModel {
         simulatedMembershipFailure = false
         startCommandAcceptanceIfRequested()
         #endif
+    }
+
+    private func publishIssuedActionsAfterVerification() {
+        issuedActions.removeAll { !coordinator.hasUnconfirmedCommand(commandID: $0.id) }
+        unconfirmedActions = issuedActions
     }
 
     #if SECONDLOOK_DEMO
@@ -510,8 +543,24 @@ final class ConnectedAppModel {
     }
 
     private var invitationReceiptChecksRequested: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return localRecoveryChecksRequested &&
+            (arguments.contains("-shared-test-invitation-receipts") ||
+             arguments.contains("-shared-test-lifecycle-receipt"))
+    }
+
+    var lifecycleReceiptChecksRequested: Bool {
         localRecoveryChecksRequested &&
-            ProcessInfo.processInfo.arguments.contains("-shared-test-invitation-receipts")
+            ProcessInfo.processInfo.arguments.contains("-shared-test-lifecycle-receipt")
+    }
+
+    func resumeLifecycleRevalidationForAcceptance() {
+        guard lifecycleReceiptChecksRequested, simulatedLifecycleRevalidationPause,
+              canUseForeground else { return }
+        let continuation = lifecycleRevalidationContinuation
+        lifecycleRevalidationContinuation = nil
+        simulatedLifecycleRevalidationPause = false
+        continuation?.resume()
     }
 
     private func startInvitationReceiptAcceptanceIfRequested() {
@@ -558,6 +607,13 @@ final class ConnectedAppModel {
                 self.failInvitationReceiptAcceptance("reconcile", epoch: epoch)
                 return
             }
+            if self.lifecycleReceiptChecksRequested {
+                self.invitationReceiptActionID = actionID
+                self.invitationReceiptCreatedID = createdID
+                self.pauseNextLifecycleRevalidation = true
+                self.invitationReceiptAcceptanceStatus = "Lifecycle receipt checks ready for background"
+                return
+            }
             await self.createSpace()
             guard !Task.isCancelled, self.currentForegroundSession(epoch),
                   let renewed = self.snapshot,
@@ -602,7 +658,8 @@ final class ConnectedAppModel {
             failInvitationReceiptAcceptance("singleRun", epoch: epoch)
             return
         }
-        invitationReceiptAcceptanceStatus = "Invitation receipt checks passed"
+        invitationReceiptAcceptanceStatus = lifecycleReceiptChecksRequested
+            ? "Lifecycle receipt checks passed" : "Invitation receipt checks passed"
     }
 
     /// Explicit UI-test opt-in uses the installed account client; no credential is exported.
@@ -668,6 +725,14 @@ final class ConnectedAppModel {
             guard currentForegroundSession(epoch) else { return false }
             try incoming.validate(for: accountID)
             #if SECONDLOOK_DEMO
+            if lifecycleReceiptChecksRequested && pauseNextLifecycleRevalidation {
+                pauseNextLifecycleRevalidation = false
+                lifecycleRevalidationPauseCount += 1
+                simulatedLifecycleRevalidationPause = true
+                // Membership is genuinely fetched; only publication waits for XCTest.
+                await withCheckedContinuation { lifecycleRevalidationContinuation = $0 }
+                guard currentForegroundSession(epoch) else { return false }
+            }
             if refreshDelayChecksRequested && delayNextRefreshForAcceptance {
                 delayNextRefreshForAcceptance = false
                 simulatedRefreshDelay = true
@@ -688,6 +753,7 @@ final class ConnectedAppModel {
                     throw SharedStateFailure.staleState
                 }
                 snapshot = coordinator.snapshot
+                publishIssuedActionsAfterVerification()
             }
             if snapshot?.members.count == 2 { invitation = nil }
             status = snapshot?.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
@@ -697,6 +763,7 @@ final class ConnectedAppModel {
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession(); snapshot = nil; invitation = nil
+                issuedActions = []; suspendedScope = nil; unconfirmedActions = []
                 confirmedNoSpace = true
                 retryMembership = false
                 status = "This account is no longer paired."
@@ -725,6 +792,12 @@ final class ConnectedAppModel {
     func holdForValidation() {
         #if SECONDLOOK_DEMO
         resumeRefreshForAcceptance()
+        if lifecycleReceiptChecksRequested && lifecycleRevalidationContinuation != nil {
+            pauseNextLifecycleRevalidation = true
+        }
+        lifecycleRevalidationContinuation?.resume()
+        lifecycleRevalidationContinuation = nil
+        simulatedLifecycleRevalidationPause = false
         #endif
         let wasEligible = foregroundEligible
         foregroundEligible = false
@@ -746,7 +819,8 @@ final class ConnectedAppModel {
         }
         foregroundRevalidationPending = true
         retryMembership = true
-        coordinator.endSession()
+        suspendedScope = coordinator.scope ?? suspendedScope
+        coordinator.suspendSession()
         unconfirmedActions = []
         snapshot = nil
         invitation = nil
@@ -812,7 +886,9 @@ final class ConnectedAppModel {
     }
 
     func canRetryUnconfirmedAction(_ id: UUID) -> Bool {
-        canUseForeground && !busy && snapshot != nil && coordinator.hasUnconfirmedCommand(commandID: id)
+        canUseForeground && !busy && snapshot != nil &&
+            unconfirmedActions.contains(where: { $0.id == id }) &&
+            coordinator.hasUnconfirmedCommand(commandID: id)
     }
 
     @discardableResult
@@ -851,8 +927,12 @@ final class ConnectedAppModel {
                     throw SharedStateFailure.staleState
                 }
             }
+            if !issuedActions.contains(where: { $0.id == commandID }) {
+                issuedActions.append(UnconfirmedAction(id: commandID, command: command))
+            }
             let created = try await coordinator.execute(command, commandID: commandID)
             guard currentForegroundSession(epoch) else { return nil }
+            issuedActions.removeAll { $0.id == commandID }
             unconfirmedActions.removeAll { $0.id == commandID }
             snapshot = coordinator.snapshot
             return ActionReceipt(createdID: created)
@@ -863,6 +943,7 @@ final class ConnectedAppModel {
                 if unconfirmed && !unconfirmedActions.contains(where: { $0.id == commandID }) {
                     unconfirmedActions.append(UnconfirmedAction(id: commandID, command: command))
                 } else if !unconfirmed {
+                    issuedActions.removeAll { $0.id == commandID }
                     unconfirmedActions.removeAll { $0.id == commandID }
                 }
                 let message = unconfirmed
@@ -916,6 +997,11 @@ final class ConnectedAppModel {
         invitationReceiptActionID = nil
         invitationReceiptCreatedID = nil
         simulatedCommandReplyLoss = false
+        lifecycleRevalidationContinuation?.resume()
+        lifecycleRevalidationContinuation = nil
+        simulatedLifecycleRevalidationPause = false
+        pauseNextLifecycleRevalidation = false
+        lifecycleRevalidationPauseCount = 0
         resumeRefreshForAcceptance()
         delayNextRefreshForAcceptance = false
         restoreCandidateCount = 0
@@ -931,6 +1017,8 @@ final class ConnectedAppModel {
         if let configuration { ConnectedKeychain.clearBinding(configuration: configuration) }
         if let vault { Task { await vault.invalidate() } }
         coordinator.endSession()
+        issuedActions = []
+        suspendedScope = nil
         unconfirmedActions = []
         vault = nil; client = nil; accountID = nil; snapshot = nil; invitation = nil
         busy = false; errorMessage = nil

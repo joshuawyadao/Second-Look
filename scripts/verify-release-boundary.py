@@ -15,6 +15,10 @@ for forbidden in ('-shared-test-delayed-refresh', '-shared-test-refresh-account-
                   'sharedSimulatedRefreshDelay', 'sharedSimulatedRefreshIdentityMismatch',
                   'testDelaySharedRefreshInEditor', 'testResumeSharedRefreshInEditor',
                   'sharedSimulatedRefreshDelayInEditor',
+                  'testOverlapSharedRefresh', 'testOverlapSharedRefreshInEditor',
+                  'sharedOverlapRefreshResult', 'sharedOverlapRefreshResultInEditor',
+                  'Overlapping refresh admitted (simulated trigger)',
+                  'Overlapping refresh rejected (simulated trigger)',
                   'Shared refresh delay (simulated for acceptance)',
                   'Refresh account mismatch (simulated for acceptance)'):
     assert forbidden not in strings, f'Development feature in Release binary: {forbidden}'

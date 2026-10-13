@@ -42,6 +42,15 @@ final class SharedMutationRecoveryUITests: XCTestCase {
         tap("testDelaySharedRefresh", in: app)
         assertSimulatedDelay(in: app, inEditor: false)
         XCTAssertFalse(start.isEnabled, "Starting a run must wait for genuine refresh")
+        tap("testOverlapSharedRefresh", in: app)
+        let overlap = app.staticTexts["sharedOverlapRefreshResult"]
+        XCTAssertTrue(overlap.waitForExistence(timeout: 20))
+        XCTAssertEqual(overlap.label, "Overlapping refresh rejected (simulated trigger)",
+                       "A second entry must not admit a competing genuine refresh")
+        XCTAssertFalse(start.isEnabled, "Rejected overlap must not clear the first refresh's busy state")
+        XCTAssertFalse(app.buttons["Refresh"].firstMatch.isEnabled,
+                       "Manual refresh must remain disabled until the owning refresh finishes")
+
         tap("testResumeSharedRefresh", in: app)
         waitUntilEnabled(start, context: "Start after genuine refresh")
         tap("sharedStartRoutine-\(title)", in: app)

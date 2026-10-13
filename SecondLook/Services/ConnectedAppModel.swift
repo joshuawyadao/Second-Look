@@ -56,6 +56,7 @@ final class ConnectedAppModel {
     @ObservationIgnored private var didDropJoinReply = false
     @ObservationIgnored private var didTriggerRestoreRace = false
     private(set) var simulatedRefreshDelay = false
+    private(set) var overlappingRefreshAcceptanceResult: Bool?
     @ObservationIgnored private var delayNextRefreshForAcceptance = false
     @ObservationIgnored private var refreshContinuationForAcceptance: CheckedContinuation<Void, Never>?
     #endif
@@ -63,6 +64,7 @@ final class ConnectedAppModel {
     @ObservationIgnored private let coordinator = SharedStateCoordinator()
     @ObservationIgnored private var vault: AuthSessionVault?
     @ObservationIgnored private var client: SharedHTTPClient?
+    @ObservationIgnored private var activeRefreshEpoch: UInt64?
     @ObservationIgnored private var foregroundRevalidationPending = false
     @ObservationIgnored private var foregroundEligible = UIApplication.shared.applicationState == .active
     private static var testPreferenceSuffix: String {
@@ -420,8 +422,17 @@ final class ConnectedAppModel {
 
     func beginDelayedRefreshForAcceptance() {
         guard refreshDelayChecksRequested, canUseForeground, !busy, snapshot != nil else { return }
+        overlappingRefreshAcceptanceResult = nil
         delayNextRefreshForAcceptance = true
         enqueue { _ = await self.refresh() }
+    }
+
+    func attemptOverlappingRefreshForAcceptance() async {
+        guard refreshDelayChecksRequested, canUseForeground, simulatedRefreshDelay else { return }
+        let epoch = generation
+        let result = await refresh()
+        guard currentForegroundSession(epoch) else { return }
+        overlappingRefreshAcceptanceResult = result
     }
 
     func resumeRefreshForAcceptance() {
@@ -486,7 +497,7 @@ final class ConnectedAppModel {
             }
             let report = await SharedCommandAcceptanceChecks.run(client: client, accountID: accountID)
             guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
-            let refreshed = await self.refresh()
+            let refreshed = await self.refreshInstalledSpace()
             guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
             self.commandAcceptanceStatus = !refreshed ? "Shared command checks failed: postRunRefresh" :
                 report.allPassed ? "Shared command checks passed" :
@@ -504,8 +515,18 @@ final class ConnectedAppModel {
 
     @discardableResult
     func refresh(quietly: Bool = false) async -> Bool {
+        guard !busy else { return false }
+        return await refreshInstalledSpace(quietly: quietly)
+    }
+
+    /// Foreground and command recovery already own busy; keep their refresh in that operation.
+    @discardableResult
+    private func refreshInstalledSpace(quietly: Bool = false) async -> Bool {
         guard canUseForeground, let client, let accountID, let configuration else { return false }
         let epoch = generation
+        guard activeRefreshEpoch != epoch else { return false }
+        activeRefreshEpoch = epoch
+        defer { if activeRefreshEpoch == epoch { activeRefreshEpoch = nil } }
         confirmedNoSpace = false
         busy = true
         do {
@@ -632,7 +653,7 @@ final class ConnectedAppModel {
         guard foregroundRevalidationPending else { return }
         foregroundRevalidationPending = false
         retryMembership = false
-        await refresh()
+        await refreshInstalledSpace()
     }
 
     struct ActionReceipt { let createdID: UUID? }
@@ -710,7 +731,7 @@ final class ConnectedAppModel {
                     errorMessage = message
                     if unconfirmed { retryActionForError = commandID }
                 }
-                if error as? SharedStateFailure == .staleState { await refresh() }
+                if error as? SharedStateFailure == .staleState { await refreshInstalledSpace() }
             }
             return nil
         }

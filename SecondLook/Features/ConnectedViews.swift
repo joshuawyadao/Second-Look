@@ -340,7 +340,7 @@ private struct ConnectedRoutinesView: View {
                 Button("Create one-off checklist", systemImage: "plus.rectangle.on.folder") {
                     editor = ConnectedEditorRequest(routine: nil, oneOff: true)
                 }
-                Button("Refresh") { model.enqueue { await model.refresh() } }
+                Button("Refresh") { model.enqueue { await model.refresh() } }.disabled(model.busy)
             }
             if !model.openRuns.isEmpty {
                 Section("Open checklists") {
@@ -524,6 +524,14 @@ private struct SharedRefreshAcceptanceControls: View {
                 if model.simulatedRefreshDelay {
                     Text("Shared refresh delay (simulated for acceptance)").font(.caption)
                         .accessibilityIdentifier(inEditor ? "sharedSimulatedRefreshDelayInEditor" : "sharedSimulatedRefreshDelay")
+                    Button("Attempt overlapping refresh for test") {
+                        model.enqueue { await model.attemptOverlappingRefreshForAcceptance() }
+                    }
+                    .accessibilityIdentifier(inEditor ? "testOverlapSharedRefreshInEditor" : "testOverlapSharedRefresh")
+                    if let result = model.overlappingRefreshAcceptanceResult {
+                        Text(result ? "Overlapping refresh admitted (simulated trigger)" : "Overlapping refresh rejected (simulated trigger)")
+                            .accessibilityIdentifier(inEditor ? "sharedOverlapRefreshResultInEditor" : "sharedOverlapRefreshResult")
+                    }
                     Button("Complete delayed refresh") { model.resumeRefreshForAcceptance() }
                         .accessibilityIdentifier(inEditor ? "testResumeSharedRefreshInEditor" : "testResumeSharedRefresh")
                 } else {
@@ -722,7 +730,7 @@ private struct ConnectedReviewView: View {
             }
         }
         .navigationTitle("Review")
-        .toolbar { Button("Refresh") { model.enqueue { await model.refresh() } } }
+        .toolbar { Button("Refresh") { model.enqueue { await model.refresh() } }.disabled(model.busy) }
         .sheet(item: $selected) {
             ConnectedReviewDetailView(request: $0).connectedActionErrors(inSheet: true)
         }
@@ -817,7 +825,7 @@ private struct ConnectedHistoryView: View {
             }
         }
         .navigationTitle("History")
-        .toolbar { Button("Refresh") { model.enqueue { await model.refresh() } } }
+        .toolbar { Button("Refresh") { model.enqueue { await model.refresh() } }.disabled(model.busy) }
     }
 }
 

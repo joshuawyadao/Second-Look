@@ -1,6 +1,6 @@
 # Plan
 
-Resolve the remaining Milestone 2 native and CI failures, complete available hosted acceptance, and shepherd draft PR #2. Address the forty-seven actionable Codex findings with narrow regressions and an item-by-item save/push/reaction. Preserve private accounts and records; M2 stays incomplete until required evidence is verified.
+Resolve the remaining Milestone 2 native and CI failures, complete available hosted acceptance, and shepherd draft PR #2. Address the fifty-three actionable Codex findings with narrow regressions and an item-by-item save/push/reaction. Preserve private accounts and records; M2 stays incomplete until required evidence is verified.
 
 ## Scope
 
@@ -82,3 +82,13 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 - [x] 4254910191: reject notNeeded cleanup on completed high-priority runs; direct/JSON/connected regression, separate save/push/reaction.
 - [x] Diagnose the observed local join recovery timeout at the genuine absent-membership retry. Preserve original authorization and timing assertions. Align lifecycle receipt privacy checks with retained hidden presentation using an opaque gate and blocked interaction; keep public retry controls absent and exact receipt/two-foreground assertions.
 - [ ] Complete current-source 21 connected native cases, both key-mode integration/restart, preserved hosted clients, required checks, Brooks follow-up and Codex review; record incomplete attempts without crediting them as complete. Thread resolution still requires the pending explicit user reply.
+
+## Fresh review on225c8de
+
+- [ ] 4255046754: retain confirmed-but-unconsumed creation receipts through same-scope revalidation; exact createdID/one object, access-loss purge and old-response fencing regressions. Define coordinator/model acknowledgment interface before implementation.
+- [ ] 4255046761: require coded command-service401 before clearing credentials, retaining provider Auth semantics; transport red/green.
+- [ ] 4255046765: bound every shared verifier subprocess by phase, including Docker/Swift/tests, with owned process-group TERM/KILL/reap cleanup and private fixed failure categories; meaningful spawned-descendant regressions.
+- [ ] 4255046774: require notNeeded cleanup for every all-standard archive; malformed direct/JSON/connected and valid positive histories.
+- [ ] 4255046779: enforce exact Debug connected synthetic evidence fixture/source provenance; malformed snapshots rejected, known synthetic metadata accepted, local demo fixtures preserved.
+- [ ] 4255046783: reject server snapshot membership outside its configured current allowlist at every authenticated space boundary; no allowlist changes or hosted deployment.
+- [ ] Record225c8de partial pipeline and Auth504 failures206.982s/34.602s; direct local database responds with no waiting locks, both private Auth probes return504, named Auth restart succeeds and both probes subsequently200. This is recovered availability, not an established general cause. All225c8de CI checks pass; all47 addressed threads resolved under the explicit user reply. Complete validation and review at the final saved source remain required.

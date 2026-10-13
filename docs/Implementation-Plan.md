@@ -1,6 +1,6 @@
 # Plan
 
-Resolve the remaining Milestone 2 native and CI failures, complete available hosted acceptance, and shepherd draft PR #2. Address the fifty-three actionable Codex findings with narrow regressions and an item-by-item save/push/reaction. Preserve private accounts and records; M2 stays incomplete until required evidence is verified.
+Resolve the remaining Milestone 2 native and CI failures, complete available hosted acceptance, and shepherd draft PR #2. Address the fifty-nine actionable Codex findings with narrow regressions and an item-by-item save/push/reaction. Preserve private accounts and records; M2 stays incomplete until required evidence is verified.
 
 ## Scope
 
@@ -107,3 +107,15 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 - [ ] Save/push final evidence, request fresh Codex review and verify terminal saved-head CI/conflicts. Retry the authorized thread connector with tested/pushed evidence; no workaround for an automatic rejection. Keep PR draft/unmerged while required gates remain blocked.
 
 Final checkpoint0259e70 is pushed and receipt comment4255046754 has thumbs-up reaction455327372. Fresh review request6151577720 is running; final documentation-head CI is a separate gate. The same connector accepted the five earlier validated resolutions after tested/pushed evidence, bringing resolved threads to52. The receipt thread stays open pending its connected native probe. Docker quit/reopen reply, full23 connected and both key modes remain required; live hosted server7e32ee0/schema are unchanged.
+
+## Late review on0259e70
+
+Review5507805708 posted at17:57:19UTC after the bounded request6151577720 timeout; it adds six findings (59 total). The prior executable0259e70 seven-phase evidence remains recorded; any subsequent fixes need new saved-source evidence. No product decisions are needed for these bounded response and privacy repairs. Docker-dependent acceptance remains blocked on the requested full quit/reopen reply.
+
+- [ ] 4262173360: accept identical command/result receipt replays with a newer current snapshot while preserving one-shot consumption and monotonic revisions; meaningful overlapping genuine-processor regression, separate save/push/reaction.
+- [ ] 4262173373: validate creation/noncreation result ID shape and returned run identity before receipt confirmation/envelope removal; preserve legitimate later-current receipt snapshots, separate regressions/save/push/reaction.
+- [ ] 4262173384: classify only documented command-service409 staleState/pairingUnavailable authoritatively; unknown responses keep the original command envelope, transport regression/save/push/reaction.
+- [ ] 4262173390: bound every connected run item submission counter below Int.max; corrupt/open snapshots rejected before increment, valid finite values preserved; regression/save/push/reaction.
+- [ ] 4262173401: hold pending-action alert/retry state behind foreground revalidation and republish only after verified same scope; purge on access/scope change, native gated probe and explicit unverified-Docker limit.
+- [ ] 4262173414: bind every explicitly scoped provider read/receipt/commit to the requested space; invalid upstream output returns bounded503, currentSpace/create/join remain unchanged; service/HTTP regressions/save/push/reaction.
+- [ ] Update Architecture, Backend Operations, ADR and Verification for actual final behavior and evidence; run relevant package/server/native/Release/existing-hosted checks at frozen source, then final CI/review. Do not repeat or credit Docker-dependent acceptance without recovery. Keep PR draft/unmerged.

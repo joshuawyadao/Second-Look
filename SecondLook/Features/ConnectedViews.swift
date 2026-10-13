@@ -85,6 +85,10 @@ struct ConnectedRootView: View {
                 Text("Creation reply loss (simulated for acceptance)").font(.caption)
                     .accessibilityIdentifier("sharedSimulatedCreationReplyLoss")
             }
+            if model.simulatedCommandScopeLoss {
+                Text("Command scope loss after commit (simulated for acceptance)").font(.caption)
+                    .accessibilityIdentifier("sharedSimulatedCommandScopeLoss")
+            }
             if let result = model.creationReceiptAcceptanceStatus {
                 Text(result).font(.caption)
                     .accessibilityIdentifier("sharedCreationReceiptResult")
@@ -540,6 +544,11 @@ private struct ConnectedRoutineEditorView: View {
         NavigationStack {
             Form {
                 #if SECONDLOOK_DEMO
+                if model.simulatedConfirmedCreationConsumptionPause {
+                    Text("Confirmed creation consumption paused (simulated for acceptance)")
+                        .font(.caption)
+                        .accessibilityIdentifier("sharedSimulatedConfirmedCreationPause")
+                }
                 SharedRefreshAcceptanceControls(inEditor: true)
                 #endif
                 Section("Name") {

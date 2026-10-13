@@ -10,7 +10,12 @@ with (app / 'Info.plist').open('rb') as stream:
     info = plistlib.load(stream)
 assert info['CFBundleIdentifier'] == 'com.joshuawyadao.SecondLook.local', 'Unexpected Release identity'
 strings = subprocess.check_output(['strings', str(app / info['CFBundleExecutable'])], text=True)
-for forbidden in ('-shared-test-draft-lifecycle', '-shared-test-draft-access-loss',
+for forbidden in ('-shared-test-confirmed-consumption-suspend',
+                  'sharedSimulatedConfirmedCreationPause',
+                  'Confirmed creation consumption paused (simulated for acceptance)',
+                  '-shared-test-scope-loss-purge', 'sharedSimulatedCommandScopeLoss',
+                  'Command scope loss after commit (simulated for acceptance)',
+                  '-shared-test-draft-lifecycle', '-shared-test-draft-access-loss',
                   'armSharedDraftRevalidation', 'resumeSharedDraftRevalidation',
                   'sharedSimulatedDraftRevalidationPause', 'sharedSimulatedDraftAccessLoss',
                   'sharedDraftPresentationGate', 'Protected presentation held for verification',

@@ -9,6 +9,8 @@ actor SharedInvitationReceiptLossClient: SharedStateClient {
     private let targetCommandID: UUID
     private var lostReply = false
     private var committedID: UUID?
+    private var scopeLossCommandID: UUID?
+    private var scopeLossInjected = false
 
     init(base: SharedHTTPClient, targetCommandID: UUID) {
         self.base = base
@@ -26,9 +28,19 @@ actor SharedInvitationReceiptLossClient: SharedStateClient {
             committedID = result.createdID
             throw SharedStateFailure.serviceUnavailable
         }
+        if envelope.commandID == scopeLossCommandID && !scopeLossInjected {
+            scopeLossInjected = true
+            // Debug localhost acceptance only: the real command committed, but
+            // the decoded response is replaced with a coded membership loss.
+            throw SharedStateFailure.notPaired
+        }
         return result
     }
 
     func committedCreatedID() -> UUID? { committedID }
+
+    func armScopeLoss(afterCommittedCommandID commandID: UUID) {
+        scopeLossCommandID = commandID
+    }
 }
 #endif

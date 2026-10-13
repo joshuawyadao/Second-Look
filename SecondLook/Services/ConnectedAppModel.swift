@@ -65,11 +65,16 @@ final class ConnectedAppModel {
     private(set) var simulatedForbiddenRestore = false
     private(set) var forbiddenRestoreCredentialStatus: String?
     private(set) var simulatedCreationReplyLoss = false
+    private(set) var simulatedCommandScopeLoss = false
     private(set) var creationReceiptAcceptanceStatus: String?
+    private(set) var simulatedConfirmedCreationConsumptionPause = false
+    @ObservationIgnored private var confirmedCreationConsumptionContinuation: CheckedContinuation<Void, Never>?
+    @ObservationIgnored private var didPauseConfirmedCreationConsumption = false
     @ObservationIgnored private var creationReceiptActionID: UUID?
     @ObservationIgnored private var creationReceiptCreatedID: UUID?
     @ObservationIgnored private var creationReceiptCommand: SharedCommand?
     @ObservationIgnored private var creationReceiptLossClient: SharedInvitationReceiptLossClient?
+    @ObservationIgnored private var scopeLossActionID: UUID?
     @ObservationIgnored private var didDropCreationReply = false
     @ObservationIgnored private var didSimulateMembershipFailure = false
     @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
@@ -322,6 +327,7 @@ final class ConnectedAppModel {
     private func discoverSpace(epoch: UInt64) async {
         guard let client, let accountID, let configuration else { return }
         confirmedNoSpace = false
+        var membershipLookupReturnedSpace = false
         do {
             #if SECONDLOOK_DEMO
             let arguments = ProcessInfo.processInfo.arguments
@@ -333,6 +339,7 @@ final class ConnectedAppModel {
             }
             #endif
             let incoming = try await client.currentSpace()
+            membershipLookupReturnedSpace = true
             guard currentForegroundSession(epoch) else { return }
             try await publishSpace(incoming, accountID: accountID, configuration: configuration,
                                    client: client, epoch: epoch)
@@ -340,28 +347,17 @@ final class ConnectedAppModel {
             busy = false
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
-                coordinator.endSession()
-                discardPresentation()
-                creationCompletions = [:]
-                issuedActions = []
-                suspendedScope = nil
-                unconfirmedActions = []
-                snapshot = nil
-                invitation = nil
-                confirmedNoSpace = true
-                retryMembership = false
-                status = "Signed in. Create a private space or enter an invitation."
-                busy = false
+                purgeConnectedScope(confirmedAbsentFromLookup: !membershipLookupReturnedSpace)
             }
         } catch {
             if currentForegroundSession(epoch) {
                 let message = Self.safeMessage(error)
-                if !clearSessionIfAccessLost(error) {
+                if !handleSessionOrScopeLoss(error) {
                     retryMembership = true
                     status = "Could not check private-space membership. Try again when connected."
                     errorMessage = message
+                    busy = false
                 }
-                busy = false
             }
         }
     }
@@ -409,8 +405,10 @@ final class ConnectedAppModel {
             #endif
         } catch {
             if currentForegroundSession(epoch) {
-                if !clearSessionIfAccessLost(error) { errorMessage = Self.safeMessage(error) }
-                busy = false
+                if !handleSessionOrScopeLoss(error) {
+                    errorMessage = Self.safeMessage(error)
+                    busy = false
+                }
             }
         }
     }
@@ -438,11 +436,11 @@ final class ConnectedAppModel {
             busy = false
         } catch {
             if currentForegroundSession(epoch) {
-                if !clearSessionIfAccessLost(error) {
+                if !handleSessionOrScopeLoss(error) {
                     status = "Could not confirm pairing. Checking membership before retrying."
                     errorMessage = Self.safeMessage(error)
+                    busy = false
                 }
-                busy = false
             }
         }
     }
@@ -506,7 +504,10 @@ final class ConnectedAppModel {
     }
 
     private func publishIssuedActionsAfterVerification() {
-        issuedActions.removeAll { !coordinator.hasUnconfirmedCommand(commandID: $0.id) }
+        issuedActions.removeAll {
+            !coordinator.hasUnconfirmedCommand(commandID: $0.id) &&
+                !coordinator.hasConfirmedReceipt(commandID: $0.id, command: $0.command)
+        }
         unconfirmedActions = issuedActions
     }
 
@@ -629,7 +630,9 @@ final class ConnectedAppModel {
         guard localRecoveryChecksRequested, !didDropCreationReply else { return false }
         let args = ProcessInfo.processInfo.arguments
         switch command {
-        case .startOneOff: return args.contains("-shared-test-creation-receipt-one-off")
+        case .startOneOff:
+            return args.contains("-shared-test-creation-receipt-one-off") ||
+                args.contains("-shared-test-scope-loss-purge")
         case .saveRunAsRoutine: return args.contains("-shared-test-creation-receipt-save-as-routine")
         default: return false
         }
@@ -897,9 +900,11 @@ final class ConnectedAppModel {
         defer { if activeRefreshEpoch == epoch { activeRefreshEpoch = nil } }
         confirmedNoSpace = false
         busy = true
+        var membershipLookupReturnedSpace = false
         do {
             // A fresh membership lookup also catches a revoked or changed space.
             let incoming = try await client.currentSpace()
+            membershipLookupReturnedSpace = true
             guard currentForegroundSession(epoch) else { return false }
             try incoming.validate(for: accountID)
             #if SECONDLOOK_DEMO
@@ -951,24 +956,19 @@ final class ConnectedAppModel {
             return true
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
-                coordinator.endSession(); discardPresentation(); snapshot = nil; invitation = nil
-                issuedActions = []; suspendedScope = nil; unconfirmedActions = []; creationCompletions = [:]
-                confirmedNoSpace = true
-                retryMembership = false
-                status = "This account is no longer paired."
-                busy = false
+                purgeConnectedScope(confirmedAbsentFromLookup: !membershipLookupReturnedSpace)
             }
         } catch {
             if currentForegroundSession(epoch) {
                 let message = Self.safeMessage(error)
-                let accessLost = clearSessionIfAccessLost(error)
-                if !accessLost && quietly {
+                if handleSessionOrScopeLoss(error) { return false }
+                if quietly {
                     status = "Could not synchronize. Retrying when connected."
                     retryMembership = snapshot == nil
-                } else if !accessLost {
+                } else {
                     retryMembership = snapshot == nil
                 }
-                if !quietly && !accessLost { errorMessage = message }
+                if !quietly { errorMessage = message }
                 busy = false
             }
         }
@@ -980,6 +980,9 @@ final class ConnectedAppModel {
     /// Installed credentials remain bound to this account for foreground revalidation.
     func holdForValidation() {
         #if SECONDLOOK_DEMO
+        confirmedCreationConsumptionContinuation?.resume()
+        confirmedCreationConsumptionContinuation = nil
+        simulatedConfirmedCreationConsumptionPause = false
         if draftLifecycleChecksRequested && draftRevalidationContinuation != nil {
             pauseNextDraftRevalidation = true
         }
@@ -1083,7 +1086,8 @@ final class ConnectedAppModel {
         unconfirmedActions.first { action in
             guard let completion = creationCompletions[action.id] else { return false }
             return completion.owner == owner && completion.presentationEpoch == presentationGeneration &&
-                coordinator.hasUnconfirmedCommand(commandID: action.id)
+                (coordinator.hasUnconfirmedCommand(commandID: action.id) ||
+                 coordinator.hasConfirmedReceipt(commandID: action.id, command: action.command))
         }
     }
 
@@ -1126,7 +1130,10 @@ final class ConnectedAppModel {
     func canRetryUnconfirmedAction(_ id: UUID) -> Bool {
         canUseForeground && !busy && snapshot != nil &&
             unconfirmedActions.contains(where: { $0.id == id }) &&
-            coordinator.hasUnconfirmedCommand(commandID: id)
+            (coordinator.hasUnconfirmedCommand(commandID: id) ||
+             unconfirmedActions.contains(where: {
+                 $0.id == id && coordinator.hasConfirmedReceipt(commandID: id, command: $0.command)
+             }))
     }
 
     @discardableResult
@@ -1135,7 +1142,19 @@ final class ConnectedAppModel {
               let action = unconfirmedActions.first(where: { $0.id == id }) else { return nil }
         errorMessage = nil
         let epoch = generation
-        let receipt = await execute(action.command, commandID: action.id)
+        let receipt: ActionReceipt?
+        if let confirmed = coordinator.takeConfirmedReceipt(commandID: action.id,
+                                                              command: action.command) {
+            // The verified, exact-scope receipt is local. Never send this command again.
+            issuedActions.removeAll { $0.id == id }
+            unconfirmedActions.removeAll { $0.id == id }
+            snapshot = coordinator.snapshot
+            let accepted = ActionReceipt(createdID: confirmed.createdID)
+            completeCreationFlow(accepted, commandID: id, epoch: epoch)
+            receipt = accepted
+        } else {
+            receipt = await execute(action.command, commandID: action.id)
+        }
         #if SECONDLOOK_DEMO
         finishCreationReceiptAcceptance(receipt, actionID: id, epoch: epoch)
         if invitationReceiptChecksRequested && id == invitationReceiptActionID {
@@ -1184,18 +1203,56 @@ final class ConnectedAppModel {
             if !issuedActions.contains(where: { $0.id == commandID }) {
                 issuedActions.append(UnconfirmedAction(id: commandID, command: command))
             }
+            #if SECONDLOOK_DEMO
+            if localRecoveryChecksRequested,
+               ProcessInfo.processInfo.arguments.contains("-shared-test-scope-loss-purge"),
+               didDropCreationReply, scopeLossActionID == nil,
+               case .saveRoutine = command, let adapter = creationReceiptLossClient {
+                scopeLossActionID = commandID
+                await adapter.armScopeLoss(afterCommittedCommandID: commandID)
+                guard currentForegroundSession(epoch) else { return nil }
+            }
+            #endif
             let created = try await coordinator.execute(command, commandID: commandID)
+            #if SECONDLOOK_DEMO
+            if localRecoveryChecksRequested,
+               ProcessInfo.processInfo.arguments.contains("-shared-test-confirmed-consumption-suspend"),
+               !didPauseConfirmedCreationConsumption,
+               case .startOneOff = command {
+                didPauseConfirmedCreationConsumption = true
+                creationReceiptActionID = commandID
+                creationReceiptCreatedID = created
+                creationReceiptCommand = command
+                simulatedConfirmedCreationConsumptionPause = true
+                // The service and coordinator confirmed the command. Only model consumption
+                // waits here for the native foreground acceptance case.
+                await withCheckedContinuation { confirmedCreationConsumptionContinuation = $0 }
+                simulatedConfirmedCreationConsumptionPause = false
+            }
+            #endif
             guard currentForegroundSession(epoch) else { return nil }
+            guard let confirmed = coordinator.takeConfirmedReceipt(commandID: commandID,
+                                                                    command: command) else {
+                throw SharedStateFailure.invalidResponse
+            }
             issuedActions.removeAll { $0.id == commandID }
             unconfirmedActions.removeAll { $0.id == commandID }
             snapshot = coordinator.snapshot
-            let receipt = ActionReceipt(createdID: created)
+            let receipt = ActionReceipt(createdID: confirmed.createdID)
             completeCreationFlow(receipt, commandID: commandID, epoch: epoch)
             return receipt
         } catch {
             if currentForegroundSession(epoch) {
+                #if SECONDLOOK_DEMO
+                if commandID == scopeLossActionID,
+                   error as? SharedStateFailure == .notPaired {
+                    simulatedCommandScopeLoss = true
+                }
+                #endif
+                if handleSessionOrScopeLoss(error) { return nil }
                 snapshot = coordinator.snapshot
-                let unconfirmed = coordinator.hasUnconfirmedCommand(commandID: commandID)
+                let unconfirmed = coordinator.hasUnconfirmedCommand(commandID: commandID) ||
+                    coordinator.hasConfirmedReceipt(commandID: commandID, command: command)
                 if unconfirmed && !unconfirmedActions.contains(where: { $0.id == commandID }) {
                     unconfirmedActions.append(UnconfirmedAction(id: commandID, command: command))
                 } else if !unconfirmed {
@@ -1214,10 +1271,8 @@ final class ConnectedAppModel {
                 let message = unconfirmed
                     ? "Could not confirm this action. Use Retry this action to check its original result."
                     : Self.safeMessage(error)
-                if !clearSessionIfAccessLost(error) {
-                    errorMessage = message
-                    if unconfirmed { retryActionForError = commandID }
-                }
+                errorMessage = message
+                if unconfirmed { retryActionForError = commandID }
                 if error as? SharedStateFailure == .staleState { await refreshInstalledSpace() }
             }
             return nil
@@ -1225,14 +1280,22 @@ final class ConnectedAppModel {
     }
 
     /// Call only after the response's foreground/session epoch was checked.
-    /// Domain command denials do not change the authenticated identity.
+    /// Membership or scope loss drops connected presentation, but keeps verified
+    /// Auth credentials installed until a genuine membership lookup runs again.
     @discardableResult
-    private func clearSessionIfAccessLost(_ error: Error) -> Bool {
-        guard let failure = error as? SharedStateFailure,
-              failure == .unauthenticated || failure == .forbidden else { return false }
-        signOut()
-        if errorMessage == nil { errorMessage = Self.safeMessage(error) }
-        return true
+    private func handleSessionOrScopeLoss(_ error: Error) -> Bool {
+        guard let failure = error as? SharedStateFailure else { return false }
+        switch failure {
+        case .unauthenticated, .forbidden:
+            signOut()
+            if errorMessage == nil { errorMessage = Self.safeMessage(error) }
+            return true
+        case .notPaired, .scopeMismatch:
+            purgeConnectedScope(confirmedAbsentFromLookup: false)
+            return true
+        default:
+            return false
+        }
     }
 
     func signOut() {
@@ -1245,6 +1308,63 @@ final class ConnectedAppModel {
                 errorMessage = Self.safeMessage(error)
             }
         }
+    }
+
+    private func purgeConnectedScope(confirmedAbsentFromLookup: Bool) {
+        // Invalidate every in-flight model continuation before changing any
+        // presentation. The Auth vault/client remain installed for revalidation.
+        generation &+= 1
+        activeRefreshEpoch = nil
+        foregroundRevalidationPending = false
+        coordinator.endSession()
+        discardPresentation()
+        issuedActions = []
+        unconfirmedActions = []
+        suspendedScope = nil
+        snapshot = nil
+        invitation = nil
+        errorSheetIDs = []
+        errorMessage = nil
+        retryActionForError = nil
+        confirmedNoSpace = confirmedAbsentFromLookup
+        retryMembership = !confirmedAbsentFromLookup
+        status = confirmedAbsentFromLookup
+            ? "Signed in. Create a private space or enter an invitation."
+            : "Private-space access changed. Check membership to continue."
+        busy = false
+        #if SECONDLOOK_DEMO
+        cancelCommandAcceptance()
+        invitationReceiptAcceptanceTask?.cancel()
+        invitationReceiptAcceptanceTask = nil
+        invitationReceiptAcceptanceStarted = false
+        invitationReceiptAcceptanceStatus = nil
+        invitationReceiptActionID = nil
+        invitationReceiptCreatedID = nil
+        draftRevalidationContinuation?.resume()
+        draftRevalidationContinuation = nil
+        pauseNextDraftRevalidation = false
+        simulatedDraftRevalidationPause = false
+        sharedReviewDraftProbeStatus = nil
+        sharedCleanupProbeStatus = nil
+        lifecycleRevalidationContinuation?.resume()
+        lifecycleRevalidationContinuation = nil
+        pauseNextLifecycleRevalidation = false
+        simulatedLifecycleRevalidationPause = false
+        resumeRefreshForAcceptance()
+        delayNextRefreshForAcceptance = false
+        confirmedCreationConsumptionContinuation?.resume()
+        confirmedCreationConsumptionContinuation = nil
+        simulatedConfirmedCreationConsumptionPause = false
+        creationReceiptAcceptanceStatus = nil
+        creationReceiptActionID = nil
+        creationReceiptCreatedID = nil
+        creationReceiptCommand = nil
+        creationReceiptLossClient = nil
+        scopeLossActionID = nil
+        simulatedCreationReplyLoss = false
+        simulatedCommandReplyLoss = false
+        simulatedPairingReplyLoss = false
+        #endif
     }
 
     private func discardPresentation() {
@@ -1270,11 +1390,17 @@ final class ConnectedAppModel {
         simulatedForbiddenRestore = false
         forbiddenRestoreCredentialStatus = nil
         simulatedCreationReplyLoss = false
+        simulatedCommandScopeLoss = false
+        confirmedCreationConsumptionContinuation?.resume()
+        confirmedCreationConsumptionContinuation = nil
+        simulatedConfirmedCreationConsumptionPause = false
+        didPauseConfirmedCreationConsumption = false
         creationReceiptAcceptanceStatus = nil
         creationReceiptActionID = nil
         creationReceiptCreatedID = nil
         creationReceiptCommand = nil
         creationReceiptLossClient = nil
+        scopeLossActionID = nil
         didDropCreationReply = false
         didSimulateMembershipFailure = false
         simulatedPairingReplyLoss = false

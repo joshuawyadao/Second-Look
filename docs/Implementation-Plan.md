@@ -70,7 +70,7 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 
 ## Open questions
 
-- None for implementation. The operator completed excluded-account sign-in and fully quit/reopened Docker. No allowlist change is authorized or needed. Resolving addressed PR2 review threads requires separate explicit authorization under the feedback skill; main requires resolved threads before merge, and this workflow leaves the PR unmerged.
+- None for implementation. The operator completed excluded-account sign-in and fully quit/reopened Docker. No allowlist change is authorized or needed. The user authorized resolving validated PR2 threads, including subsequent validated findings. Main requires resolved threads before merge, and this workflow leaves the PR unmerged. A new full Docker quit/reopen reply is required after repeated Auth504 and a bounded named-stack stop timeout; no data reset or pruning is requested.
 
 ## Late review on eba7177 and recovery validation
 
@@ -81,14 +81,27 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 - [x] 4254910185: evaluate canceled satisfaction from archived final approvals after submissions are stripped; reject impossible terminal history while preserving partial cancellation, separate save/push/reaction.
 - [x] 4254910191: reject notNeeded cleanup on completed high-priority runs; direct/JSON/connected regression, separate save/push/reaction.
 - [x] Diagnose the observed local join recovery timeout at the genuine absent-membership retry. Preserve original authorization and timing assertions. Align lifecycle receipt privacy checks with retained hidden presentation using an opaque gate and blocked interaction; keep public retry controls absent and exact receipt/two-foreground assertions.
-- [ ] Complete current-source 21 connected native cases, both key-mode integration/restart, preserved hosted clients, required checks, Brooks follow-up and Codex review; record incomplete attempts without crediting them as complete. Thread resolution still requires the pending explicit user reply.
+- [ ] Complete current-source 23 connected native cases, both key-mode integration/restart, preserved hosted clients, required checks, Brooks follow-up and Codex review; record incomplete attempts without crediting them as complete. The user authorized resolving validated threads; 47 were resolved. New receipt/scope native checks and remaining connector resolution stay pending.
 
 ## Fresh review on225c8de
 
-- [ ] 4255046754: retain confirmed-but-unconsumed creation receipts through same-scope revalidation; exact createdID/one object, access-loss purge and old-response fencing regressions. Define coordinator/model acknowledgment interface before implementation.
+- [x] 4255046754: retain confirmed-but-unconsumed creation receipts through same-scope revalidation; exact createdID/one object, access-loss purge and old-response fencing regressions. Coordinator/model acknowledgment interface is implemented with ten meaningful Core regressions and 106 passing package cases; Debug/Release, preserved hosted and connected native validation gates are recorded separately. The two new native receipt/scope cases remain pending Docker recovery.
 - [x] 4255046761: require coded command-service401 before clearing credentials, retaining provider Auth semantics; transport red/green.
 - [x] 4255046765: bound every shared verifier subprocess by phase, including Docker/Swift/tests, with owned process-group TERM/KILL/reap cleanup and private fixed failure categories; meaningful spawned-descendant regressions.
 - [x] 4255046774: require notNeeded cleanup for every all-standard archive; malformed direct/JSON/connected and valid positive histories.
 - [x] 4255046779: enforce exact Debug connected synthetic evidence fixture/source provenance; malformed snapshots rejected, known synthetic metadata accepted, local demo fixtures preserved.
 - [x] 4255046783: reject server snapshot membership outside its configured current allowlist at every authenticated space boundary; no allowlist changes or hosted deployment.
-- [ ] Record225c8de partial pipeline and Auth504 failures206.982s/34.602s; direct local database responds with no waiting locks, both private Auth probes return504, named Auth restart succeeds and both probes subsequently200. This is recovered availability, not an established general cause. All225c8de CI checks pass; all47 addressed threads resolved under the explicit user reply. Complete validation and review at the final saved source remain required.
+- [x] Record225c8de partial pipeline and Auth504 failures206.982s/34.602s; direct local database responds with no waiting locks, both private Auth probes return504, named Auth restart succeeds and both probes subsequently200. This is recovered availability, not an established general cause. All225c8de CI checks pass; all47 addressed threads resolved under the explicit user reply. Complete validation and review at the final saved source remain required.
+
+## Receipt Brooks follow-up
+
+- [x] Prevent duplicate and staggered successful replies from making one confirmed receipt consumable more than once; genuine processor regressions reproduce and pass.
+- [x] Preserve the highest verified revision independently of receipt consumption through same-scope suspension; stale post-consumption recovery regression passes.
+- [x] Invalidate Core generation/client/scope on authoritative access or scope loss so late admitted successes cannot restore protected state; red0.057s and focused10/full106 green.
+- [x] Align AppModel command/invitation notPaired/scopeMismatch handling with immediate protected-presentation, issued-action and callback purge while retaining valid Auth credentials and requiring fresh membership discovery. Implemented and read-only reviewed; the meaningful UI probe covers scope loss with a previous pending action, clearly simulated only after genuine local service commands. No native acceptance claim until it runs. All 23 connected cases and both key modes remain a final gate.
+
+## Final saved-source gates
+
+- [ ] Finish current-source Docker-independent repository, package, server Debug/Release, ordinary native Debug/Release/exclusion and both preserved hosted-client checks. Final candidate repository50, package106 and serverRelease24 pass; remaining phases are running. Native gated skips do not count as acceptance.
+- [ ] After the required full Docker restart reply, run both new receipt/scope probes and the complete 23 connected native cases plus modern/legacy SQL/Auth/HTTP/restart. Preserve named stack volumes and existing hosted sessions/records.
+- [ ] Save/push final evidence, request fresh Codex review and verify terminal saved-head CI/conflicts. Retry the authorized thread connector with tested/pushed evidence; no workaround for an automatic rejection. Keep PR draft/unmerged while required gates remain blocked.

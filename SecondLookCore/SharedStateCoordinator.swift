@@ -1,5 +1,14 @@
 import Foundation
 
+/// A server-confirmed command awaiting consumption by its originating presentation.
+/// This receipt exists only in the active coordinator's session memory.
+public struct ConfirmedCommandReceipt: Equatable, Sendable {
+    public let commandID: UUID
+    public let command: SharedCommand
+    public let snapshotRevision: Int
+    public let createdID: UUID?
+}
+
 /// Holds only the active account's in-memory state. A new session always refetches it.
 @MainActor
 public final class SharedStateCoordinator {
@@ -11,13 +20,34 @@ public final class SharedStateCoordinator {
     /// A command with an unknown outcome must keep its full original request for receipt lookup.
     /// This is session memory only; durable offline intent belongs to a later milestone.
     private var unconfirmedCommands: [SharedCommandEnvelope] = []
+    private struct ConfirmedRecord {
+        let scope: SharedAccountScope
+        let receipt: ConfirmedCommandReceipt
+    }
+    private var confirmedCommands: [ConfirmedRecord] = []
+    private struct AttemptKey: Hashable {
+        let generation: UInt64
+        let commandID: UUID
+    }
+    private var inFlightAttempts: [AttemptKey: Int] = [:]
+    /// Only needed while a second identical response is still in flight.
+    private var acknowledgedInFlight: [AttemptKey: ConfirmedCommandReceipt] = [:]
+    /// A confirmed or otherwise verified view remains the minimum safe revision
+    /// even after the presentation consumes its command receipt.
+    private var revisionFloor = 0
 
     public init() {}
 
     public func beginSession(scope: SharedAccountScope, client: any SharedStateClient) {
         generation &+= 1
         snapshot = nil
-        if suspendedScope != scope { unconfirmedCommands = [] }
+        if (suspendedScope ?? self.scope) != scope {
+            unconfirmedCommands = []
+            confirmedCommands = []
+            revisionFloor = 0
+        }
+        inFlightAttempts = [:]
+        acknowledgedInFlight = [:]
         suspendedScope = nil
         self.scope = scope
         self.client = client
@@ -32,12 +62,18 @@ public final class SharedStateCoordinator {
         snapshot = nil
         self.scope = nil
         client = nil
+        inFlightAttempts = [:]
+        acknowledgedInFlight = [:]
     }
 
     public func endSession() {
         generation &+= 1
         snapshot = nil
         unconfirmedCommands = []
+        confirmedCommands = []
+        inFlightAttempts = [:]
+        acknowledgedInFlight = [:]
+        revisionFloor = 0
         suspendedScope = nil
         scope = nil
         client = nil
@@ -51,6 +87,11 @@ public final class SharedStateCoordinator {
             let incoming = try await client.fetch(spaceID: scope.spaceID)
             try requireCurrent(scope: scope, generation: capturedGeneration)
             try validate(incoming, for: scope)
+            // A replica or stale response cannot establish a verified view older
+            // than a receipt this session has already seen commit.
+            guard snapshot != nil || incoming.revision >= revisionFloor else {
+                throw SharedStateFailure.staleState
+            }
             return try publish(incoming)
         } catch {
             try handle(error, scope: scope, generation: capturedGeneration)
@@ -62,11 +103,41 @@ public final class SharedStateCoordinator {
         scope != nil && unconfirmedCommands.contains { $0.commandID == commandID }
     }
 
+    public func hasConfirmedReceipt(commandID: UUID, command: SharedCommand) -> Bool {
+        verifiedConfirmedRecord(commandID: commandID, command: command) != nil
+    }
+
+    /// Consume only after the caller has verified its own response epoch. A
+    /// suspended or different-scope session cannot take a protected receipt.
+    public func takeConfirmedReceipt(commandID: UUID, command: SharedCommand) -> ConfirmedCommandReceipt? {
+        guard let index = confirmedCommands.firstIndex(where: {
+            $0.receipt.commandID == commandID && $0.receipt.command == command
+        }), let scope, let snapshot,
+              confirmedCommands[index].scope == scope,
+              snapshot.revision >= confirmedCommands[index].receipt.snapshotRevision else { return nil }
+        let receipt = confirmedCommands.remove(at: index).receipt
+        let key = AttemptKey(generation: generation, commandID: commandID)
+        if inFlightAttempts[key, default: 0] > 0 { acknowledgedInFlight[key] = receipt }
+        return receipt
+    }
+
     @discardableResult
     public func execute(_ command: SharedCommand, commandID: UUID = UUID()) async throws -> UUID? {
         guard let scope, let client else { throw SharedStateFailure.unauthenticated }
         guard let snapshot else { throw SharedStateFailure.notPaired }
+        if let existing = confirmedCommands.first(where: { $0.receipt.commandID == commandID }) {
+            guard existing.scope == scope, existing.receipt.command == command else {
+                throw SharedStateFailure.invalidResponse
+            }
+            guard snapshot.revision >= existing.receipt.snapshotRevision else {
+                throw SharedStateFailure.staleState
+            }
+            // Do not consume here: the model may lose this continuation during
+            // suspension and must explicitly acknowledge the result later.
+            return existing.receipt.createdID
+        }
         let capturedGeneration = generation
+        let attemptKey = AttemptKey(generation: capturedGeneration, commandID: commandID)
         let envelope: SharedCommandEnvelope
         if let pending = unconfirmedCommands.first(where: { $0.commandID == commandID }) {
             guard pending.command == command, pending.spaceID == scope.spaceID else {
@@ -79,6 +150,8 @@ public final class SharedStateCoordinator {
             // Register before awaiting the client so an explicit overlapping retry shares this ID.
             unconfirmedCommands.append(envelope)
         }
+        inFlightAttempts[attemptKey, default: 0] += 1
+        defer { finishAttempt(attemptKey) }
         do {
             let result = try await client.execute(envelope)
             try requireCurrent(scope: scope, generation: capturedGeneration)
@@ -86,9 +159,23 @@ public final class SharedStateCoordinator {
             guard result.snapshot.revision > envelope.expectedSpaceRevision else {
                 throw SharedStateFailure.invalidResponse
             }
+            let receipt = ConfirmedCommandReceipt(commandID: commandID, command: command,
+                snapshotRevision: result.snapshot.revision, createdID: result.createdID)
+            if let existing = confirmedCommands.first(where: { $0.receipt.commandID == commandID }) {
+                guard existing.scope == scope, existing.receipt == receipt else {
+                    throw SharedStateFailure.invalidResponse
+                }
+            }
+            if let acknowledged = acknowledgedInFlight[attemptKey], acknowledged != receipt {
+                throw SharedStateFailure.invalidResponse
+            }
             // A concurrent refresh may already have published a newer view. The receipt is still
             // confirmed and carries the original created ID; never replace the newer snapshot.
             _ = try publish(result.snapshot)
+            if confirmedCommands.allSatisfy({ $0.receipt.commandID != commandID }) &&
+                acknowledgedInFlight[attemptKey] == nil {
+                confirmedCommands.append(ConfirmedRecord(scope: scope, receipt: receipt))
+            }
             unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
             return result.createdID
         } catch {
@@ -112,6 +199,25 @@ public final class SharedStateCoordinator {
         try incoming.validate(for: scope.accountID)
     }
 
+    private func finishAttempt(_ key: AttemptKey) {
+        guard let count = inFlightAttempts[key] else { return }
+        if count <= 1 {
+            inFlightAttempts.removeValue(forKey: key)
+            acknowledgedInFlight.removeValue(forKey: key)
+        } else {
+            inFlightAttempts[key] = count - 1
+        }
+    }
+
+    private func verifiedConfirmedRecord(commandID: UUID,
+                                         command: SharedCommand) -> ConfirmedRecord? {
+        guard let scope, let snapshot else { return nil }
+        return confirmedCommands.first {
+            $0.scope == scope && $0.receipt.commandID == commandID &&
+            $0.receipt.command == command && snapshot.revision >= $0.receipt.snapshotRevision
+        }
+    }
+
     /// A lagging fetch cannot reopen an item that a newer response already closed.
     private func publish(_ incoming: SharedSnapshot) throws -> Bool {
         if let snapshot {
@@ -122,15 +228,18 @@ public final class SharedStateCoordinator {
             }
         }
         snapshot = incoming
+        revisionFloor = max(revisionFloor, incoming.revision)
         return true
     }
 
     private func handle(_ error: Error, scope: SharedAccountScope, generation: UInt64) throws {
         try requireCurrent(scope: scope, generation: generation)
         if let failure = error as? SharedStateFailure,
-           failure == .unauthenticated || failure == .forbidden {
-            snapshot = nil
-            unconfirmedCommands = []
+           failure == .unauthenticated || failure == .forbidden ||
+           failure == .notPaired || failure == .scopeMismatch {
+            // Invalidate the response epoch as well as the visible state. A
+            // second already-admitted reply must not republish after denial.
+            endSession()
         }
     }
 

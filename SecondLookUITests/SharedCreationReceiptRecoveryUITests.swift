@@ -56,6 +56,42 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         assertVerifiedOriginalReceipt(in: app)
     }
 
+    func testConfirmedCreationSurvivesSuspendBeforeModelConsumption() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture()
+        let app = launch(fixture, flag: "-shared-test-confirmed-consumption-suspend")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+
+        tap("Create one-off checklist", in: app)
+        enter("sharedRoutineTitle", text: "Confirmed consumption synthetic one-off", in: app)
+        enter("sharedStepTitle-0", text: "Confirm exact original run", in: app)
+        tap("sharedSaveRoutine", in: app)
+        let pause = app.staticTexts["sharedSimulatedConfirmedCreationPause"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 25),
+                      "The genuine server and coordinator must confirm before model consumption pauses")
+        XCTAssertEqual(pause.label,
+                       "Confirmed creation consumption paused (simulated for acceptance)")
+
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let draft = app.textFields["sharedRoutineTitle"]
+        XCTAssertTrue(draft.waitForExistence(timeout: 30))
+        let interactive = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == true"), object: draft)
+        XCTAssertEqual(XCTWaiter.wait(for: [interactive], timeout: 20), .completed,
+                       "The original editor must reopen only after genuine membership verification")
+        XCTAssertEqual(draft.value as? String, "Confirmed consumption synthetic one-off")
+        let save = app.buttons["sharedSaveRoutine"]
+        XCTAssertFalse(save.isEnabled,
+                       "A confirmed but unconsumed creation must keep the original Start locked")
+        tap("retryCreationAction", in: app)
+
+        XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20),
+                      "Explicit original-action retry should complete the originating flow")
+        XCTAssertTrue(app.buttons["Confirm exact original run"].waitForExistence(timeout: 8))
+        assertVerifiedOriginalReceipt(in: app, replyLossExpected: false)
+    }
+
     func testSaveAsRoutineRetryUpdatesCompletion() throws {
         continueAfterFailure = false
         let fixture = try loadFixture()
@@ -87,10 +123,69 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         assertVerifiedOriginalReceipt(in: app)
     }
 
-    private func assertVerifiedOriginalReceipt(in app: XCUIApplication) {
-        let marker = app.staticTexts["sharedSimulatedCreationReplyLoss"]
-        XCTAssertTrue(marker.waitForExistence(timeout: 8))
-        XCTAssertEqual(marker.label, "Creation reply loss (simulated for acceptance)")
+    func testSimulatedCommandScopeLossPurgesOtherPendingActions() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture()
+        let app = launch(fixture, flag: "-shared-test-scope-loss-purge")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+
+        // First genuine creation commits; only its decoded reply is discarded.
+        tap("Create one-off checklist", in: app)
+        enter("sharedRoutineTitle", text: "Scope purge original synthetic run", in: app)
+        enter("sharedStepTitle-0", text: "Check synthetic keys", in: app)
+        tap("sharedSaveRoutine", in: app)
+        let lostReply = app.alerts["Shared action not completed"]
+        XCTAssertTrue(lostReply.waitForExistence(timeout: 25))
+        XCTAssertTrue(lostReply.buttons["Retry this action"].exists)
+        lostReply.buttons["OK"].tap()
+        tap("Cancel", in: app)
+        tap("Refresh", in: app)
+        let retry = app.buttons["retryUnconfirmedAction"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 20),
+                      "A genuine shared refresh must retain the first original retry")
+        let refreshFinished = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: retry)
+        XCTAssertEqual(XCTWaiter.wait(for: [refreshFinished], timeout: 20), .completed,
+                       "The original retry must remain after the genuine refresh finishes")
+
+        // The second command also reaches the genuine localhost server. The Debug
+        // adapter injects a labeled scope-loss response after decoding its commit.
+        tap("sharedCreateRoutine", in: app)
+        enter("sharedRoutineTitle", text: "Scope purge second synthetic routine", in: app)
+        enter("sharedStepTitle-0", text: "Check synthetic door", in: app)
+        tap("sharedSaveRoutine", in: app)
+        let marker = app.staticTexts["sharedSimulatedCommandScopeLoss"]
+        XCTAssertTrue(marker.waitForExistence(timeout: 25))
+        XCTAssertEqual(marker.label, "Command scope loss after commit (simulated for acceptance)")
+
+        XCTAssertFalse(app.buttons["retryUnconfirmedAction"].exists,
+                       "A scope-loss purge must remove every earlier retry")
+        XCTAssertFalse(app.textFields["sharedRoutineTitle"].exists,
+                       "The protected editor and its creation callback must be discarded")
+        let create = app.buttons["createPrivateSpace"]
+        XCTAssertTrue(create.waitForExistence(timeout: 8))
+        XCTAssertFalse(create.isEnabled, "A command error alone cannot prove the account has no space")
+        XCTAssertFalse(app.buttons["joinPrivateSpace"].isEnabled)
+        tap("Account settings", in: app)
+        XCTAssertTrue(app.staticTexts["Signed in"].waitForExistence(timeout: 8),
+                      "Scope loss keeps the verified Auth account installed")
+        tap("Done", in: app)
+
+        tap("sharedCheckPairing", in: app)
+        XCTAssertTrue(app.buttons["sharedCreateRoutine"].waitForExistence(timeout: 20),
+                      "A real membership lookup restores the existing private space")
+        XCTAssertFalse(app.buttons["retryUnconfirmedAction"].exists,
+                       "Revalidation must not resurrect purged retry IDs or callbacks")
+        XCTAssertFalse(app.textFields["sharedRoutineTitle"].exists)
+    }
+
+    private func assertVerifiedOriginalReceipt(in app: XCUIApplication,
+                                               replyLossExpected: Bool = true) {
+        if replyLossExpected {
+            let marker = app.staticTexts["sharedSimulatedCreationReplyLoss"]
+            XCTAssertTrue(marker.waitForExistence(timeout: 8))
+            XCTAssertEqual(marker.label, "Creation reply loss (simulated for acceptance)")
+        }
         let result = app.staticTexts["sharedCreationReceiptResult"]
         XCTAssertTrue(result.waitForExistence(timeout: 20),
                       "A genuine receipt retry must verify the original created ID and one server object")
@@ -140,11 +235,24 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         password.tap()
         password.typeText(owner.password)
         tap("sharedSignIn", in: app)
-        // The class may run both cases against one local fixture; the second sign-in reuses its space.
-        if app.buttons["createPrivateSpace"].waitForExistence(timeout: 5) {
-            tap("createPrivateSpace", in: app)
+        // A fixture can already have a space. For a fresh account, wait for the
+        // genuine membership lookup to enable Create before sending the command.
+        let routines = app.buttons["sharedCreateRoutine"]
+        let create = app.buttons["createPrivateSpace"]
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline && !routines.exists && !(create.exists && create.isEnabled) {
+            Thread.sleep(forTimeInterval: 0.25)
         }
-        XCTAssertTrue(app.buttons["sharedCreateRoutine"].waitForExistence(timeout: 20))
+        if !routines.exists {
+            XCTAssertTrue(create.exists && create.isEnabled,
+                          "Membership lookup must enable Create before setup can proceed")
+            create.tap()
+        }
+        let connected = routines.waitForExistence(timeout: 20)
+        if !connected && app.alerts["Change not saved"].exists {
+            XCTFail("Creating the fixture space reported a shared service error")
+        }
+        XCTAssertTrue(connected, "A genuine fixture space must be available before the receipt probe")
     }
 
     private func tap(_ identifier: String, in app: XCUIApplication,

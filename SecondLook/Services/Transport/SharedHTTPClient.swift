@@ -226,7 +226,8 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
         let code = (try? SharedWireCodec.decode(ServiceError.self, from: data))?.code
         switch status {
         case 401: return .unauthenticated
-        case 403: return .forbidden
+        case 403:
+            return format == .supabaseAuth || code == "forbidden" ? .forbidden : .serviceUnavailable
         case 404:
             return format == .commandService && code == "notPaired" ? .notPaired : .serviceUnavailable
         case 409: return code == "pairingUnavailable" ? .pairingUnavailable : .staleState

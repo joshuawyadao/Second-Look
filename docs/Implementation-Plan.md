@@ -75,7 +75,7 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 ## Late review on eba7177 and recovery validation
 
 - [x] 4254910158: reject recognizable legacy JWT key role inversions; focused red/green, Debug/Release server validation, separate save/push/reaction.
-- [ ] 4254910166: require coded command-service forbidden before access-loss handling, preserving provider Auth denial; transport red/green, separate save/push/reaction.
+- [x] 4254910166: require coded command-service forbidden before access-loss handling, preserving provider Auth denial; transport red/green, separate save/push/reaction.
 - [x] 4254910171: reject non-nil self reviewers for all runs; direct/JSON/connected and creation regression, separate save/push/reaction.
 - [ ] 4254910179: reject checked timestamps on high-priority items; load and connected behavior regression, separate save/push/reaction.
 - [ ] 4254910185: evaluate canceled satisfaction from archived final approvals after submissions are stripped; reject impossible terminal history while preserving partial cancellation, separate save/push/reaction.

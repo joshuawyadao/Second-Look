@@ -37,6 +37,14 @@ struct ConnectedRootView: View {
                 Text("Command reply loss (simulated for acceptance)").font(.caption)
                     .accessibilityIdentifier("sharedSimulatedCommandReplyLoss")
             }
+            if model.simulatedForbiddenRestore {
+                Text("Saved-session rejection (simulated for acceptance)").font(.caption)
+                    .accessibilityIdentifier("sharedSimulatedForbiddenRestore")
+            }
+            if let result = model.forbiddenRestoreCredentialStatus {
+                Text(result).font(.caption)
+                    .accessibilityIdentifier("sharedForbiddenRestoreCredentialStatus")
+            }
             if let result = model.invitationReceiptAcceptanceStatus {
                 Text(result).font(.caption)
                     .accessibilityIdentifier("sharedInvitationReceiptResult")

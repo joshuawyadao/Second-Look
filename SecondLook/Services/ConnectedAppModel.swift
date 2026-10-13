@@ -49,6 +49,8 @@ final class ConnectedAppModel {
     private(set) var commandAcceptanceStatus: String?
     private(set) var accessInvalidatedForAcceptance = false
     private(set) var simulatedMembershipFailure = false
+    private(set) var simulatedForbiddenRestore = false
+    private(set) var forbiddenRestoreCredentialStatus: String?
     @ObservationIgnored private var didSimulateMembershipFailure = false
     @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
     @ObservationIgnored private var commandAcceptanceStarted = false
@@ -238,6 +240,9 @@ final class ConnectedAppModel {
         #endif
         do {
             guard let candidate = try ConnectedKeychain.restore(configuration: configuration) else {
+                #if SECONDLOOK_DEMO
+                if forbiddenRestoreChecksRequested { forbiddenRestoreCredentialStatus = "No saved credentials" }
+                #endif
                 if currentForegroundSession(epoch) { busy = false }
                 return
             }
@@ -250,11 +255,18 @@ final class ConnectedAppModel {
             try await candidate.verify()
             #endif
             guard currentForegroundSession(epoch) else { return }
+            #if SECONDLOOK_DEMO
+            if forbiddenRestoreChecksRequested {
+                simulatedForbiddenRestore = true
+                throw SharedStateFailure.forbidden
+            }
+            #endif
             install(candidate, accountID: candidate.accountID, configuration: configuration)
             await discoverSpace(epoch: epoch)
         } catch {
             if currentForegroundSession(epoch) {
-                if error as? SharedStateFailure == .unauthenticated {
+                if let failure = error as? SharedStateFailure,
+                   failure == .unauthenticated || failure == .forbidden {
                     do { try ConnectedKeychain.delete(configuration: configuration) }
                     catch {
                         status = "Signed out. Saved session cleanup needs another attempt."
@@ -266,6 +278,12 @@ final class ConnectedAppModel {
                 } else if error as? ConnectedIdentityFailure == .secureSessionRemovalFailed {
                     status = "Signed out. Saved session cleanup needs another attempt."
                 } else { status = "Could not reconnect. Try again when the service is available." }
+                #if SECONDLOOK_DEMO
+                if forbiddenRestoreChecksRequested {
+                    forbiddenRestoreCredentialStatus = (try? ConnectedKeychain.restore(configuration: configuration)) == nil
+                        ? "No saved credentials" : "Saved credentials remain"
+                }
+                #endif
                 errorMessage = Self.safeMessage(error)
                 busy = false
             }
@@ -476,6 +494,10 @@ final class ConnectedAppModel {
         return [configuration.authURL, configuration.serverURL].allSatisfy {
             $0.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains($0.host ?? "")
         }
+    }
+
+    private var forbiddenRestoreChecksRequested: Bool {
+        localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-forbidden-restore")
     }
 
     var restoreRaceChecksRequested: Bool {
@@ -988,6 +1010,8 @@ final class ConnectedAppModel {
         commandAcceptanceStarted = false
         accessInvalidatedForAcceptance = false
         simulatedMembershipFailure = false
+        simulatedForbiddenRestore = false
+        forbiddenRestoreCredentialStatus = nil
         didSimulateMembershipFailure = false
         simulatedPairingReplyLoss = false
         invitationReceiptAcceptanceTask?.cancel()

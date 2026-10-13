@@ -16,6 +16,8 @@ for forbidden in ('-shared-test-delayed-refresh', '-shared-test-refresh-account-
                   'testDelaySharedRefreshInEditor', 'testResumeSharedRefreshInEditor',
                   'sharedSimulatedRefreshDelayInEditor',
                   'testOverlapSharedRefresh', 'testOverlapSharedRefreshInEditor',
+                   '-shared-test-forbidden-restore', 'sharedSimulatedForbiddenRestore',
+                  'sharedForbiddenRestoreCredentialStatus', 'Saved-session rejection (simulated for acceptance)',
                   '-shared-test-invitation-receipts', '-shared-test-create-reply-loss',
                   '-shared-test-lifecycle-receipt', 'sharedSimulatedLifecycleRevalidationPause',
                   'resumeSharedLifecycleRevalidation', 'sharedSimulatedSecondLifecycleRevalidationPause',

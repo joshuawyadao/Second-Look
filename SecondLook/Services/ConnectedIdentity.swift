@@ -226,8 +226,13 @@ actor AuthSessionVault {
                 refreshedAccountID = UUID(uuidString: "20000000-0000-0000-0000-000000000099")!
             }
             #endif
-            guard !invalidated, refreshedAccountID == accountID else {
+            guard !invalidated else {
+                self.refreshTask = nil
                 throw SharedStateFailure.sessionChanged
+            }
+            guard refreshedAccountID == accountID else {
+                invalidate()
+                throw SharedStateFailure.unauthenticated
             }
             try ConnectedKeychain.save(updated, configuration: config, sessionID: sessionID)
             access = updated.access_token

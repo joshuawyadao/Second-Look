@@ -51,6 +51,8 @@ Sign-out clears memory and the active credential-writer binding immediately, the
 
 Saved-session restoration rejects a busy operation before reading or binding a candidate. Since the model runs on the main actor and marks itself busy before its first suspension, concurrent lifecycle/reconnect entry points cannot bind competing vault sessions. Foreground/account epochs still reject stale completions, and Keychain writer IDs remain independently checked.
 
+A refreshed Auth identity must match the installed vault account before credentials are stored. A mismatch invalidates the vault and follows the unauthenticated clearing path, including protected state and checked Keychain cleanup. A completion from an already invalidated session clears its refresh task and remains rejected by the session epoch.
+
 Native mutation controls disable while synchronization is busy, including editor/settings saves, starting/repeating, deletion, withdrawal and review decisions. Draft inputs remain editable. An invocation racing refresh receives a bounded synchronization message rather than silently returning success or disappearing. Explicit unconfirmed-action IDs and their retry controls remain separate from a refused new invocation.
 
 Shared error alerts are owned by the active presented sheet, using opaque lifetime IDs to suppress a competing root alert; the root presents errors when no sheet owns them. Routine/one-off editors, run preferences, review and account settings share this presenter. Recoverable errors preserve their existing draft state; account loss closes account settings and normal session/foreground invalidation still discards protected navigation and drafts. This adds no persisted draft queue or credential storage.

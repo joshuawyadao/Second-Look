@@ -175,7 +175,20 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
         password.tap()
         password.typeText(fixture.owner.password)
         tap("sharedSignIn", in: app)
-        tap("createPrivateSpace", in: app)
+        // The other lifecycle case may already have created this fixture space.
+        // Renew the existing owner's invitation to start a fresh local probe.
+        let routines = app.buttons["sharedCreateRoutine"]
+        let create = app.buttons["createPrivateSpace"]
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline && !routines.exists && !(create.exists && create.isEnabled) {
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        if routines.exists { tap("Account settings", in: app) }
+        let eligible = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true"), object: create)
+        XCTAssertEqual(XCTWaiter.wait(for: [eligible], timeout: 20), .completed,
+                       "A verified new or existing owner must be eligible before setup writes")
+        create.tap()
 
         let result = app.staticTexts["sharedInvitationReceiptResult"]
         let ready = XCTNSPredicateExpectation(

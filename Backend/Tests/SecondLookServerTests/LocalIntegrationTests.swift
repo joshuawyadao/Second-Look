@@ -169,10 +169,34 @@ final class LocalIntegrationTests: XCTestCase {
         shared = standardStart.snapshot
         let standardRunID = try XCTUnwrap(standardStart.createdID)
         XCTAssertNil(shared.state.runs.first { $0.id == standardRunID }?.reviewerID)
-        let rotating = try await owner.createSpace()
-        XCTAssertEqual(rotating.snapshot.spaceID, shared.spaceID)
-        XCTAssertEqual(rotating.snapshot.state, shared.state)
-        XCTAssertEqual(rotating.snapshot.revision, shared.revision)
+        let beforeRenewal = shared
+        let renewals = await withTaskGroup(of: Result<PairingInvitation, SharedStateFailure>.self) { group in
+            for _ in 0..<2 {
+                group.addTask {
+                    do {
+                        return .success(try await owner.createSpace(
+                            expectedSpaceRevision: beforeRenewal.revision))
+                    } catch {
+                        return .failure(error as? SharedStateFailure ?? .serviceUnavailable)
+                    }
+                }
+            }
+            var output: [Result<PairingInvitation, SharedStateFailure>] = []
+            for await result in group { output.append(result) }
+            return output
+        }
+        XCTAssertEqual(renewals.filter { if case .success = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(renewals.filter { if case .failure(.staleState) = $0 { return true }; return false }.count, 1)
+        let rotating = try XCTUnwrap(renewals.compactMap { try? $0.get() }.first)
+        XCTAssertEqual(rotating.snapshot.spaceID, beforeRenewal.spaceID)
+        XCTAssertEqual(rotating.snapshot.state, beforeRenewal.state)
+        XCTAssertEqual(rotating.snapshot.members, beforeRenewal.members)
+        XCTAssertEqual(rotating.snapshot.revision, beforeRenewal.revision + 1)
+        await assertFailure(.staleState) {
+            try await owner.createSpace(expectedSpaceRevision: beforeRenewal.revision)
+        }
+        shared = try await owner.currentSpace()
+        XCTAssertEqual(shared, rotating.snapshot)
         await assertFailure(.invalidInvite) { try await peer.joinSpace(inviteToken: initial.inviteToken) }
 
         let invitation = rotating.inviteToken

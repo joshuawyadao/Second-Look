@@ -83,7 +83,11 @@ func configure(_ app: Application, configuration: ServerConfiguration,
     app.post("v1", "spaces") { request async -> Response in
         await respond {
             let actor = try await service.actor(request)
-            _ = try decode(Empty.self, request: request, keys: [])
+            let body = try decode(CreateSpaceBody.self, request: request,
+                                  allowedKeys: [[], ["expectedSpaceRevision"]])
+            guard body.expectedSpaceRevision.map({ $0 >= 0 }) ?? true else {
+                throw MalformedClientRequest.invalid
+            }
             guard let peer = configuration.allowedAccounts.first(where: { $0 != actor }) else {
                 throw SharedStateFailure.pairingUnavailable
             }
@@ -91,7 +95,8 @@ func configure(_ app: Application, configuration: ServerConfiguration,
             let token = UUID().uuidString + UUID().uuidString
             let expiresAt = Date().addingTimeInterval(15 * 60)
             let snapshot = try await service.store.create(actor: actor, peer: peer,
-                inviteHash: PrivateSpaceService.digest(Data(token.utf8)), expiresAt: expiresAt)
+                inviteHash: PrivateSpaceService.digest(Data(token.utf8)), expiresAt: expiresAt,
+                expectedRevision: body.expectedSpaceRevision)
             try snapshot.validate(for: actor)
             return try json(Invitation(snapshot: snapshot, inviteToken: token, expiresAt: expiresAt))
         }
@@ -160,7 +165,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
     #endif
 }
 
-private struct Empty: Decodable {}
+private struct CreateSpaceBody: Decodable { let expectedSpaceRevision: Int? }
 private struct JoinBody: Decodable { let inviteToken: String }
 private enum MalformedClientRequest: Error { case invalid }
 private struct SyntheticEvidence: Codable {
@@ -176,10 +181,16 @@ private func spaceID(_ request: Request) throws -> UUID {
 }
 
 private func decode<T: Decodable>(_ type: T.Type, request: Request, keys: Set<String>) throws -> T {
+    try decode(type, request: request, allowedKeys: [keys])
+}
+
+private func decode<T: Decodable>(_ type: T.Type, request: Request,
+                                  allowedKeys: Set<Set<String>>) throws -> T {
     guard let buffer = request.body.data else { throw MalformedClientRequest.invalid }
     let data = Data(buffer.readableBytesView)
     guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          Set(object.keys) == keys, let value = try? SharedWireCodec.decode(T.self, from: data) else {
+          allowedKeys.contains(Set(object.keys)),
+          let value = try? SharedWireCodec.decode(T.self, from: data) else {
         throw MalformedClientRequest.invalid
     }
     return value

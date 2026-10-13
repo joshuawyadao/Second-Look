@@ -184,6 +184,40 @@ import SecondLookCore
         }
     }
 
+    @Test func invitationRevisionIsValidatedAndPassedToStore() async throws {
+        let configuration = try ServerConfiguration(environment: environment())
+        let store = InvitationRevisionStore(owner: owner)
+        try await withApp { app in
+            try configure(app, configuration: configuration,
+                          verifier: SyntheticVerifier(account: owner), store: store)
+            for (body, expected) in [("{}", nil),
+                                     ("{\"expectedSpaceRevision\":null}", nil),
+                                     ("{\"expectedSpaceRevision\":2}", 2)] {
+                try await app.testing().test(.POST, "/v1/spaces", beforeRequest: { request in
+                    request.headers.bearerAuthorization = .init(token: "verified-synthetic")
+                    request.body = ByteBuffer(string: body)
+                }, afterResponse: { response in
+                    #expect(response.status == .ok)
+                    #expect(response.headers[.cacheControl] == ["no-store"])
+                })
+                #expect(await store.lastExpectedRevision() == expected)
+            }
+            #expect(await store.createCount() == 3)
+            for body in ["{\"expectedSpaceRevision\":-1}",
+                         "{\"expectedSpaceRevision\":1.5}",
+                         "{\"expectedSpaceRevision\":2,\"actor\":\"forged\"}"] {
+                try await app.testing().test(.POST, "/v1/spaces", beforeRequest: { request in
+                    request.headers.bearerAuthorization = .init(token: "verified-synthetic")
+                    request.body = ByteBuffer(string: body)
+                }, afterResponse: { response in
+                    #expect(response.status == .badRequest)
+                    #expect(response.body.string == "{\"code\":\"invalidResponse\"}")
+                })
+            }
+            #expect(await store.createCount() == 3)
+        }
+    }
+
     @Test func frameworkErrorsReturnBoundedResponses() async throws {
         let configuration = try ServerConfiguration(environment: environment())
         try await withApp { app in
@@ -251,9 +285,27 @@ private struct SyntheticVerifier: AccountVerifier {
     }
 }
 
+private actor InvitationRevisionStore: SpaceStore {
+    let owner: UUID
+    private var revisions: [Int?] = []
+    init(owner: UUID) { self.owner = owner }
+    func lastExpectedRevision() -> Int? { revisions.last ?? nil }
+    func createCount() -> Int { revisions.count }
+    func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
+                expectedRevision: Int?) async throws -> SharedSnapshot {
+        revisions.append(expectedRevision)
+        return SharedSnapshot(spaceID: UUID(), revision: expectedRevision ?? 0,
+                              members: [owner], state: .init())
+    }
+    func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult? { throw SharedStateFailure.forbidden }
+    func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String, result: SharedCommandResult) async throws -> SharedCommandResult { throw SharedStateFailure.forbidden }
+}
+
 private struct InaccessibleStore: SpaceStore {
     func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
-    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date, expectedRevision: Int?) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult? { throw SharedStateFailure.forbidden }
     func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String, result: SharedCommandResult) async throws -> SharedCommandResult { throw SharedStateFailure.forbidden }
@@ -271,7 +323,7 @@ private struct InvalidReadStore: SpaceStore {
             return SharedSnapshot(spaceID: UUID(), revision: 1, members: [peer], state: .init())
         }
     }
-    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date, expectedRevision: Int?) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult? { throw SharedStateFailure.forbidden }
     func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String, result: SharedCommandResult) async throws -> SharedCommandResult { throw SharedStateFailure.forbidden }
@@ -282,7 +334,7 @@ private actor ReceiptRaceStore: SpaceStore {
     var lookups = 0
     init(result: SharedCommandResult) { self.result = result }
     func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot { result.snapshot }
-    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date, expectedRevision: Int?) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
     func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult? {
         lookups += 1

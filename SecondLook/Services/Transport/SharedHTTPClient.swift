@@ -74,9 +74,10 @@ public struct SharedHTTPClient: SharedStateClient {
         try await endpoint.send(path: ["v1", "space"], method: "GET", token: bearerToken())
     }
 
-    public func createSpace() async throws -> PairingInvitation {
-        try await endpoint.send(path: ["v1", "spaces"], method: "POST", token: bearerToken(),
-                                body: EmptyRequest())
+    public func createSpace(expectedSpaceRevision: Int? = nil) async throws -> PairingInvitation {
+        if let expectedSpaceRevision, expectedSpaceRevision < 0 { throw SharedStateFailure.invalidResponse }
+        return try await endpoint.send(path: ["v1", "spaces"], method: "POST", token: bearerToken(),
+                                       body: CreateSpaceRequest(expectedSpaceRevision: expectedSpaceRevision))
     }
 
     public func joinSpace(inviteToken: String) async throws -> SharedSnapshot {
@@ -144,6 +145,7 @@ public struct SharedAuthSession: Codable, Equatable, Sendable {
 }
 
 private struct Credentials: Encodable, Sendable { let email: String; let password: String }
+private struct CreateSpaceRequest: Encodable, Sendable { let expectedSpaceRevision: Int? }
 private struct RefreshRequest: Encodable, Sendable { let refresh_token: String }
 private enum HTTPFailureFormat { case commandService, supabaseAuth }
 

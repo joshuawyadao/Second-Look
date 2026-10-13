@@ -9,7 +9,15 @@ final class ConnectedAppModel {
     private(set) var configuration: ConnectedConfiguration?
     private(set) var generation: UInt64 = 0
     private(set) var accountID: UUID?
-    private(set) var snapshot: SharedSnapshot?
+    private(set) var snapshot: SharedSnapshot? {
+        didSet {
+            if let invitation,
+               snapshot?.spaceID != invitation.snapshot.spaceID ||
+               (snapshot?.revision ?? -1) > invitation.snapshot.revision {
+                self.invitation = nil
+            }
+        }
+    }
     private(set) var invitation: PairingInvitation?
     private(set) var retryMembership = false
     private(set) var confirmedNoSpace = false
@@ -297,7 +305,7 @@ final class ConnectedAppModel {
         invitation = nil
         busy = true
         do {
-            let result = try await client.createSpace()
+            let result = try await client.createSpace(expectedSpaceRevision: snapshot?.revision)
             guard currentForegroundSession(epoch) else { return }
             #if SECONDLOOK_DEMO
             if dropRenewalReply {

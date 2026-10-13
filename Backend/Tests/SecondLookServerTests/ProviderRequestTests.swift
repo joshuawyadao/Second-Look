@@ -63,6 +63,32 @@ import SecondLookCore
         #expect(rpc.value(forHTTPHeaderField: "Authorization") == "Bearer \(legacyKey)")
     }
 
+    @Test func invitationRPCAlwaysCarriesConditionalRevision() async throws {
+        let session = Self.session()
+        defer { session.invalidateAndCancel() }
+        let provider = try provider(serviceKey: "sb_secret_synthetic", session: session)
+        for expectedRevision in [nil, 4] as [Int?] {
+            let data = try SupabaseProvider.createParameters(actor: owner, peer: peer,
+                inviteHash: String(repeating: "a", count: 64),
+                expiresAt: Date().addingTimeInterval(600), expectedRevision: expectedRevision)
+            let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(body.keys.contains("p_expected_revision"))
+            if let expectedRevision {
+                #expect(body["p_expected_revision"] as? Int == expectedRevision)
+            } else {
+                #expect(body["p_expected_revision"] is NSNull)
+            }
+            _ = try await provider.create(actor: owner, peer: peer,
+                                          inviteHash: String(repeating: "a", count: 64),
+                                          expiresAt: Date().addingTimeInterval(600),
+                                          expectedRevision: expectedRevision)
+            let request = try #require(ProviderRequestRecorder.shared.take().only)
+            #expect(request.url?.path == "/rest/v1/rpc/sl_create")
+            #expect(request.value(forHTTPHeaderField: "apikey") == "sb_secret_synthetic")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        }
+    }
+
     @Test func malformedAuthUserRepliesAreProviderFailures() async throws {
         let session = Self.session()
         defer { session.invalidateAndCancel() }

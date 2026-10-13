@@ -4,17 +4,19 @@ This M2 implementation has verified localhost behavior and a separate [Supabase 
 
 ## Structure and protocol
 
-`Backend/` is a separately pinned Swift package. `SupabaseProvider` verifies bearer tokens through Auth and calls privileged SQL RPCs. `PrivateSpaceService` applies `SecondLookCore` commands. `supabase/migrations/202610050001_private_space.sql` supplies transactional persistence. The root package also exports the exact Foundation transport sources compiled by the iPhone app as `SecondLookTransport` for tests.
+`Backend/` is a separately pinned Swift package. `SupabaseProvider` verifies bearer tokens through Auth and calls privileged SQL RPCs. `PrivateSpaceService` applies `SecondLookCore` commands. The initial private-space migration supplies transactional persistence; append-only `202610120001_conditional_invitation.sql` adds conditional renewal. Apply checked-in migrations in order for a new installation. The root package also exports the exact Foundation transport sources compiled by the iPhone app as `SecondLookTransport` for tests.
 
 All wire dates use milliseconds since 1970. Successful responses are JSON with `Cache-Control: no-store`; errors expose a short code, not provider diagnostics or request bodies. A sanitized framework error handler also returns bounded JSON for missing routes and unhandled failures, without the default middleware's full-URL/error logging.
 
 | Request | Result |
 | --- | --- |
 | `GET /v1/space` | Current account's `SharedSnapshot`; 404 if not paired |
-| `POST /v1/spaces`, `{}` | `snapshot`, plaintext `inviteToken` once, `expiresAt`; rotates an unjoined owner's invite |
+| `POST /v1/spaces`, `{}` initially or `{expectedSpaceRevision}` for renewal | `snapshot`, plaintext `inviteToken` once, `expiresAt`; renewal matches and advances the locked revision |
 | `POST /v1/pairing/join`, `{inviteToken}` | Joined snapshot |
 | `GET /v1/spaces/{id}` | Snapshot after membership check |
 | `POST /v1/spaces/{id}/commands` | `SharedCommandEnvelope` → `SharedCommandResult` |
+
+Initial creation requires no expected revision; renewal requires the owner's observed revision and advances it under the row lock. One concurrent renewal wins; another at the same revision receives `staleState`. The seven-argument `sl_create` owns that check/update; the six-argument compatibility wrapper can create only an absent space. Native publication of a newer revision, different space or no space clears displayed invitation metadata. Digest-only storage remains. The new migration/server contract has local acceptance; hosted source `7e32ee0` and its schema remain unchanged pending a separate operator decision.
 
 The service accepts only the typed command envelope's top-level keys. Actor/time fields and full-state uploads are not API inputs. Space revision and domain versions are required. No unpair or real evidence upload endpoint exists.
 
@@ -36,7 +38,7 @@ swift test --package-path Backend
 ./scripts/verify-native.sh
 ```
 
-The shared-state script starts local Auth/Postgres/PostgREST, checks bindings, resets only this project's synthetic aggregate, creates three synthetic Auth accounts, builds/starts the server, runs real HTTP integration, restarts the server and verifies database durability. Its default exercises legacy JWT API keys; `--modern-keys` uses the local stack's actual modern publishable/secret keys, including Auth administration without an invalid API-key bearer header. CI runs both modes. Credentials and logs live in a mode-restricted temporary directory; they are never printed or committed. Gated integration tests skip without a fixture; a skipped test is not acceptance evidence. The script must finish successfully to count local integration evidence.
+The shared-state script starts local Auth/Postgres/PostgREST, checks bindings, atomically applies missing checked-in migrations and records their versions only in the exact named localhost database, resets only this project's synthetic aggregate, creates three synthetic Auth accounts, builds/starts the server, runs real HTTP integration, restarts the server and verifies database durability. Its default exercises legacy JWT API keys; `--modern-keys` uses the local stack's actual modern publishable/secret keys, including Auth administration without an invalid API-key bearer header. CI runs both modes. Credentials and logs live in a mode-restricted temporary directory; they are never printed or committed. Gated integration tests skip without a fixture; a skipped test is not acceptance evidence. The script must finish successfully to count local integration evidence.
 
 Supabase's additional startup debug output also stays in that private log. If startup fails, the verifier reads at most its last 128 KiB and emits only fixed hints for Docker/API compatibility, image/registry, port conflict, health timeout, migration, database connection or CLI configuration. Ambiguous logs remain unknown but list their recognized static categories; unavailable logs and unrecognized errors are distinguished. No raw log line or credential enters CI output; a hint is not evidence of a repair. Inspect the private log locally when it is insufficient. Reusing `SECONDLOOK_BACKEND_SCRATCH` also reuses its compiler module caches to avoid rebuilding dependencies solely because a private fixture directory changed.
 

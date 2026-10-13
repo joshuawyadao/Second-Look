@@ -10,7 +10,8 @@ protocol AccountVerifier: Sendable {
 
 protocol SpaceStore: Sendable {
     func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot
-    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date) async throws -> SharedSnapshot
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
+                expectedRevision: Int?) async throws -> SharedSnapshot
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot
     func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult?
     func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String,
@@ -48,12 +49,21 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
         try await rpc("sl_read", parameters: Read(actor: actor, space: space))
     }
 
-    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date) async throws -> SharedSnapshot {
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
+                expectedRevision: Int?) async throws -> SharedSnapshot {
+        let data = try Self.createParameters(actor: actor, peer: peer, inviteHash: inviteHash,
+                                             expiresAt: expiresAt, expectedRevision: expectedRevision)
+        return try await rpc("sl_create", data: data)
+    }
+
+    static func createParameters(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
+                                 expectedRevision: Int?) throws -> Data {
         let state = try JSONSerialization.jsonObject(with: SharedWireCodec.encode(SecondLookState()))
         let parameters: [String: Any] = ["p_actor": actor.uuidString, "p_peer": peer.uuidString,
             "p_space": UUID().uuidString, "p_state": state, "p_invite_hash": inviteHash,
-            "p_expires_at": ISO8601DateFormatter().string(from: expiresAt)]
-        return try await rpc("sl_create", data: JSONSerialization.data(withJSONObject: parameters))
+            "p_expires_at": ISO8601DateFormatter().string(from: expiresAt),
+            "p_expected_revision": expectedRevision as Any? ?? NSNull()]
+        return try JSONSerialization.data(withJSONObject: parameters)
     }
 
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot {

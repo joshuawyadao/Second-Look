@@ -22,10 +22,10 @@ select 'private_tables_deny_direct_roles',
   (select count(*) = 6 and bool_and(not pg_catalog.has_table_privilege(role_name, oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) from roles cross join private_tables)
 union all
 select 'commands_use_definer_and_empty_search_path',
-  (select count(*) = 5 and bool_and(prosecdef and proconfig @> array['search_path=""']) from command_functions)
+  (select count(*) = 6 and bool_and(prosecdef and proconfig @> array['search_path=""']) from command_functions)
 union all
 select 'commands_allow_only_service_role',
-  (select count(*) = 5 and bool_and(
+  (select count(*) = 6 and bool_and(
     pg_catalog.has_function_privilege('service_role', oid, 'EXECUTE')
     and not pg_catalog.has_function_privilege('anon', oid, 'EXECUTE')
     and not pg_catalog.has_function_privilege('authenticated', oid, 'EXECUTE')) from command_functions)

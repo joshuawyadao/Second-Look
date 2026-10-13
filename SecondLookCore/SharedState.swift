@@ -36,7 +36,7 @@ public struct SharedSnapshot: Codable, Equatable, Sendable {
                 throw SharedStateFailure.invalidResponse
             }
             for item in run.items {
-                guard item.preview == nil,
+                guard (0..<Int.max).contains(item.lastVersion), item.preview == nil,
                       item.submission.map({ ![.localDraft, .sending, .uploadFailed].contains($0.status) &&
                           $0.fixtureID == Self.connectedSyntheticFixtureID && $0.source == .simulatedCamera }) ?? true else {
                     throw SharedStateFailure.invalidResponse

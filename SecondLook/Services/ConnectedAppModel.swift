@@ -656,7 +656,11 @@ final class ConnectedAppModel {
 
     @discardableResult
     func execute(_ command: SharedCommand, commandID: UUID = UUID()) async -> ActionReceipt? {
-        guard canUseForeground, !busy else { return nil }
+        guard canUseForeground else { return nil }
+        guard !busy else {
+            errorMessage = "Still synchronizing. Wait a moment and try again."
+            return nil
+        }
         guard snapshot != nil else { errorMessage = "Refresh this private space before changing it."; return nil }
         let epoch = generation
         busy = true

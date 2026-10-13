@@ -375,6 +375,7 @@ private struct ConnectedRoutinesView: View {
                                 else { start(routine) }
                             }.buttonStyle(.borderedProminent)
                                 .accessibilityIdentifier("sharedStartRoutine-\(routine.title)")
+                                .disabled(model.busy)
                             Button("Edit") { editor = ConnectedEditorRequest(routine: routine, oneOff: false) }
                                 .buttonStyle(.bordered)
                             Button(role: .destructive) { deleteChoice = routine } label: {
@@ -394,7 +395,7 @@ private struct ConnectedRoutinesView: View {
         )) {
             if let routine = startChoice {
                 Button("Resume most recent") { destination = model.latestOpenRun(routine.id)?.id }
-                Button("Start another run") { start(routine) }
+                Button("Start another run") { start(routine) }.disabled(model.busy)
             }
         }
         .confirmationDialog("Delete this routine?", isPresented: Binding(
@@ -404,7 +405,7 @@ private struct ConnectedRoutinesView: View {
                 Button("Delete routine", role: .destructive) {
                     model.enqueue { _ = await model.execute(.deleteRoutine(routineID: routine.id,
                                            expectedDefinitionVersion: routine.definitionVersion)) }
-                }
+                }.disabled(model.busy)
             }
         }
     }
@@ -451,7 +452,7 @@ private struct ConnectedRoutineEditorView: View {
         NavigationStack {
             Form {
                 #if SECONDLOOK_DEMO
-                SharedRefreshAcceptanceControls()
+                SharedRefreshAcceptanceControls(inEditor: true)
                 #endif
                 Section("Name") {
                     TextField("Checklist name", text: $title)
@@ -485,7 +486,7 @@ private struct ConnectedRoutineEditorView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(request.oneOff ? "Start" : "Save") { save() }
-                        .disabled(!valid || saving)
+                        .disabled(!valid || saving || model.busy)
                         .accessibilityIdentifier("sharedSaveRoutine")
                 }
                 ToolbarItem(placement: .bottomBar) { EditButton() }
@@ -518,19 +519,20 @@ private struct ConnectedRoutineEditorView: View {
 #if SECONDLOOK_DEMO
 private struct SharedRefreshAcceptanceControls: View {
     @Environment(ConnectedAppModel.self) private var model
+    var inEditor = false
 
     var body: some View {
         if model.refreshDelayChecksRequested && model.snapshot != nil {
             VStack {
                 if model.simulatedRefreshDelay {
                     Text("Shared refresh delay (simulated for acceptance)").font(.caption)
-                        .accessibilityIdentifier("sharedSimulatedRefreshDelay")
+                        .accessibilityIdentifier(inEditor ? "sharedSimulatedRefreshDelayInEditor" : "sharedSimulatedRefreshDelay")
                     Button("Complete delayed refresh") { model.resumeRefreshForAcceptance() }
-                        .accessibilityIdentifier("testResumeSharedRefresh")
+                        .accessibilityIdentifier(inEditor ? "testResumeSharedRefreshInEditor" : "testResumeSharedRefresh")
                 } else {
                     Button("Delay next refresh for test") { model.beginDelayedRefreshForAcceptance() }
                         .disabled(model.busy)
-                        .accessibilityIdentifier("testDelaySharedRefresh")
+                        .accessibilityIdentifier(inEditor ? "testDelaySharedRefreshInEditor" : "testDelaySharedRefresh")
                 }
             }
         }
@@ -606,7 +608,7 @@ private struct ConnectedChecklistView: View {
                                                 title: nil)) != nil,
                                                model.generation == epoch { savedRoutine = true }
                                         }
-                                    }.disabled(savedRoutine)
+                                    }.disabled(savedRoutine || model.busy)
                                 }
                                 Button("Cancel checklist", role: .destructive) { cancelConfirmation = true }
                             }
@@ -621,7 +623,7 @@ private struct ConnectedChecklistView: View {
                         Button("Cancel checklist", role: .destructive) {
                             model.enqueue { _ = await model.execute(.cancel(runID: run.id,
                                                            expectedRunRevision: run.revision)) }
-                        }
+                        }.disabled(model.busy)
                     } message: { Text("Cancellation is terminal and archives this run separately from completion.") }
                     .confirmationDialog("Withdraw this submission?", isPresented: Binding(
                         get: { withdrawing != nil }, set: { if !$0 { withdrawing = nil } }
@@ -632,7 +634,7 @@ private struct ConnectedChecklistView: View {
                                     runID: withdrawing.runID, itemID: withdrawing.itemID,
                                     expectedVersion: withdrawing.version,
                                     expectedRunRevision: withdrawing.runRevision)) }
-                            }
+                            }.disabled(model.busy)
                         }
                     } message: { Text("The current approval will no longer count. The server checks the exact version before removal.") }
                 } else { ConnectedArchiveDetailView(archiveID: runID) }
@@ -675,7 +677,7 @@ private struct ConnectedRunPreferencesView: View {
                                     if result != nil { dismiss() }
                                 }
                             }
-                        }.disabled(saving)
+                        }.disabled(saving || model.busy)
                     }
                 }
         }
@@ -762,14 +764,14 @@ private struct ConnectedReviewDetailView: View {
                             decide(.approve(runID: run.id, itemID: item.id,
                                             expectedVersion: request.version,
                                             expectedRunRevision: run.revision))
-                        }.disabled(saving)
+                        }.disabled(saving || model.busy)
                         TextField("What should another photo show?", text: $note, axis: .vertical)
                         Button("Request another photo") {
                             decide(.requestAnother(runID: run.id, itemID: item.id,
                                                    expectedVersion: request.version, note: note,
                                                    expectedRunRevision: run.revision))
                         }
-                        .disabled(saving || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(saving || model.busy || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 } else {
                     Section { Text("This submission changed or the checklist closed. Return to the current queue.") }
@@ -863,7 +865,7 @@ private struct ConnectedArchiveDetailView: View {
                                                                             expectedRunRevision: source.revision))
                                 if model.generation == epoch { newRun = result?.createdID }
                             }
-                        }
+                        }.disabled(model.busy)
                         Button(savedRoutine ? "Saved as a routine" : "Save structure as a routine") {
                             guard let source = model.state.runs.first(where: { $0.id == archive.id }) else {
                                 model.errorMessage = "The original run is unavailable. Refresh shared history."
@@ -876,7 +878,7 @@ private struct ConnectedArchiveDetailView: View {
                                     title: nil))
                                 if model.generation == epoch && result != nil { savedRoutine = true }
                             }
-                        }.disabled(savedRoutine)
+                        }.disabled(savedRoutine || model.busy)
                     }
                 }
                 .navigationTitle("History record")

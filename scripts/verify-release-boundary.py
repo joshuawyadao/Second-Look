@@ -13,6 +13,8 @@ strings = subprocess.check_output(['strings', str(app / info['CFBundleExecutable
 for forbidden in ('-shared-test-delayed-refresh', '-shared-test-refresh-account-mismatch',
                   'testDelaySharedRefresh', 'testResumeSharedRefresh', 'testSharedRefreshMismatch',
                   'sharedSimulatedRefreshDelay', 'sharedSimulatedRefreshIdentityMismatch',
+                  'testDelaySharedRefreshInEditor', 'testResumeSharedRefreshInEditor',
+                  'sharedSimulatedRefreshDelayInEditor',
                   'Shared refresh delay (simulated for acceptance)',
                   'Refresh account mismatch (simulated for acceptance)'):
     assert forbidden not in strings, f'Development feature in Release binary: {forbidden}'

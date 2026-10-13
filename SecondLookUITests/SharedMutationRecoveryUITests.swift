@@ -29,10 +29,10 @@ final class SharedMutationRecoveryUITests: XCTestCase {
         let save = app.buttons["sharedSaveRoutine"]
         waitUntilEnabled(save, context: "A complete editor should allow saving before refresh")
 
-        tap("testDelaySharedRefresh", in: app)
-        assertSimulatedDelay(in: app)
+        tap("testDelaySharedRefreshInEditor", in: app)
+        assertSimulatedDelay(in: app, inEditor: true)
         XCTAssertFalse(save.isEnabled, "The editor must block saving until genuine refresh completes")
-        tap("testResumeSharedRefresh", in: app)
+        tap("testResumeSharedRefreshInEditor", in: app)
         waitUntilEnabled(save, context: "Save after genuine refresh")
         tap("sharedSaveRoutine", in: app)
         XCTAssertTrue(revealRoutine(title, in: app), "The server must accept the saved routine")
@@ -40,7 +40,7 @@ final class SharedMutationRecoveryUITests: XCTestCase {
         let start = app.buttons["sharedStartRoutine-\(title)"]
         XCTAssertTrue(start.waitForExistence(timeout: 8))
         tap("testDelaySharedRefresh", in: app)
-        assertSimulatedDelay(in: app)
+        assertSimulatedDelay(in: app, inEditor: false)
         XCTAssertFalse(start.isEnabled, "Starting a run must wait for genuine refresh")
         tap("testResumeSharedRefresh", in: app)
         waitUntilEnabled(start, context: "Start after genuine refresh")
@@ -165,8 +165,9 @@ final class SharedMutationRecoveryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Waiting for your invited reviewer."].waitForExistence(timeout: 20))
     }
 
-    private func assertSimulatedDelay(in app: XCUIApplication) {
-        let marker = app.staticTexts["sharedSimulatedRefreshDelay"]
+    private func assertSimulatedDelay(in app: XCUIApplication, inEditor: Bool) {
+        let identifier = inEditor ? "sharedSimulatedRefreshDelayInEditor" : "sharedSimulatedRefreshDelay"
+        let marker = app.staticTexts[identifier]
         XCTAssertTrue(marker.waitForExistence(timeout: 8))
         XCTAssertEqual(marker.label, "Shared refresh delay (simulated for acceptance)")
     }
@@ -196,9 +197,24 @@ final class SharedMutationRecoveryUITests: XCTestCase {
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
         let button = app.buttons[identifier].firstMatch
-        for _ in 0..<8 where !button.isHittable { app.swipeUp() }
+        for _ in 0..<8 where !button.isHittable {
+            let viewport = app.windows.firstMatch.frame
+            let visibleBottom = app.keyboards.firstMatch.exists
+                ? min(viewport.maxY, app.keyboards.firstMatch.frame.minY) : viewport.maxY
+            if !button.exists || button.frame.minY >= visibleBottom - 8 {
+                app.swipeUp()
+            } else if button.frame.maxY <= viewport.minY + 8 {
+                app.swipeDown()
+            } else {
+                // A mounted control within the viewport may belong to a covered root view.
+                break
+            }
+        }
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing button: \(identifier)",
                       file: file, line: line)
+        XCTAssertTrue(button.isHittable, "Button must be visible and tappable: \(identifier)",
+                      file: file, line: line)
+        guard button.isHittable else { return }
         waitUntilEnabled(button, context: "Button should become enabled: \(identifier)")
         button.tap()
     }

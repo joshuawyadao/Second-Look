@@ -33,7 +33,7 @@ final class OpenRunIntegrityTests: XCTestCase {
         try state.requestAnother(runID: runID, itemID: highID, actorID: reviewer,
                                  expectedVersion: first, note: "Another view", now: now)
         try state.prepareDraft(runID: runID, itemID: highID, actorID: performer,
-                               fixtureID: "synthetic-second", source: .simulatedCamera, now: now)
+                               fixtureID: "M2-SYNTHETIC-NO-REAL-PHOTO", source: .simulatedCamera, now: now)
         let second = try state.beginSend(runID: runID, itemID: highID, actorID: performer, now: now)
         try state.acceptSend(runID: runID, itemID: highID, actorID: performer,
                              expectedVersion: second, now: now)

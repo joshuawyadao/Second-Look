@@ -3,6 +3,7 @@ import Foundation
 /// One server-authored view of a private space. The service must still enforce authorization
 /// and commit revisions atomically; decoding this value is not an authorization decision.
 public struct SharedSnapshot: Codable, Equatable, Sendable {
+    private static let connectedSyntheticFixtureID = "M2-SYNTHETIC-NO-REAL-PHOTO"
     public var schemaVersion: Int
     public var spaceID: UUID
     public var revision: Int
@@ -36,7 +37,8 @@ public struct SharedSnapshot: Codable, Equatable, Sendable {
             }
             for item in run.items {
                 guard item.preview == nil,
-                      item.submission.map({ ![.localDraft, .sending, .uploadFailed].contains($0.status) }) ?? true else {
+                      item.submission.map({ ![.localDraft, .sending, .uploadFailed].contains($0.status) &&
+                          $0.fixtureID == Self.connectedSyntheticFixtureID && $0.source == .simulatedCamera }) ?? true else {
                     throw SharedStateFailure.invalidResponse
                 }
             }

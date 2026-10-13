@@ -23,7 +23,7 @@ final class SharedStateTests: XCTestCase {
                                           performerID: performer, reviewerID: reviewer, now: now)
         let itemID = try XCTUnwrap(state.runs.first?.items.first?.id)
         try state.prepareDraft(runID: runID, itemID: itemID, actorID: performer,
-                               fixtureID: "synthetic-test-token", source: .simulatedCamera, now: now)
+                               fixtureID: "M2-SYNTHETIC-NO-REAL-PHOTO", source: .simulatedCamera, now: now)
         let version = try state.beginSend(runID: runID, itemID: itemID, actorID: performer, now: now)
         try state.acceptSend(runID: runID, itemID: itemID, actorID: performer,
                              expectedVersion: version, now: now)

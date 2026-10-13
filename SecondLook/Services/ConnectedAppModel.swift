@@ -35,6 +35,14 @@ final class ConnectedAppModel {
     private(set) var unconfirmedActions: [UnconfirmedAction] = []
     @ObservationIgnored private var issuedActions: [UnconfirmedAction] = []
     @ObservationIgnored private var suspendedScope: SharedAccountScope?
+    private struct SuspendedSharedAlert {
+        let scope: SharedAccountScope
+        let minimumRevision: Int
+        let message: String
+        let retryActionID: UUID?
+        let sheetID: UUID?
+    }
+    @ObservationIgnored private var suspendedSharedAlert: SuspendedSharedAlert?
     @ObservationIgnored private var creationCompletions: [UUID: CreationCompletion] = [:]
     private var errorSheetIDs: [UUID] = []
     var busy = false
@@ -489,6 +497,7 @@ final class ConnectedAppModel {
                 issuedActions = []
                 creationCompletions = [:]
                 unconfirmedActions = []
+                suspendedSharedAlert = nil
                 // The first authenticated space lookup is already validated and held only in memory.
                 snapshot = incoming
             }
@@ -509,6 +518,36 @@ final class ConnectedAppModel {
                 !coordinator.hasConfirmedReceipt(commandID: $0.id, command: $0.command)
         }
         unconfirmedActions = issuedActions
+        restoreSuspendedSharedAlertIfVerified()
+    }
+
+    private func restoreSuspendedSharedAlertIfVerified() {
+        guard let held = suspendedSharedAlert, errorMessage == nil else { return }
+        guard errorSheetIDs.last == held.sheetID else {
+            // A dismissed or replaced sheet cannot receive its previous alert.
+            suspendedSharedAlert = nil
+            return
+        }
+        guard
+              let snapshot, snapshot.revision >= held.minimumRevision,
+              coordinator.scope == held.scope,
+              snapshot.spaceID == held.scope.spaceID,
+              accountID == held.scope.accountID,
+              configuration?.backendID == held.scope.backend else { return }
+        if let actionID = held.retryActionID {
+            guard unconfirmedActions.contains(where: { $0.id == actionID }),
+                  coordinator.hasUnconfirmedCommand(commandID: actionID) ||
+                    issuedActions.contains(where: {
+                        $0.id == actionID && coordinator.hasConfirmedReceipt(
+                            commandID: actionID, command: $0.command)
+                    }) else {
+                suspendedSharedAlert = nil
+                return
+            }
+        }
+        suspendedSharedAlert = nil
+        errorMessage = held.message
+        retryActionForError = held.retryActionID
     }
 
     #if SECONDLOOK_DEMO
@@ -1018,11 +1057,19 @@ final class ConnectedAppModel {
         foregroundRevalidationPending = true
         retryMembership = true
         suspendedScope = coordinator.scope ?? suspendedScope
+        if suspendedSharedAlert == nil, let scope = suspendedScope, let message = errorMessage {
+            suspendedSharedAlert = SuspendedSharedAlert(
+                scope: scope, minimumRevision: snapshot?.revision ?? heldSnapshot?.revision ?? 0,
+                message: message, retryActionID: retryActionForError,
+                sheetID: errorSheetIDs.last)
+        }
         heldSnapshot = snapshot ?? heldSnapshot
         coordinator.suspendSession()
         unconfirmedActions = []
         snapshot = nil
         invitation = nil
+        // Alerts live outside the protected-content gate, so hide the old alert too.
+        errorMessage = nil
         status = "Checking private-space access…"
         busy = true
     }
@@ -1321,6 +1368,7 @@ final class ConnectedAppModel {
         issuedActions = []
         unconfirmedActions = []
         suspendedScope = nil
+        suspendedSharedAlert = nil
         snapshot = nil
         invitation = nil
         errorSheetIDs = []
@@ -1434,6 +1482,7 @@ final class ConnectedAppModel {
         creationCompletions = [:]
         issuedActions = []
         suspendedScope = nil
+        suspendedSharedAlert = nil
         unconfirmedActions = []
         vault = nil; client = nil; accountID = nil; snapshot = nil; invitation = nil
         busy = false; errorMessage = nil

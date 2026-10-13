@@ -151,6 +151,63 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
                        "Retry must recover the exact original created ID and one server run")
     }
 
+    func testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture(for: "lifecycle")
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo",
+                               "-shared-no-periodic-poll", "-shared-test-lifecycle-receipt"]
+        app.launchEnvironment = [
+            "SECONDLOOK_TEST_AUTH_URL": fixture.authURL,
+            "SECONDLOOK_TEST_PUBLISHABLE_KEY": fixture.publishableKey,
+            "SECONDLOOK_TEST_SERVER_URL": fixture.serverURL
+        ]
+        app.launch()
+
+        tap("Local settings", in: app)
+        tap("connectPrivateSpace", in: app)
+        let email = app.textFields["sharedEmail"]
+        let password = app.secureTextFields["sharedPassword"]
+        XCTAssertTrue(email.waitForExistence(timeout: 8))
+        email.tap()
+        email.typeText(fixture.owner.email)
+        XCTAssertTrue(password.waitForExistence(timeout: 8))
+        password.tap()
+        password.typeText(fixture.owner.password)
+        tap("sharedSignIn", in: app)
+        tap("createPrivateSpace", in: app)
+
+        let result = app.staticTexts["sharedInvitationReceiptResult"]
+        let ready = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "Lifecycle receipt checks ready for background"),
+            object: result)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 40), .completed,
+                       "A genuine committed command and real refresh must precede backgrounding")
+        let alert = app.alerts["Shared action not completed"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 8))
+        XCTAssertTrue(alert.buttons["Retry this action"].exists,
+                      "The original unknown-outcome alert must own its exact retry")
+
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let pause = app.staticTexts["sharedSimulatedLifecycleRevalidationPause"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 30),
+                      "The genuine membership GET must finish before delayed publication")
+        XCTAssertEqual(pause.label,
+                       "Foreground membership publication paused (simulated for acceptance)")
+        let hidden = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: alert)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 8), .completed,
+                       "The pre-background alert must not remain above the verification gate")
+        XCTAssertFalse(app.buttons["retryUnconfirmedAction"].exists)
+
+        tap("resumeSharedLifecycleRevalidation", in: app)
+        XCTAssertTrue(alert.waitForExistence(timeout: 20),
+                      "Only verified same-scope publication may restore the original alert")
+        XCTAssertTrue(alert.buttons["Retry this action"].exists)
+        XCTAssertTrue(app.buttons["retryUnconfirmedAction"].waitForExistence(timeout: 8))
+    }
+
     private func loadFixture(for scenario: String) throws -> Fixture {
         guard let path = ProcessInfo.processInfo.environment["SECONDLOOK_SHARED_UI_FIXTURE"] else {
             throw XCTSkip("No private localhost fixture was supplied")

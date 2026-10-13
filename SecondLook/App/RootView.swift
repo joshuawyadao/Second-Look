@@ -11,7 +11,7 @@ struct RootView: View {
         @Bindable var model = model
         Group {
             if connected.selected {
-                ConnectedRootView().id(connected.generation)
+                ConnectedRootView().id(connected.presentationGeneration)
             } else if model.loadFailure != nil {
                 ContentUnavailableView {
                     Label("Your lists could not be opened", systemImage: "exclamationmark.folder")

@@ -8,13 +8,15 @@ final class ConnectedAppModel {
     private(set) var selected: Bool
     private(set) var configuration: ConnectedConfiguration?
     private(set) var generation: UInt64 = 0
-    // Baseline interfaces for the lifecycle behavior regression; preservation follows its red run.
-    var presentationGeneration: UInt64 { generation }
-    var hasContentForPresentation: Bool { snapshot != nil }
-    var needsPresentationRevalidation: Bool { false }
+    private(set) var presentationGeneration: UInt64 = 0
+    // Frozen render data is private session memory, never authorization or a command snapshot.
+    private var heldSnapshot: SharedSnapshot?
+    var hasContentForPresentation: Bool { snapshot != nil || heldSnapshot != nil }
+    var needsPresentationRevalidation: Bool { snapshot == nil && heldSnapshot != nil }
     private(set) var accountID: UUID?
     private(set) var snapshot: SharedSnapshot? {
         didSet {
+            if snapshot != nil { heldSnapshot = nil }
             if let invitation,
                snapshot?.spaceID != invitation.snapshot.spaceID ||
                (snapshot?.revision ?? -1) > invitation.snapshot.revision {
@@ -149,7 +151,7 @@ final class ConnectedAppModel {
         if selected { Task { await restore() } }
     }
 
-    var state: SecondLookState { snapshot?.state ?? SecondLookState() }
+    var state: SecondLookState { snapshot?.state ?? heldSnapshot?.state ?? SecondLookState() }
     var isPaired: Bool { snapshot != nil }
     var peerJoined: Bool { snapshot?.members.count == 2 }
     var canConnect: Bool { configuration != nil }
@@ -339,6 +341,7 @@ final class ConnectedAppModel {
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession()
+                discardPresentation()
                 creationCompletions = [:]
                 issuedActions = []
                 suspendedScope = nil
@@ -455,7 +458,7 @@ final class ConnectedAppModel {
             // Renewing an invitation is a write to the same space. Fetch through
             // the existing coordinator so unknown command outcomes keep their
             // original envelopes and explicit retry IDs.
-            let floor = max(snapshot?.revision ?? 0, incoming.revision)
+            let floor = max(snapshot?.revision ?? heldSnapshot?.revision ?? 0, incoming.revision)
             try await coordinator.refresh()
             guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
             guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
@@ -475,7 +478,7 @@ final class ConnectedAppModel {
                 try await coordinator.refresh()
                 guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
                 guard let refreshed = coordinator.snapshot,
-                      refreshed.revision >= incoming.revision else {
+                      refreshed.revision >= max(heldSnapshot?.revision ?? 0, incoming.revision) else {
                     throw SharedStateFailure.staleState
                 }
                 if refreshed.revision == incoming.revision && refreshed != incoming {
@@ -484,6 +487,7 @@ final class ConnectedAppModel {
                 snapshot = refreshed
                 publishIssuedActionsAfterVerification()
             } else {
+                if hasContentForPresentation { discardPresentation() }
                 issuedActions = []
                 creationCompletions = [:]
                 unconfirmedActions = []
@@ -931,7 +935,7 @@ final class ConnectedAppModel {
                                        configuration: configuration, client: client, epoch: epoch)
                 guard currentForegroundSession(epoch) else { return false }
             } else {
-                let floor = max(snapshot?.revision ?? 0, incoming.revision)
+                let floor = max(snapshot?.revision ?? heldSnapshot?.revision ?? 0, incoming.revision)
                 try await coordinator.refresh()
                 guard currentForegroundSession(epoch) else { return false }
                 guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
@@ -947,7 +951,7 @@ final class ConnectedAppModel {
             return true
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
-                coordinator.endSession(); snapshot = nil; invitation = nil
+                coordinator.endSession(); discardPresentation(); snapshot = nil; invitation = nil
                 issuedActions = []; suspendedScope = nil; unconfirmedActions = []; creationCompletions = [:]
                 confirmedNoSpace = true
                 retryMembership = false
@@ -994,7 +998,6 @@ final class ConnectedAppModel {
         foregroundEligible = false
         confirmedNoSpace = false
         guard selected, wasEligible else { return }
-        creationCompletions = [:]
         #if SECONDLOOK_DEMO
         cancelCommandAcceptance()
         #endif
@@ -1012,6 +1015,7 @@ final class ConnectedAppModel {
         foregroundRevalidationPending = true
         retryMembership = true
         suspendedScope = coordinator.scope ?? suspendedScope
+        heldSnapshot = snapshot ?? heldSnapshot
         coordinator.suspendSession()
         unconfirmedActions = []
         snapshot = nil
@@ -1060,14 +1064,14 @@ final class ConnectedAppModel {
 
     private struct CreationCompletion {
         let owner: UUID
-        let epoch: UInt64
+        let presentationEpoch: UInt64
         let complete: @MainActor (ActionReceipt) -> Void
     }
 
     func registerCreationCompletion(commandID: UUID, owner: UUID,
                                     completion: @escaping @MainActor (ActionReceipt) -> Void) {
         guard canUseForeground, snapshot != nil else { return }
-        creationCompletions[commandID] = CreationCompletion(owner: owner, epoch: generation,
+        creationCompletions[commandID] = CreationCompletion(owner: owner, presentationEpoch: presentationGeneration,
                                                            complete: completion)
     }
 
@@ -1078,7 +1082,7 @@ final class ConnectedAppModel {
     private func unconfirmedCreation(owner: UUID) -> UnconfirmedAction? {
         unconfirmedActions.first { action in
             guard let completion = creationCompletions[action.id] else { return false }
-            return completion.owner == owner && completion.epoch == generation &&
+            return completion.owner == owner && completion.presentationEpoch == presentationGeneration &&
                 coordinator.hasUnconfirmedCommand(commandID: action.id)
         }
     }
@@ -1095,7 +1099,7 @@ final class ConnectedAppModel {
 
     private func completeCreationFlow(_ receipt: ActionReceipt, commandID: UUID, epoch: UInt64) {
         guard currentForegroundSession(epoch), let completion = creationCompletions[commandID],
-              completion.epoch == epoch else { return }
+              completion.presentationEpoch == presentationGeneration else { return }
         creationCompletions.removeValue(forKey: commandID)
         completion.complete(receipt)
     }
@@ -1243,7 +1247,14 @@ final class ConnectedAppModel {
         }
     }
 
+    private func discardPresentation() {
+        heldSnapshot = nil
+        presentationGeneration &+= 1
+        creationCompletions = [:]
+    }
+
     private func resetSession() {
+        discardPresentation()
         #if SECONDLOOK_DEMO
         sharedCleanupProbeStatus = nil
         sharedReviewDraftProbeStatus = nil

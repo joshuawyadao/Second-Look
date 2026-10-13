@@ -13,6 +13,7 @@ strings = subprocess.check_output(['strings', str(app / info['CFBundleExecutable
 for forbidden in ('-shared-test-draft-lifecycle', '-shared-test-draft-access-loss',
                   'armSharedDraftRevalidation', 'resumeSharedDraftRevalidation',
                   'sharedSimulatedDraftRevalidationPause', 'sharedSimulatedDraftAccessLoss',
+                  'sharedDraftPresentationGate', 'Protected presentation held for verification',
                   'prepareSharedReviewDraftProbe', 'sharedReviewDraftProbeStatus',
                   'Review draft checks ready', 'Review draft synthetic',
                   'Foreground draft revalidation paused (simulated for acceptance)',

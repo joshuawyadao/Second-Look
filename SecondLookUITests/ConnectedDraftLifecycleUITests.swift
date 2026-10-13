@@ -29,13 +29,14 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
         enter("sharedRoutineTitle", text: "Unsent synthetic draft", in: app)
         enter("sharedStepTitle-0", text: "Keep this step local", in: app)
         pauseAfterGenuineMembershipLookup(in: app)
-        XCTAssertFalse(app.textFields["sharedRoutineTitle"].exists)
-        XCTAssertFalse(app.buttons["sharedCreateRoutine"].exists)
+        XCTAssertFalse(app.textFields["sharedRoutineTitle"].isHittable)
+        XCTAssertFalse(app.buttons["sharedCreateRoutine"].isHittable)
         tap("resumeSharedDraftRevalidation", in: app)
 
         let title = app.textFields["sharedRoutineTitle"]
         XCTAssertTrue(title.waitForExistence(timeout: 20),
                       "Verified same-space foreground return should restore the unsent editor")
+        waitUntilHittable(title, context: "Editor must become interactive only after verified publication")
         XCTAssertEqual(title.value as? String, "Unsent synthetic draft")
         let step = app.textFields["sharedStepTitle-0"].exists
             ? app.textFields["sharedStepTitle-0"] : app.textViews["sharedStepTitle-0"]
@@ -59,15 +60,21 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
         tap("Checklist settings", in: app)
         let reminder = app.switches["Remind reviewer"]
         XCTAssertTrue(reminder.waitForExistence(timeout: 8))
-        reminder.tap()
+        for _ in 0..<8 where !reminder.isHittable { app.swipeUp() }
+        XCTAssertTrue(reminder.isHittable)
+        reminder.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let enabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"), object: reminder)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
         XCTAssertEqual(reminder.value as? String, "1")
         pauseAfterGenuineMembershipLookup(in: app)
-        XCTAssertFalse(reminder.exists)
-        XCTAssertFalse(app.buttons["Checklist settings"].exists)
+        XCTAssertFalse(reminder.isHittable)
+        XCTAssertFalse(app.buttons["Checklist settings"].isHittable)
         tap("resumeSharedDraftRevalidation", in: app)
 
         XCTAssertTrue(reminder.waitForExistence(timeout: 20),
                       "Verified foreground return should restore the open settings sheet")
+        waitUntilHittable(reminder, context: "Settings must become interactive only after verified publication")
         XCTAssertEqual(reminder.value as? String, "1",
                        "An unsaved reminder choice must remain a draft")
     }
@@ -93,19 +100,19 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
         let review = app.staticTexts["Synthetic review draft step"]
         XCTAssertTrue(review.waitForExistence(timeout: 20))
         review.tap()
-        let note = app.textFields["What should another photo show?"].exists
-            ? app.textFields["What should another photo show?"]
-            : app.textViews["What should another photo show?"]
+        let note = app.descendants(matching: .any)
+            .matching(identifier: "sharedReviewNote").firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 8))
         note.tap()
         note.typeText("Please show the synthetic lock label")
         pauseAfterGenuineMembershipLookup(in: app)
-        XCTAssertFalse(note.exists)
-        XCTAssertFalse(app.buttons["Approve version 1"].exists)
+        XCTAssertFalse(note.isHittable)
+        XCTAssertFalse(app.buttons["Approve version 1"].isHittable)
         tap("resumeSharedDraftRevalidation", in: app)
 
         XCTAssertTrue(note.waitForExistence(timeout: 20),
                       "Verified foreground return should restore the review sheet")
+        waitUntilHittable(note, context: "Review note must become interactive only after verified publication")
         XCTAssertEqual(note.value as? String, "Please show the synthetic lock label")
     }
 
@@ -136,11 +143,24 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
     private func pauseAfterGenuineMembershipLookup(in app: XCUIApplication) {
         XCUIDevice.shared.press(.home)
         app.activate()
-        let pause = app.staticTexts["sharedSimulatedDraftRevalidationPause"]
+        let pause = app.staticTexts["sharedSimulatedDraftRevalidationPause"].firstMatch
         XCTAssertTrue(pause.waitForExistence(timeout: 30),
                       "A genuine foreground membership GET should finish before publication is paused")
         XCTAssertEqual(pause.label,
                        "Foreground draft revalidation paused (simulated for acceptance)")
+        let gate = app.staticTexts["sharedDraftPresentationGate"].firstMatch
+        XCTAssertTrue(gate.waitForExistence(timeout: 8),
+                      "The protected view tree must be gated during the verified membership pause")
+        XCTAssertEqual(gate.label, "Protected presentation held for verification")
+        // XCTest `exists` includes hidden or covered hierarchy elements. Use hit testing for
+        // protected controls retained in memory, then verify the opaque gate and hidden keyboard.
+        // https://developer.apple.com/documentation/xcuiautomation/xcuielement/exists
+        XCTAssertFalse(app.keyboards.firstMatch.exists,
+                       "The previous text input must not remain exposed during membership revalidation")
+        let hiddenPresentation = XCTAttachment(screenshot: app.screenshot())
+        hiddenPresentation.name = "Connected draft hidden during membership verification"
+        hiddenPresentation.lifetime = .keepAlways
+        add(hiddenPresentation)
     }
 
     private func ensurePaired(_ fixture: Fixture, in app: XCUIApplication) {
@@ -235,10 +255,22 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
         field.typeText(text)
     }
 
+    private func waitUntilHittable(_ element: XCUIElement, context: String) {
+        // The mounted draft can exist in XCTest's hierarchy while the privacy gate is closed.
+        // Interaction proves that verified membership publication reopened the presentation.
+        let interactive = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == true"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [interactive], timeout: 20), .completed, context)
+    }
+
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
-        let button = app.buttons[identifier].firstMatch
-        for _ in 0..<8 where !button.isHittable { app.swipeUp() }
+        let matches = app.buttons.matching(identifier: identifier)
+        var button = matches.allElementsBoundByIndex.first(where: \.isHittable) ?? matches.firstMatch
+        for _ in 0..<8 where !button.isHittable {
+            app.swipeUp()
+            button = matches.allElementsBoundByIndex.first(where: \.isHittable) ?? matches.firstMatch
+        }
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing button: \(identifier)", file: file, line: line)
         let enabled = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "enabled == true"), object: button)

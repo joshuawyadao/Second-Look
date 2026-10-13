@@ -142,7 +142,7 @@ struct ConnectedRootView: View {
 
             if model.accountID == nil {
                 ConnectedSignInView()
-            } else if model.snapshot == nil {
+            } else if !model.hasContentForPresentation {
                 ConnectedPairingView()
             } else {
                 TabView {
@@ -153,10 +153,13 @@ struct ConnectedRootView: View {
                     NavigationStack { ConnectedHistoryView() }
                         .tabItem { Label("History", systemImage: "clock") }
                 }
+                .connectedRevalidationGate()
             }
         }
         .sheet(isPresented: $settings) {
-            ConnectedAccountSettingsView().connectedActionErrors(inSheet: true)
+            ConnectedAccountSettingsView()
+                .connectedRevalidationGate()
+                .connectedActionErrors(inSheet: true)
         }
         .connectedActionErrors()
         .tint(.teal)
@@ -465,6 +468,7 @@ private struct ConnectedRoutinesView: View {
         .navigationDestination(item: $destination) { ConnectedChecklistView(runID: $0) }
         .sheet(item: $editor) {
             ConnectedRoutineEditorView(request: $0) { destination = $0 }
+                .connectedRevalidationGate()
                 .connectedActionErrors(inSheet: true)
         }
         .confirmationDialog("A checklist is already open", isPresented: Binding(
@@ -588,6 +592,7 @@ private struct ConnectedRoutineEditorView: View {
                 ToolbarItem(placement: .bottomBar) { EditButton() }
             }
         }
+        .onChange(of: model.generation) { _, _ in saving = false }
         .onDisappear { model.unregisterCreationCompletion(owner: completionOwner) }
     }
 
@@ -732,6 +737,7 @@ private struct ConnectedChecklistView: View {
                     .sheet(isPresented: $preferences) {
                         ConnectedRunPreferencesView(runID: run.id, revision: run.revision,
                                                     settings: run.settings)
+                            .connectedRevalidationGate()
                             .connectedActionErrors(inSheet: true)
                     }
                     .confirmationDialog("Cancel this checklist?", isPresented: $cancelConfirmation) {
@@ -797,6 +803,7 @@ private struct ConnectedRunPreferencesView: View {
                     }
                 }
         }
+        .onChange(of: model.generation) { _, _ in saving = false }
     }
 }
 
@@ -842,7 +849,9 @@ private struct ConnectedReviewView: View {
         .navigationTitle("Review")
         .toolbar { Button("Refresh") { model.enqueue { await model.refresh() } }.disabled(model.busy) }
         .sheet(item: $selected) {
-            ConnectedReviewDetailView(request: $0).connectedActionErrors(inSheet: true)
+            ConnectedReviewDetailView(request: $0)
+                .connectedRevalidationGate()
+                .connectedActionErrors(inSheet: true)
         }
     }
 }
@@ -884,6 +893,7 @@ private struct ConnectedReviewDetailView: View {
                                             expectedRunRevision: run.revision))
                         }.disabled(saving || model.busy)
                         TextField("What should another photo show?", text: $note, axis: .vertical)
+                            .accessibilityIdentifier("sharedReviewNote")
                         Button("Request another photo") {
                             decide(.requestAnother(runID: run.id, itemID: item.id,
                                                    expectedVersion: request.version, note: note,
@@ -898,6 +908,7 @@ private struct ConnectedReviewDetailView: View {
             .navigationTitle("Review step")
             .toolbar { Button("Done") { dismiss() } }
         }
+        .onChange(of: model.generation) { _, _ in saving = false }
     }
 
     private func decide(_ command: SharedCommand) {

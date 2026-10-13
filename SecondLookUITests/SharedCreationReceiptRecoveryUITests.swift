@@ -36,6 +36,18 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         XCTAssertTrue(save.waitForExistence(timeout: 8))
         XCTAssertFalse(save.isEnabled,
                        "A second Start must not create another run while the original receipt is unconfirmed")
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let draft = app.textFields["sharedRoutineTitle"]
+        XCTAssertTrue(draft.waitForExistence(timeout: 30),
+                      "Verified foreground return should restore the pending creation editor")
+        let interactive = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == true"), object: draft)
+        XCTAssertEqual(XCTWaiter.wait(for: [interactive], timeout: 20), .completed,
+                       "The retained editor must reopen only after verified membership publication")
+        XCTAssertEqual(draft.value as? String, "Receipt recovery one-off")
+        XCTAssertFalse(save.isEnabled,
+                       "Foreground revalidation must retain the original receipt lock")
         tap("retryCreationAction", in: app)
 
         XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20),

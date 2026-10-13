@@ -124,13 +124,19 @@ final class SharedPairingRecoveryUITests: XCTestCase {
         XCTAssertFalse(app.buttons["joinPrivateSpace"].isEnabled)
         tap("sharedCheckPairing", in: app)
         let absentConfirmed = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "enabled == true"), object: app.buttons["joinPrivateSpace"]
+            predicate: NSPredicate(format: "enabled == true"), object: app.buttons["createPrivateSpace"]
         )
         XCTAssertEqual(XCTWaiter.wait(for: [absentConfirmed], timeout: 20), .completed,
-                       "Only a genuine absent-membership lookup should re-enable pairing")
+                       "Only a genuine absent-membership lookup should confirm that pairing is available")
+        // The absent lookup intentionally resets the pairing view and may clear the rejected code.
+        // Join itself cannot enable until a fresh opaque invitation has been entered.
         codeField.tap()
         codeField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: invalidCode.count))
         codeField.typeText(code)
+        let joinReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: app.buttons["joinPrivateSpace"]
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [joinReady], timeout: 8), .completed)
         tap("joinPrivateSpace", in: app)
         dismissExpectedReplyLoss(in: app)
 

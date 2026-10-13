@@ -113,10 +113,12 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
                       "A genuine foreground membership GET must finish before delayed publication")
         XCTAssertEqual(pause.label,
                        "Foreground membership publication paused (simulated for acceptance)")
+        XCTAssertTrue(app.staticTexts["Checking private-space membership"].firstMatch.exists,
+                      "An opaque verification gate must cover retained protected content")
         XCTAssertFalse(app.buttons["retryUnconfirmedAction"].exists,
                        "A suspended session must not publish the saved retry action")
-        XCTAssertFalse(app.buttons["sharedCreateRoutine"].exists,
-                       "Protected routine controls must remain hidden before membership publication")
+        XCTAssertFalse(app.buttons["sharedCreateRoutine"].isHittable,
+                       "Protected routine controls must be inaccessible before membership publication")
 
         XCUIDevice.shared.press(.home)
         app.activate()
@@ -125,10 +127,12 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
                       "A second genuine foreground membership GET must finish before publication")
         XCTAssertEqual(secondPause.label,
                        "Foreground membership publication paused (simulated for acceptance)")
+        XCTAssertTrue(app.staticTexts["Checking private-space membership"].firstMatch.exists,
+                      "The second verification must keep the opaque gate in place")
         XCTAssertFalse(app.buttons["retryUnconfirmedAction"].exists,
                        "A second suspension must keep the original retry action private")
-        XCTAssertFalse(app.buttons["sharedCreateRoutine"].exists,
-                       "Protected routine controls must stay hidden through repeated revalidation")
+        XCTAssertFalse(app.buttons["sharedCreateRoutine"].isHittable,
+                       "Protected routine controls must stay inaccessible through repeated revalidation")
         tap("resumeSharedLifecycleRevalidation", in: app)
         XCTAssertTrue(app.staticTexts["Waiting for your invited reviewer."].waitForExistence(timeout: 20),
                       "Verified same-scope membership must restore the owner snapshot")

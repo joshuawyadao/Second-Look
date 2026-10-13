@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import plistlib
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -58,7 +57,9 @@ class NativeRunSelectionTests(unittest.TestCase):
                                            "serverURL": "http://127.0.0.1:58080"}))
             used_configuration = []
 
-            def fake_xcodebuild(command, **_kwargs):
+            def fake_xcodebuild(command, _timeout, **_kwargs):
+                if command[0] == "xcrun":
+                    return b'{"devices":{}}'
                 if "build-for-testing" in command:
                     (products / CURRENT_NAME).write_bytes(plistlib.dumps(CURRENT_CONFIG))
                 elif "test-without-building" in command:
@@ -66,13 +67,12 @@ class NativeRunSelectionTests(unittest.TestCase):
                     used_configuration.append(plistlib.loads(config.read_bytes()))
                 else:
                     self.fail("Unexpected native command")
-                return subprocess.CompletedProcess(command, 0)
+                return b""
 
             with patch.object(sys, "argv", ["verify-connected-native.py", "--fixture", str(fixture)]), \
                     patch.dict(os.environ, {"SECONDLOOK_SIMULATOR_ID": SIMULATOR,
                                             "SECONDLOOK_DERIVED_DATA": str(derived)}), \
-                    patch.object(runner.subprocess, "check_output", return_value=b'{"devices":{}}'), \
-                    patch.object(runner.subprocess, "run", side_effect=fake_xcodebuild):
+                    patch.object(runner, "run_owned", side_effect=fake_xcodebuild):
                 with redirect_stdout(io.StringIO()):
                     runner.main()
 
@@ -134,19 +134,20 @@ class NativeRunSelectionTests(unittest.TestCase):
                                                "serverURL": "http://127.0.0.1:58080"}))
                 destinations = []
 
-                def fake_xcodebuild(command, **_kwargs):
+                def fake_xcodebuild(command, _timeout, **_kwargs):
+                    if command[0] == "xcrun":
+                        return json.dumps(inventory).encode()
                     destinations.append(command[command.index("-destination") + 1])
                     if "build-for-testing" in command:
                         (products / CURRENT_NAME).write_bytes(plistlib.dumps(CURRENT_CONFIG))
-                    return subprocess.CompletedProcess(command, 0)
+                    return b""
 
                 environment = {"SECONDLOOK_DERIVED_DATA": str(derived)}
                 if override:
                     environment["SECONDLOOK_SIMULATOR_ID"] = override
                 with patch.object(sys, "argv", ["verify-connected-native.py", "--fixture", str(fixture)]), \
                         patch.dict(os.environ, environment, clear=True), \
-                        patch.object(runner.subprocess, "check_output", return_value=json.dumps(inventory).encode()), \
-                        patch.object(runner.subprocess, "run", side_effect=fake_xcodebuild), \
+                        patch.object(runner, "run_owned", side_effect=fake_xcodebuild), \
                         redirect_stdout(io.StringIO()):
                     runner.main()
                 self.assertEqual(destinations, ["platform=iOS Simulator,id=" + expected] * 2)

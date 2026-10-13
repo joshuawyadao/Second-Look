@@ -22,13 +22,23 @@ struct PrivateSpaceService: Sendable {
         return account
     }
 
+    func validateSnapshot(_ snapshot: SharedSnapshot, actor: UUID) throws {
+        // The persisted membership must still match this server's current private allowlist.
+        // A valid token for one member does not authorize publication of an excluded peer.
+        guard snapshot.members.allSatisfy(configuration.allowedAccounts.contains) else {
+            throw SharedStateFailure.forbidden
+        }
+        try snapshot.validate(for: actor)
+    }
+
     func execute(_ envelope: SharedCommandEnvelope, actor: UUID) async throws -> SharedCommandResult {
         let digest = Self.digest(try SharedWireCodec.encode(envelope))
         if let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) {
-            try receipt.snapshot.validate(for: actor)
+            try validateSnapshot(receipt.snapshot, actor: actor)
             return receipt
         }
         let snapshot = try await store.read(actor: actor, space: envelope.spaceID)
+        try validateSnapshot(snapshot, actor: actor)
         let result: SharedCommandResult
         do {
             result = try SharedCommandProcessor.apply(envelope, to: snapshot, actorID: actor, now: Date())
@@ -36,13 +46,14 @@ struct PrivateSpaceService: Sendable {
             // An identical retry can miss its receipt just before the first request commits.
             // Recheck after the newer read; distinct actor/payload collisions still fail in SQL.
             if let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) {
-                try receipt.snapshot.validate(for: actor)
+                try validateSnapshot(receipt.snapshot, actor: actor)
                 return receipt
             }
             throw SharedStateFailure.staleState
         }
+        try validateSnapshot(result.snapshot, actor: actor)
         let committed = try await store.commit(actor: actor, envelope: envelope, digest: digest, result: result)
-        try committed.snapshot.validate(for: actor)
+        try validateSnapshot(committed.snapshot, actor: actor)
         return committed
     }
 
@@ -76,7 +87,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
         await respond {
             let actor = try await service.actor(request)
             let snapshot = try await service.store.read(actor: actor, space: nil)
-            try snapshot.validate(for: actor)
+            try service.validateSnapshot(snapshot, actor: actor)
             return try json(snapshot)
         }
     }
@@ -97,7 +108,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
             let snapshot = try await service.store.create(actor: actor, peer: peer,
                 inviteHash: PrivateSpaceService.digest(Data(token.utf8)), expiresAt: expiresAt,
                 expectedRevision: body.expectedSpaceRevision)
-            try snapshot.validate(for: actor)
+            try service.validateSnapshot(snapshot, actor: actor)
             return try json(Invitation(snapshot: snapshot, inviteToken: token, expiresAt: expiresAt))
         }
     }
@@ -108,7 +119,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
             guard body.inviteToken.utf8.count == 72 else { throw SharedStateFailure.invalidInvite }
             let snapshot = try await service.store.join(actor: actor,
                 inviteHash: PrivateSpaceService.digest(Data(body.inviteToken.utf8)))
-            try snapshot.validate(for: actor)
+            try service.validateSnapshot(snapshot, actor: actor)
             return try json(snapshot)
         }
     }
@@ -116,7 +127,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
         await respond {
             let actor = try await service.actor(request)
             let snapshot = try await service.store.read(actor: actor, space: try spaceID(request))
-            try snapshot.validate(for: actor)
+            try service.validateSnapshot(snapshot, actor: actor)
             return try json(snapshot)
         }
     }
@@ -138,7 +149,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                 let body = try decode(SyntheticEvidence.self, request: request,
                     keys: ["spaceID", "runID", "itemID", "expectedSpaceRevision", "expectedRunRevision"])
                 let snapshot = try await service.store.read(actor: actor, space: body.spaceID)
-                try snapshot.validate(for: actor)
+                try service.validateSnapshot(snapshot, actor: actor)
                 guard snapshot.revision == body.expectedSpaceRevision,
                       snapshot.state.runs.first(where: { $0.id == body.runID })?.revision == body.expectedRunRevision else {
                     throw SharedStateFailure.staleState
@@ -155,9 +166,10 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                         expectedRunRevision: body.expectedRunRevision))
                 let result = SharedCommandResult(snapshot: .init(spaceID: snapshot.spaceID,
                     revision: snapshot.revision + 1, members: snapshot.members, state: state))
-                try result.snapshot.validate(for: actor)
+                try service.validateSnapshot(result.snapshot, actor: actor)
                 let committed = try await service.store.commit(actor: actor, envelope: envelope,
                     digest: PrivateSpaceService.digest(try SharedWireCodec.encode(body)), result: result)
+                try service.validateSnapshot(committed.snapshot, actor: actor)
                 return try json(committed.snapshot)
             }
         }

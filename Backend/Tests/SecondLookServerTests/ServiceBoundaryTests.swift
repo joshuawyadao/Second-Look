@@ -101,6 +101,26 @@ import SecondLookCore
         }
     }
 
+    @Test func providerKeysRejectRecognizedWrongModernType() {
+        let invalid: [(String, String, String)] = [
+            ("secret in publishable slot", "sb_secret_invented-public-slot", "sb_secret_invented-service"),
+            ("publishable in service slot", "sb_publishable_invented-public", "sb_publishable_invented-service-slot"),
+            ("both modern keys swapped", "sb_secret_invented-service", "sb_publishable_invented-public"),
+            ("bare secret prefix in publishable slot", "sb_secret_", "sb_secret_invented-service"),
+            ("bare publishable prefix in service slot", "sb_publishable_invented-public", "sb_publishable_")
+        ]
+        for (caseName, publishable, service) in invalid {
+            var env = environment()
+            env["SECONDLOOK_PUBLISHABLE_KEY"] = publishable
+            env["SECONDLOOK_SERVICE_KEY"] = service
+            let rejected: Bool
+            do { _ = try ServerConfiguration(environment: env); rejected = false }
+            catch is ConfigurationFailure { rejected = true }
+            catch { rejected = false }
+            #expect(rejected, "\(caseName) must fail startup without exposing either key")
+        }
+    }
+
     @Test func allowedAccountsRequireExactlyTwoValidDistinctFields() throws {
         let valid = try ServerConfiguration(environment: environment())
         #expect(valid.allowedAccounts == Set([owner, peer]))

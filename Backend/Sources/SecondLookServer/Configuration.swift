@@ -17,8 +17,10 @@ struct ServerConfiguration: Sendable {
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
               url.path.isEmpty || url.path == "/",
               url.scheme == "https" || (local && url.scheme == "http" && Self.isLoopback(url)),
-              let publicKey = environment["SECONDLOOK_PUBLISHABLE_KEY"], Self.isSafeHeaderValue(publicKey),
-              let secret = environment["SECONDLOOK_SERVICE_KEY"], Self.isSafeHeaderValue(secret),
+              let publicKey = environment["SECONDLOOK_PUBLISHABLE_KEY"],
+              Self.isSafeHeaderValue(publicKey), !publicKey.hasPrefix("sb_secret_"),
+              let secret = environment["SECONDLOOK_SERVICE_KEY"],
+              Self.isSafeHeaderValue(secret), !secret.hasPrefix("sb_publishable_"),
               publicKey != secret,
               let accounts = environment["SECONDLOOK_ALLOWED_ACCOUNTS"] else {
             throw ConfigurationFailure.invalid

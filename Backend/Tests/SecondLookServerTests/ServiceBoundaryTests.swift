@@ -121,6 +121,26 @@ import SecondLookCore
         }
     }
 
+    @Test func providerKeysRejectRecognizedWrongLegacyRoles() {
+        let anon = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.invented-anon-signature"
+        let serviceRole = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.invented-service-signature"
+        let invalid: [(String, String, String)] = [
+            ("service role in publishable slot", serviceRole, "sb_secret_invented-service"),
+            ("anon role in service slot", "sb_publishable_invented-public", anon),
+            ("both legacy roles swapped", serviceRole, anon)
+        ]
+        for (caseName, publishable, service) in invalid {
+            var env = environment()
+            env["SECONDLOOK_PUBLISHABLE_KEY"] = publishable
+            env["SECONDLOOK_SERVICE_KEY"] = service
+            let rejected: Bool
+            do { _ = try ServerConfiguration(environment: env); rejected = false }
+            catch is ConfigurationFailure { rejected = true }
+            catch { rejected = false }
+            #expect(rejected, "\(caseName) must fail startup without exposing either key")
+        }
+    }
+
     @Test func allowedAccountsRequireExactlyTwoValidDistinctFields() throws {
         let valid = try ServerConfiguration(environment: environment())
         #expect(valid.allowedAccounts == Set([owner, peer]))

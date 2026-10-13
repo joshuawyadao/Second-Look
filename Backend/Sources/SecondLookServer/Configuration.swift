@@ -19,8 +19,10 @@ struct ServerConfiguration: Sendable {
               url.scheme == "https" || (local && url.scheme == "http" && Self.isLoopback(url)),
               let publicKey = environment["SECONDLOOK_PUBLISHABLE_KEY"],
               Self.isSafeHeaderValue(publicKey), !publicKey.hasPrefix("sb_secret_"),
+              Self.recognizableLegacyRole(publicKey) != "service_role",
               let secret = environment["SECONDLOOK_SERVICE_KEY"],
               Self.isSafeHeaderValue(secret), !secret.hasPrefix("sb_publishable_"),
+              Self.recognizableLegacyRole(secret) != "anon",
               publicKey != secret,
               let accounts = environment["SECONDLOOK_ALLOWED_ACCOUNTS"] else {
             throw ConfigurationFailure.invalid
@@ -59,6 +61,24 @@ struct ServerConfiguration: Sendable {
                 !CharacterSet.whitespacesAndNewlines.contains($0)
         }
     }
+
+    /// A recognizable legacy role can identify a wrong slot, but these unverified claims never
+    /// authenticate a key or supply an actor. Supabase validates the credential on use.
+    private static func recognizableLegacyRole(_ key: String) -> String? {
+        let segments = key.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count == 3, segments[1].utf8.count <= 8_192 else { return nil }
+        let payload = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padded = payload + String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: padded),
+              let claims = try? JSONDecoder().decode(LegacyRoleClaim.self, from: data) else {
+            return nil
+        }
+        return claims.role
+    }
+
+    private struct LegacyRoleClaim: Decodable { let role: String? }
 }
 
 enum ConfigurationFailure: Error { case invalid }

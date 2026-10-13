@@ -86,4 +86,27 @@ final class CompletedCleanupIntegrityTests: XCTestCase {
         XCTAssertEqual(canceled.runs[0].cleanupStatus, .notNeeded)
         try assertAccepted(canceled)
     }
+
+    func testClosedStandardOnlyRunsRejectInventedCleanupStates() throws {
+        var completed = SecondLookState()
+        let completedID = try completed.startOneOff(title: "Keys", items: [RoutineItem(title: "Carry keys")],
+                                                    performerID: performer, reviewerID: nil, now: now)
+        try completed.setStandardChecked(runID: completedID, itemID: completed.runs[0].items[0].id,
+                                         checked: true, actorID: performer, now: now)
+        var canceled = SecondLookState()
+        let canceledID = try canceled.startOneOff(title: "Door", items: [RoutineItem(title: "Lock door")],
+                                                  performerID: performer, reviewerID: nil, now: now)
+        try canceled.cancel(runID: canceledID, actorID: performer, now: now)
+        for original in [completed, canceled] {
+            XCTAssertEqual(original.runs[0].cleanupStatus, .notNeeded)
+            try assertAccepted(original)
+            for status in [CleanupStatus.pending, .simulatedConfirmed] {
+                var run = original.runs[0]
+                var archive = original.archives[0]
+                run.cleanupStatus = status
+                archive.cleanupStatus = status
+                try assertRejected(SecondLookState(runs: [run], archives: [archive]))
+            }
+        }
+    }
 }

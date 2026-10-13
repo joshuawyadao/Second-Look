@@ -102,6 +102,8 @@ Resolve the remaining Milestone 2 native and CI failures, complete available hos
 
 ## Final saved-source gates
 
-- [ ] Finish current-source Docker-independent repository, package, server Debug/Release, ordinary native Debug/Release/exclusion and both preserved hosted-client checks. Final candidate repository50, package106 and serverRelease24 pass; remaining phases are running. Native gated skips do not count as acceptance.
+- [x] Finish current-source Docker-independent repository, package, server Debug/Release, ordinary native Debug/Release/exclusion and both preserved hosted-client checks. All seven phases pass on executable0259e70: repository50, package106, serverDebug25/Release24, native10ordinary/25gatedskips193.229s and both hosted wrappers. Native/server gated skips do not count as integration acceptance.
 - [ ] After the required full Docker restart reply, run both new receipt/scope probes and the complete 23 connected native cases plus modern/legacy SQL/Auth/HTTP/restart. Preserve named stack volumes and existing hosted sessions/records.
 - [ ] Save/push final evidence, request fresh Codex review and verify terminal saved-head CI/conflicts. Retry the authorized thread connector with tested/pushed evidence; no workaround for an automatic rejection. Keep PR draft/unmerged while required gates remain blocked.
+
+Final checkpoint0259e70 is pushed and receipt comment4255046754 has thumbs-up reaction455327372. Fresh review request6151577720 is running; final documentation-head CI is a separate gate. The same connector accepted the five earlier validated resolutions after tested/pushed evidence, bringing resolved threads to52. The receipt thread stays open pending its connected native probe. Docker quit/reopen reply, full23 connected and both key modes remain required; live hosted server7e32ee0/schema are unchanged.

@@ -75,6 +75,55 @@ final class ArchiveIntegrityTests: XCTestCase {
         return state
     }
 
+    private func openReplacementState() throws -> SecondLookState {
+        var state = SecondLookState()
+        let runID = try state.startOneOff(title: "Replacement", items: [
+            RoutineItem(title: "Photo step", priority: .high),
+        ], performerID: performer, reviewerID: reviewer, now: now)
+        let itemID = state.runs[0].items[0].id
+        try state.prepareDraft(runID: runID, itemID: itemID, actorID: performer,
+                               fixtureID: "synthetic-one", source: .simulatedCamera, now: now)
+        let first = try state.beginSend(runID: runID, itemID: itemID, actorID: performer, now: now)
+        try state.acceptSend(runID: runID, itemID: itemID, actorID: performer,
+                             expectedVersion: first, now: now)
+        try state.requestAnother(runID: runID, itemID: itemID, actorID: reviewer,
+                                 expectedVersion: first, note: "Try again", now: now)
+        try state.prepareDraft(runID: runID, itemID: itemID, actorID: performer,
+                               fixtureID: "synthetic-two", source: .simulatedCamera, now: now)
+        _ = try state.beginSend(runID: runID, itemID: itemID, actorID: performer, now: now)
+        return state
+    }
+
+    private func canceledAfterWithdrawalState() throws -> SecondLookState {
+        var state = SecondLookState()
+        let runID = try state.startOneOff(title: "Withdrawn review", items: [
+            RoutineItem(title: "Photo step", priority: .high),
+        ], performerID: performer, reviewerID: reviewer, now: now)
+        let itemID = state.runs[0].items[0].id
+        try state.prepareDraft(runID: runID, itemID: itemID, actorID: performer,
+                               fixtureID: "synthetic-one", source: .simulatedCamera, now: now)
+        let version = try state.beginSend(runID: runID, itemID: itemID, actorID: performer, now: now)
+        try state.acceptSend(runID: runID, itemID: itemID, actorID: performer,
+                             expectedVersion: version, now: now)
+        try state.requestAnother(runID: runID, itemID: itemID, actorID: reviewer,
+                                 expectedVersion: version, note: "Another view", now: now)
+        try state.withdraw(runID: runID, itemID: itemID, actorID: performer,
+                           expectedVersion: version, now: now)
+        try state.cancel(runID: runID, actorID: performer, now: now.addingTimeInterval(1))
+        return state
+    }
+
+    private func mutatedPriorDecision(_ original: SecondLookState, itemIndex: Int,
+                                      _ change: (inout ReviewDecision) -> Void) -> SecondLookState {
+        var run = original.runs[0]
+        change(&run.items[itemIndex].priorDecisions[0])
+        var archives = original.archives
+        if !archives.isEmpty {
+            archives[0].items[itemIndex].decisions[0] = run.items[itemIndex].priorDecisions[0]
+        }
+        return SecondLookState(routines: original.routines, runs: [run], archives: archives)
+    }
+
     private func mutatedArchive(_ original: SecondLookState,
                                 _ change: (inout TextArchive) -> Void) -> SecondLookState {
         var archive = original.archives[0]
@@ -159,12 +208,80 @@ final class ArchiveIntegrityTests: XCTestCase {
         try assertRejected(malformed)
     }
 
+    func testRejectsMalformedPriorDecisionEvenWhenArchiveMatchesRun() throws {
+        let completed = try completedMixedState()
+        let changes: [(inout ReviewDecision) -> Void] = [
+            { $0.submissionVersion = 0 },
+            { $0.submissionVersion = 3 },
+            { $0.actorID = self.performer },
+            { $0.note = nil },
+            { $0.note = " \n " },
+            { $0.verdict = .approved },
+        ]
+        for change in changes { try assertRejected(mutatedPriorDecision(completed, itemIndex: 1, change)) }
+    }
+
+    func testRejectsMalformedPriorDecisionInOpenRun() throws {
+        let open = try openReplacementState()
+        let changes: [(inout ReviewDecision) -> Void] = [
+            { $0.submissionVersion = 0 },
+            { $0.submissionVersion = 2 },
+            { $0.actorID = self.performer },
+            { $0.note = nil },
+            { $0.verdict = .approved },
+        ]
+        for change in changes { try assertRejected(mutatedPriorDecision(open, itemIndex: 0, change)) }
+    }
+
+    func testRejectsPriorDecisionWithSameVersionAsArchivedFinalDecision() throws {
+        let completed = try completedMixedState()
+        try assertRejected(mutatedPriorDecision(completed, itemIndex: 1) { $0.submissionVersion = 2 })
+    }
+
+    func testRejectsRepeatedPriorSubmissionVersion() throws {
+        var open = try openReplacementState()
+        let runID = open.runs[0].id
+        let itemID = open.runs[0].items[0].id
+        try open.acceptSend(runID: runID, itemID: itemID, actorID: performer,
+                            expectedVersion: 2, now: now)
+        try open.requestAnother(runID: runID, itemID: itemID, actorID: reviewer,
+                                expectedVersion: 2, note: "One more", now: now)
+        try open.prepareDraft(runID: runID, itemID: itemID, actorID: performer,
+                              fixtureID: "synthetic-three", source: .simulatedCamera, now: now)
+        _ = try open.beginSend(runID: runID, itemID: itemID, actorID: performer, now: now)
+        XCTAssertEqual(open.runs[0].items[0].priorDecisions.map(\.submissionVersion), [1, 2])
+        var run = open.runs[0]
+        run.items[0].priorDecisions[1].submissionVersion = 1
+        try assertRejected(SecondLookState(routines: open.routines, runs: [run]))
+    }
+
+    func testRejectsOpenApprovedSubmissionWithNote() throws {
+        var state = SecondLookState()
+        let runID = try state.startOneOff(title: "Open approval", items: [
+            RoutineItem(title: "Standard step"),
+            RoutineItem(title: "Photo step", priority: .high),
+        ], performerID: performer, reviewerID: reviewer, now: now)
+        let highID = state.runs[0].items[1].id
+        try state.prepareDraft(runID: runID, itemID: highID, actorID: performer,
+                               fixtureID: "synthetic-only", source: .simulatedCamera, now: now)
+        let version = try state.beginSend(runID: runID, itemID: highID, actorID: performer, now: now)
+        try state.acceptSend(runID: runID, itemID: highID, actorID: performer,
+                             expectedVersion: version, now: now)
+        try state.approve(runID: runID, itemID: highID, actorID: reviewer,
+                          expectedVersion: version, now: now)
+        XCTAssertTrue(state.runs[0].isOpen, "The unchecked standard step keeps the approved run open")
+        var run = state.runs[0]
+        run.items[1].submission?.decision?.note = "Unexpected note"
+        try assertRejected(SecondLookState(routines: state.routines, runs: [run]))
+    }
+
     func testValidTerminalArchivesRestoreAndCleanupAcknowledgmentPersists() throws {
         var completed = try completedMixedState()
         var canceled = try canceledState()
         let canceledAfterReview = try canceledState(reviewed: true)
         let canceledBeforeEvidence = try canceledNeverSubmittedState()
         let canceledUncheckedStandard = try canceledUncheckedStandardState()
+        let canceledAfterWithdrawal = try canceledAfterWithdrawalState()
         var standardOnly = SecondLookState()
         let standardRunID = try standardOnly.startOneOff(title: "Simple", items: [RoutineItem(title: "Door")],
                                                          performerID: performer, reviewerID: nil, now: now)
@@ -176,9 +293,11 @@ final class ArchiveIntegrityTests: XCTestCase {
         XCTAssertEqual(canceledBeforeEvidence.runs[0].items[0].lastVersion, 0)
         XCTAssertTrue(canceledBeforeEvidence.archives[0].items[0].decisions.isEmpty)
         XCTAssertNil(canceledUncheckedStandard.archives[0].items[0].checkedAt)
+        XCTAssertEqual(canceledAfterWithdrawal.runs[0].items[0].priorDecisions.last?.submissionVersion,
+                       canceledAfterWithdrawal.runs[0].items[0].lastVersion)
         XCTAssertTrue(standardOnly.archives[0].items[0].decisions.isEmpty)
         for state in [completed, canceled, canceledAfterReview, canceledBeforeEvidence,
-                      canceledUncheckedStandard, standardOnly] {
+                      canceledUncheckedStandard, canceledAfterWithdrawal, standardOnly] {
             try state.validateForLoad()
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: directory) }

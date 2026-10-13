@@ -78,3 +78,5 @@ Open `SecondLook.xcodeproj` in Xcode or use a discovered iOS Simulator destinati
 Completed text archives require a check timestamp for every standard item; canceled histories may retain unchecked items. The shared loading validator enforces this even if both run and archive contain matching corrupt values.
 
 Only a command-service response explicitly coded notPaired establishes absent membership. Auth user/refresh404 and uncoded or unknown command404 are service unavailability; they preserve unconfirmed membership and cannot enable pairing as if absence were verified.
+
+Prior review decisions must use the assigned reviewer, positive increasing versions within the item history and domain verdict/note semantics. Current and archived decisions reuse the same semantic helper. A removed current submission may leave its reviewed version equal to lastVersion in canceled history; an existing submission must follow prior versions.

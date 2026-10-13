@@ -303,15 +303,10 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 guard archived.decisions.isEmpty,
                       run.outcome != .completed || item.checkedAt != nil else { return false }
             } else if let currentDecision {
-                guard currentDecision.submissionVersion > 0,
-                      currentDecision.submissionVersion == item.lastVersion else { return false }
-                switch currentDecision.verdict {
-                case .approved:
-                    guard currentDecision.note == nil else { return false }
-                case .requestedAnother:
-                    guard let note = currentDecision.note,
-                          !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-                }
+                guard validHistoricalDecision(currentDecision),
+                      currentDecision.submissionVersion == item.lastVersion,
+                      currentDecision.submissionVersion > (item.priorDecisions.last?.submissionVersion ?? 0)
+                else { return false }
             }
             if run.outcome == .completed, item.priority == .high {
                 guard currentDecision?.verdict == .approved else { return false }
@@ -320,11 +315,33 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         return true
     }
 
+    private static func validHistoricalDecision(_ decision: ReviewDecision) -> Bool {
+        guard decision.submissionVersion > 0 else { return false }
+        switch decision.verdict {
+        case .approved:
+            return decision.note == nil
+        case .requestedAnother:
+            return decision.note.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        }
+    }
+
     private static func validateRestoredEvidence(_ item: RunItem, reviewerID: UUID?) throws {
         guard item.lastVersion >= 0 else { throw SecondLookError.corruptDocument }
         if item.priority == .standard {
-            guard item.submission == nil, item.preview == nil else { throw SecondLookError.corruptDocument }
+            guard item.submission == nil, item.preview == nil,
+                  item.priorDecisions.isEmpty else { throw SecondLookError.corruptDocument }
             return
+        }
+        var precedingVersion = 0
+        for decision in item.priorDecisions {
+            guard let reviewerID, decision.actorID == reviewerID,
+                  validHistoricalDecision(decision),
+                  decision.submissionVersion > precedingVersion,
+                  decision.submissionVersion <= item.lastVersion,
+                  item.submission == nil || decision.submissionVersion < item.lastVersion else {
+                throw SecondLookError.corruptDocument
+            }
+            precedingVersion = decision.submissionVersion
         }
         if let submission = item.submission {
             guard submission.version > 0, submission.version == item.lastVersion else {
@@ -346,15 +363,14 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 guard submission.acceptedAt != nil, let reviewerID,
                       let decision = submission.decision,
                       decision.actorID == reviewerID,
-                      decision.submissionVersion == submission.version else {
+                      decision.submissionVersion == submission.version,
+                      validHistoricalDecision(decision) else {
                     throw SecondLookError.corruptDocument
                 }
                 if submission.status == .approved {
                     guard decision.verdict == .approved else { throw SecondLookError.corruptDocument }
                 } else {
-                    guard decision.verdict == .requestedAnother,
-                          let note = decision.note,
-                          !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    guard decision.verdict == .requestedAnother else {
                         throw SecondLookError.corruptDocument
                     }
                 }

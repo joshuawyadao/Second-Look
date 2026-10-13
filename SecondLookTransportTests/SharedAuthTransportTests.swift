@@ -197,6 +197,35 @@ final class SharedAuthTransportTests: XCTestCase {
         }
     }
 
+    func testOnlyCodedCommandServiceUnauthorizedMeansAuthenticationLoss() async throws {
+        for host in ["service-uncoded-unauthorized.test", "service-malformed-unauthorized.test",
+                     "service-unknown-unauthorized.test"] {
+            let service = SharedHTTPClient(serverURL: url(host: host),
+                                           accessToken: "invented-access-token", session: session())
+            do {
+                _ = try await service.currentSpace()
+                XCTFail("Expected command-service rejection for \(host)")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable, host)
+            }
+        }
+        let service = SharedHTTPClient(serverURL: url(host: "service-coded-unauthorized.test"),
+                                       accessToken: "invented-access-token", session: session())
+        do {
+            _ = try await service.currentSpace()
+            XCTFail("Expected authoritative command-service authentication loss")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .unauthenticated)
+        }
+        do {
+            _ = try await client(host: "auth-unauthorized.test").refresh(
+                refreshToken: "invented-refresh-token")
+            XCTFail("Expected provider refresh authentication loss")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .unauthenticated)
+        }
+    }
+
     func testSuccessfulSignInDecodesSessionAndSendsPublicKeyAndPasswordGrant() async throws {
         let result = try await client(host: "successful-sign-in.test").signIn(
             email: "person@example.test", password: "invented-password")
@@ -277,6 +306,14 @@ private final class SyntheticTransportProtocol: URLProtocol {
             result = (403, #"{"code":"unknownRoute"}"#)
         case "service-coded-forbidden.test":
             result = (403, #"{"code":"forbidden"}"#)
+        case "service-uncoded-unauthorized.test":
+            result = (401, #"{"message":"access denied"}"#)
+        case "service-malformed-unauthorized.test":
+            result = (401, "not-json")
+        case "service-unknown-unauthorized.test":
+            result = (401, #"{"code":"unknownRoute"}"#)
+        case "service-coded-unauthorized.test":
+            result = (401, #"{"code":"unauthenticated"}"#)
         case "successful-sign-in.test":
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
             let valid = url.path == "/auth/v1/token" &&

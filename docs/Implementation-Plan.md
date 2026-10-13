@@ -114,7 +114,7 @@ Review5507805708 posted at17:57:19UTC after the bounded request6151577720 timeou
 
 - [ ] 4262173360: accept identical command/result receipt replays with a newer current snapshot while preserving one-shot consumption and monotonic revisions; meaningful overlapping genuine-processor regression, separate save/push/reaction.
 - [ ] 4262173373: validate creation/noncreation result ID shape and returned run identity before receipt confirmation/envelope removal; preserve legitimate later-current receipt snapshots, separate regressions/save/push/reaction.
-- [ ] 4262173384: classify only documented command-service409 staleState/pairingUnavailable authoritatively; unknown responses keep the original command envelope, transport regression/save/push/reaction.
+- [x] 4262173384: classify only documented command-service409 staleState/pairingUnavailable authoritatively; unknown responses keep the original command envelope, three red classification assertions, all17 Auth/command transport cases green; separate save/push/reaction.
 - [ ] 4262173390: bound every connected run item submission counter below Int.max; corrupt/open snapshots rejected before increment, valid finite values preserved; regression/save/push/reaction.
 - [ ] 4262173401: hold pending-action alert/retry state behind foreground revalidation and republish only after verified same scope; purge on access/scope change, native gated probe and explicit unverified-Docker limit.
 - [ ] 4262173414: bind every explicitly scoped provider read/receipt/commit to the requested space; invalid upstream output returns bounded503, currentSpace/create/join remain unchanged; service/HTTP regressions/save/push/reaction.

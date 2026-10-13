@@ -231,7 +231,13 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
             return format == .supabaseAuth || code == "forbidden" ? .forbidden : .serviceUnavailable
         case 404:
             return format == .commandService && code == "notPaired" ? .notPaired : .serviceUnavailable
-        case 409: return code == "pairingUnavailable" ? .pairingUnavailable : .staleState
+        case 409:
+            guard format == .commandService else { return .serviceUnavailable }
+            switch code {
+            case "pairingUnavailable": return .pairingUnavailable
+            case "staleState": return .staleState
+            default: return .serviceUnavailable
+            }
         case 400:
             switch code {
             case "invalidInvite": return .invalidInvite

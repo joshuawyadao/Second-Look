@@ -226,6 +226,30 @@ final class SharedAuthTransportTests: XCTestCase {
         }
     }
 
+    func testOnlyCodedCommandServiceConflictsAreDefiniteRejections() async throws {
+        let cases: [(String, SharedStateFailure)] = [
+            ("service-uncoded-conflict.test", .serviceUnavailable),
+            ("service-malformed-conflict.test", .serviceUnavailable),
+            ("service-unknown-conflict.test", .serviceUnavailable),
+            ("service-coded-stale.test", .staleState),
+            ("service-coded-pairing-conflict.test", .pairingUnavailable),
+        ]
+        for (host, expected) in cases {
+            let service = SharedHTTPClient(serverURL: url(host: host),
+                accessToken: "invented-access-token", session: session())
+            let envelope = SharedCommandEnvelope(spaceID: UUID(), commandID: UUID(),
+                expectedSpaceRevision: 0,
+                command: .startOneOff(title: "Synthetic conflict", items: [RoutineItem(title: "Keys")],
+                                     settings: RunSettings()))
+            do {
+                _ = try await service.execute(envelope)
+                XCTFail("Expected conflict for \(host)")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, expected, host)
+            }
+        }
+    }
+
     func testSuccessfulSignInDecodesSessionAndSendsPublicKeyAndPasswordGrant() async throws {
         let result = try await client(host: "successful-sign-in.test").signIn(
             email: "person@example.test", password: "invented-password")
@@ -314,6 +338,16 @@ private final class SyntheticTransportProtocol: URLProtocol {
             result = (401, #"{"code":"unknownRoute"}"#)
         case "service-coded-unauthorized.test":
             result = (401, #"{"code":"unauthenticated"}"#)
+        case "service-uncoded-conflict.test":
+            result = (409, #"{"message":"conflict"}"#)
+        case "service-malformed-conflict.test":
+            result = (409, "not-json")
+        case "service-unknown-conflict.test":
+            result = (409, #"{"code":"unknownConflict"}"#)
+        case "service-coded-stale.test":
+            result = (409, #"{"code":"staleState"}"#)
+        case "service-coded-pairing-conflict.test":
+            result = (409, #"{"code":"pairingUnavailable"}"#)
         case "successful-sign-in.test":
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
             let valid = url.path == "/auth/v1/token" &&

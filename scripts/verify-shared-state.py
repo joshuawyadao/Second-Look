@@ -235,6 +235,7 @@ def main():
                     ("create", "membership discovery after an initial creation reply is lost"),
                     ("lifecycle", "original command receipt across foreground revalidation"),
                     ("forbidden", "saved-session cleanup after a forbidden restoration"),
+                    ("creation", "originating-flow completion after recovered creation receipts"),
                 )
                 for recovery_case, description in recovery_cases:
                     # Each scenario needs its own empty space. Truncate only the exact

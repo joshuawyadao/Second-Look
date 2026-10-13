@@ -29,6 +29,7 @@ final class ConnectedAppModel {
     private(set) var unconfirmedActions: [UnconfirmedAction] = []
     @ObservationIgnored private var issuedActions: [UnconfirmedAction] = []
     @ObservationIgnored private var suspendedScope: SharedAccountScope?
+    @ObservationIgnored private var creationCompletions: [UUID: CreationCompletion] = [:]
     private var errorSheetIDs: [UUID] = []
     var busy = false
 
@@ -51,6 +52,13 @@ final class ConnectedAppModel {
     private(set) var simulatedMembershipFailure = false
     private(set) var simulatedForbiddenRestore = false
     private(set) var forbiddenRestoreCredentialStatus: String?
+    private(set) var simulatedCreationReplyLoss = false
+    private(set) var creationReceiptAcceptanceStatus: String?
+    @ObservationIgnored private var creationReceiptActionID: UUID?
+    @ObservationIgnored private var creationReceiptCreatedID: UUID?
+    @ObservationIgnored private var creationReceiptCommand: SharedCommand?
+    @ObservationIgnored private var creationReceiptLossClient: SharedInvitationReceiptLossClient?
+    @ObservationIgnored private var didDropCreationReply = false
     @ObservationIgnored private var didSimulateMembershipFailure = false
     @ObservationIgnored private var commandAcceptanceTask: Task<Void, Never>?
     @ObservationIgnored private var commandAcceptanceStarted = false
@@ -321,6 +329,7 @@ final class ConnectedAppModel {
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession()
+                creationCompletions = [:]
                 issuedActions = []
                 suspendedScope = nil
                 unconfirmedActions = []
@@ -466,6 +475,7 @@ final class ConnectedAppModel {
                 publishIssuedActionsAfterVerification()
             } else {
                 issuedActions = []
+                creationCompletions = [:]
                 unconfirmedActions = []
                 // The first authenticated space lookup is already validated and held only in memory.
                 snapshot = incoming
@@ -498,6 +508,37 @@ final class ConnectedAppModel {
 
     private var forbiddenRestoreChecksRequested: Bool {
         localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-forbidden-restore")
+    }
+
+    private func shouldDropCreationReceipt(_ command: SharedCommand) -> Bool {
+        guard localRecoveryChecksRequested, !didDropCreationReply else { return false }
+        let args = ProcessInfo.processInfo.arguments
+        switch command {
+        case .startOneOff: return args.contains("-shared-test-creation-receipt-one-off")
+        case .saveRunAsRoutine: return args.contains("-shared-test-creation-receipt-save-as-routine")
+        default: return false
+        }
+    }
+
+    private func finishCreationReceiptAcceptance(_ receipt: ActionReceipt?, actionID: UUID, epoch: UInt64) {
+        guard currentForegroundSession(epoch), actionID == creationReceiptActionID,
+              let expected = creationReceiptCreatedID, let command = creationReceiptCommand,
+              let snapshot else { return }
+        guard receipt?.createdID == expected else {
+            creationReceiptAcceptanceStatus = "Creation receipt checks failed: originalID"
+            return
+        }
+        let single: Bool
+        switch command {
+        case .startOneOff(let title, _, _):
+            let runs = snapshot.state.runs.filter { $0.title == title }
+            single = runs.count == 1 && runs.first?.id == expected
+        case .saveRunAsRoutine:
+            single = snapshot.state.routines.count == 1 && snapshot.state.routines.first?.id == expected
+        default: single = false
+        }
+        creationReceiptAcceptanceStatus = single ? "Creation receipt checks passed"
+            : "Creation receipt checks failed: singleObject"
     }
 
     var restoreRaceChecksRequested: Bool {
@@ -785,7 +826,7 @@ final class ConnectedAppModel {
         } catch SharedStateFailure.notPaired {
             if currentForegroundSession(epoch) {
                 coordinator.endSession(); snapshot = nil; invitation = nil
-                issuedActions = []; suspendedScope = nil; unconfirmedActions = []
+                issuedActions = []; suspendedScope = nil; unconfirmedActions = []; creationCompletions = [:]
                 confirmedNoSpace = true
                 retryMembership = false
                 status = "This account is no longer paired."
@@ -825,6 +866,7 @@ final class ConnectedAppModel {
         foregroundEligible = false
         confirmedNoSpace = false
         guard selected, wasEligible else { return }
+        creationCompletions = [:]
         #if SECONDLOOK_DEMO
         cancelCommandAcceptance()
         #endif
@@ -888,6 +930,48 @@ final class ConnectedAppModel {
 
     struct ActionReceipt { let createdID: UUID? }
 
+    private struct CreationCompletion {
+        let owner: UUID
+        let epoch: UInt64
+        let complete: @MainActor (ActionReceipt) -> Void
+    }
+
+    func registerCreationCompletion(commandID: UUID, owner: UUID,
+                                    completion: @escaping @MainActor (ActionReceipt) -> Void) {
+        guard canUseForeground, snapshot != nil else { return }
+        creationCompletions[commandID] = CreationCompletion(owner: owner, epoch: generation,
+                                                           complete: completion)
+    }
+
+    func unregisterCreationCompletion(owner: UUID) {
+        creationCompletions = creationCompletions.filter { $0.value.owner != owner }
+    }
+
+    private func unconfirmedCreation(owner: UUID) -> UnconfirmedAction? {
+        unconfirmedActions.first { action in
+            guard let completion = creationCompletions[action.id] else { return false }
+            return completion.owner == owner && completion.epoch == generation &&
+                coordinator.hasUnconfirmedCommand(commandID: action.id)
+        }
+    }
+
+    func hasUnconfirmedCreation(owner: UUID) -> Bool {
+        unconfirmedCreation(owner: owner) != nil
+    }
+
+    @discardableResult
+    func retryCreationAction(owner: UUID) async -> ActionReceipt? {
+        guard let action = unconfirmedCreation(owner: owner) else { return nil }
+        return await retryUnconfirmedAction(action.id)
+    }
+
+    private func completeCreationFlow(_ receipt: ActionReceipt, commandID: UUID, epoch: UInt64) {
+        guard currentForegroundSession(epoch), let completion = creationCompletions[commandID],
+              completion.epoch == epoch else { return }
+        creationCompletions.removeValue(forKey: commandID)
+        completion.complete(receipt)
+    }
+
     struct UnconfirmedAction: Identifiable {
         let id: UUID
         let command: SharedCommand
@@ -921,6 +1005,7 @@ final class ConnectedAppModel {
         let epoch = generation
         let receipt = await execute(action.command, commandID: action.id)
         #if SECONDLOOK_DEMO
+        finishCreationReceiptAcceptance(receipt, actionID: id, epoch: epoch)
         if invitationReceiptChecksRequested && id == invitationReceiptActionID {
             await finishInvitationReceiptAcceptance(receipt, actionID: id, epoch: epoch)
         }
@@ -949,6 +1034,21 @@ final class ConnectedAppModel {
                     throw SharedStateFailure.staleState
                 }
             }
+            #if SECONDLOOK_DEMO
+            if shouldDropCreationReceipt(command), let client, let configuration, let accountID,
+               let snapshot {
+                let adapter = SharedInvitationReceiptLossClient(base: client, targetCommandID: commandID)
+                coordinator.beginSession(scope: SharedAccountScope(backend: configuration.backendID,
+                    accountID: accountID, spaceID: snapshot.spaceID), client: adapter)
+                try await coordinator.refresh()
+                guard currentForegroundSession(epoch) else { return nil }
+                guard coordinator.snapshot == snapshot else { throw SharedStateFailure.staleState }
+                didDropCreationReply = true
+                creationReceiptActionID = commandID
+                creationReceiptCommand = command
+                creationReceiptLossClient = adapter
+            }
+            #endif
             if !issuedActions.contains(where: { $0.id == commandID }) {
                 issuedActions.append(UnconfirmedAction(id: commandID, command: command))
             }
@@ -957,7 +1057,9 @@ final class ConnectedAppModel {
             issuedActions.removeAll { $0.id == commandID }
             unconfirmedActions.removeAll { $0.id == commandID }
             snapshot = coordinator.snapshot
-            return ActionReceipt(createdID: created)
+            let receipt = ActionReceipt(createdID: created)
+            completeCreationFlow(receipt, commandID: commandID, epoch: epoch)
+            return receipt
         } catch {
             if currentForegroundSession(epoch) {
                 snapshot = coordinator.snapshot
@@ -965,9 +1067,18 @@ final class ConnectedAppModel {
                 if unconfirmed && !unconfirmedActions.contains(where: { $0.id == commandID }) {
                     unconfirmedActions.append(UnconfirmedAction(id: commandID, command: command))
                 } else if !unconfirmed {
+                    creationCompletions.removeValue(forKey: commandID)
                     issuedActions.removeAll { $0.id == commandID }
                     unconfirmedActions.removeAll { $0.id == commandID }
                 }
+                #if SECONDLOOK_DEMO
+                if unconfirmed, commandID == creationReceiptActionID, let adapter = creationReceiptLossClient {
+                    let committedID = await adapter.committedCreatedID()
+                    guard currentForegroundSession(epoch) else { return nil }
+                    creationReceiptCreatedID = committedID
+                    simulatedCreationReplyLoss = true
+                }
+                #endif
                 let message = unconfirmed
                     ? "Could not confirm this action. Use Retry this action to check its original result."
                     : Self.safeMessage(error)
@@ -1012,6 +1123,13 @@ final class ConnectedAppModel {
         simulatedMembershipFailure = false
         simulatedForbiddenRestore = false
         forbiddenRestoreCredentialStatus = nil
+        simulatedCreationReplyLoss = false
+        creationReceiptAcceptanceStatus = nil
+        creationReceiptActionID = nil
+        creationReceiptCreatedID = nil
+        creationReceiptCommand = nil
+        creationReceiptLossClient = nil
+        didDropCreationReply = false
         didSimulateMembershipFailure = false
         simulatedPairingReplyLoss = false
         invitationReceiptAcceptanceTask?.cancel()
@@ -1041,6 +1159,7 @@ final class ConnectedAppModel {
         if let configuration { ConnectedKeychain.clearBinding(configuration: configuration) }
         if let vault { Task { await vault.invalidate() } }
         coordinator.endSession()
+        creationCompletions = [:]
         issuedActions = []
         suspendedScope = nil
         unconfirmedActions = []

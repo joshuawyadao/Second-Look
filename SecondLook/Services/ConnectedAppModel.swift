@@ -27,7 +27,21 @@ final class ConnectedAppModel {
     }
     private(set) var retryActionForError: UUID?
     private(set) var unconfirmedActions: [UnconfirmedAction] = []
+    private var errorSheetIDs: [UUID] = []
     var busy = false
+
+    func registerErrorSheet(_ id: UUID) {
+        if !errorSheetIDs.contains(id) { errorSheetIDs.append(id) }
+    }
+
+    func unregisterErrorSheet(_ id: UUID) {
+        errorSheetIDs.removeAll { $0 == id }
+    }
+
+    func canPresentSharedError(sheetID: UUID?) -> Bool {
+        guard errorMessage != nil else { return false }
+        return sheetID.map { errorSheetIDs.last == $0 } ?? errorSheetIDs.isEmpty
+    }
 
     #if SECONDLOOK_DEMO
     private(set) var commandAcceptanceStatus: String?

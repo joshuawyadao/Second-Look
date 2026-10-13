@@ -62,9 +62,26 @@ final class SharedMutationRecoveryUITests: XCTestCase {
         enter("sharedStepTitle-0", text: step, in: app)
         let highPriority = app.switches["High priority · photo and review"]
         XCTAssertTrue(highPriority.waitForExistence(timeout: 8))
-        for _ in 0..<8 where !highPriority.isHittable { app.swipeUp() }
+        func visibleBottom() -> CGFloat {
+            let keyboard = app.keyboards.firstMatch
+            return keyboard.exists
+                ? min(app.frame.maxY - 100, keyboard.frame.minY - 16)
+                : app.frame.maxY - 100
+        }
+        for _ in 0..<8 {
+            let frame = highPriority.frame
+            if frame.width > 0 && frame.height > 0 &&
+                frame.minY > app.frame.minY + 80 && frame.maxY < visibleBottom() { break }
+            app.swipeUp()
+        }
+        XCTAssertLessThan(highPriority.frame.maxY, visibleBottom())
         XCTAssertTrue(highPriority.isHittable)
-        highPriority.tap()
+        // SwiftUI exposes the row as a switch; target its trailing control.
+        highPriority.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let enabled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "1"), object: highPriority
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
         XCTAssertEqual(highPriority.value as? String, "1")
         tap("sharedSaveRoutine", in: app)
 
@@ -197,25 +214,26 @@ final class SharedMutationRecoveryUITests: XCTestCase {
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
         let button = app.buttons[identifier].firstMatch
+        let exists = button.waitForExistence(timeout: 8)
+        XCTAssertTrue(exists, "Missing button: \(identifier)", file: file, line: line)
+        guard exists else { return }
+        waitUntilEnabled(button, context: "Button should become enabled: \(identifier)")
         for _ in 0..<8 where !button.isHittable {
             let viewport = app.windows.firstMatch.frame
             let visibleBottom = app.keyboards.firstMatch.exists
                 ? min(viewport.maxY, app.keyboards.firstMatch.frame.minY) : viewport.maxY
-            if !button.exists || button.frame.minY >= visibleBottom - 8 {
+            if button.frame.maxY >= visibleBottom - 8 {
                 app.swipeUp()
-            } else if button.frame.maxY <= viewport.minY + 8 {
+            } else if button.frame.minY <= viewport.minY + 8 {
                 app.swipeDown()
             } else {
                 // A mounted control within the viewport may belong to a covered root view.
                 break
             }
         }
-        XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing button: \(identifier)",
-                      file: file, line: line)
         XCTAssertTrue(button.isHittable, "Button must be visible and tappable: \(identifier)",
                       file: file, line: line)
         guard button.isHittable else { return }
-        waitUntilEnabled(button, context: "Button should become enabled: \(identifier)")
         button.tap()
     }
 

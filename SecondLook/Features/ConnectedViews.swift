@@ -76,20 +76,14 @@ struct ConnectedRootView: View {
                 }
             }
         }
-        .sheet(isPresented: $settings) { ConnectedAccountSettingsView() }
-        .alert("Shared action not completed", isPresented: Binding(
-            get: { model.errorMessage != nil },
-            set: { if !$0 { model.errorMessage = nil } }
-        )) {
-            if let actionID = model.retryActionForError {
-                Button("Retry this action") {
-                    model.enqueue { _ = await model.retryUnconfirmedAction(actionID) }
-                }
-            }
-            Button("OK") { model.errorMessage = nil }
+        .sheet(isPresented: $settings) {
+            ConnectedAccountSettingsView().connectedActionErrors(inSheet: true)
         }
-        message: { Text(model.errorMessage ?? "") }
+        .connectedActionErrors()
         .tint(.teal)
+        .onChange(of: model.accountID) { _, account in
+            if account == nil { settings = false }
+        }
         .onAppear {
             if scenePhase == .active {
                 model.markForegroundActive()
@@ -389,7 +383,10 @@ private struct ConnectedRoutinesView: View {
         .navigationTitle("Routines")
         .navigationDestination(for: UUID.self) { ConnectedChecklistView(runID: $0) }
         .navigationDestination(item: $destination) { ConnectedChecklistView(runID: $0) }
-        .sheet(item: $editor) { ConnectedRoutineEditorView(request: $0) { destination = $0 } }
+        .sheet(item: $editor) {
+            ConnectedRoutineEditorView(request: $0) { destination = $0 }
+                .connectedActionErrors(inSheet: true)
+        }
         .confirmationDialog("A checklist is already open", isPresented: Binding(
             get: { startChoice != nil }, set: { if !$0 { startChoice = nil } }
         )) {
@@ -618,6 +615,7 @@ private struct ConnectedChecklistView: View {
                     .sheet(isPresented: $preferences) {
                         ConnectedRunPreferencesView(runID: run.id, revision: run.revision,
                                                     settings: run.settings)
+                            .connectedActionErrors(inSheet: true)
                     }
                     .confirmationDialog("Cancel this checklist?", isPresented: $cancelConfirmation) {
                         Button("Cancel checklist", role: .destructive) {
@@ -725,7 +723,9 @@ private struct ConnectedReviewView: View {
         }
         .navigationTitle("Review")
         .toolbar { Button("Refresh") { model.enqueue { await model.refresh() } } }
-        .sheet(item: $selected) { ConnectedReviewDetailView(request: $0) }
+        .sheet(item: $selected) {
+            ConnectedReviewDetailView(request: $0).connectedActionErrors(inSheet: true)
+        }
     }
 }
 

@@ -107,6 +107,7 @@ final class ConnectedAppModel {
     private(set) var overlappingRefreshAcceptanceResult: Bool?
     @ObservationIgnored private var delayNextRefreshForAcceptance = false
     @ObservationIgnored private var refreshContinuationForAcceptance: CheckedContinuation<Void, Never>?
+    @ObservationIgnored private var initialRevisionFloorForAcceptance: Int?
     #endif
 
     @ObservationIgnored private let coordinator = SharedStateCoordinator()
@@ -477,7 +478,21 @@ final class ConnectedAppModel {
             publishIssuedActionsAfterVerification()
         } else {
             let restoringSameScope = suspendedScope == scope
-            coordinator.beginSession(scope: scope, client: client)
+            #if SECONDLOOK_DEMO
+            let coordinatorClient: any SharedStateClient
+            if initialRevisionFloorChecksRequested && !restoringSameScope && incoming.revision > 0 {
+                // The membership lookup above is genuine. Only the first two explicit-space
+                // fetch responses are made to appear one revision behind for local acceptance.
+                initialRevisionFloorForAcceptance = incoming.revision
+                coordinatorClient = SharedLaggingInitialSnapshotClient(base: client,
+                    initialRevision: incoming.revision)
+            } else {
+                coordinatorClient = client
+            }
+            #else
+            let coordinatorClient: any SharedStateClient = client
+            #endif
+            coordinator.beginSession(scope: scope, client: coordinatorClient)
             if restoringSameScope {
                 // Core retains only issued envelopes for this verified account/space.
                 // Do not expose retry metadata until its fetch also succeeds.
@@ -558,6 +573,10 @@ final class ConnectedAppModel {
         return [configuration.authURL, configuration.serverURL].allSatisfy {
             $0.scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains($0.host ?? "")
         }
+    }
+
+    private var initialRevisionFloorChecksRequested: Bool {
+        localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-initial-revision-floor")
     }
 
     func runSharedCleanupProbe() async {
@@ -1007,7 +1026,13 @@ final class ConnectedAppModel {
                 } else {
                     retryMembership = snapshot == nil
                 }
-                if !quietly { errorMessage = message }
+                #if SECONDLOOK_DEMO
+                let awaitingFloorDiagnostic = initialRevisionFloorForAcceptance != nil &&
+                    error as? SharedStateFailure == .staleState
+                #else
+                let awaitingFloorDiagnostic = false
+                #endif
+                if !quietly && !awaitingFloorDiagnostic { errorMessage = message }
                 busy = false
             }
         }
@@ -1224,11 +1249,22 @@ final class ConnectedAppModel {
         defer { if currentForegroundSession(epoch) { busy = false } }
         do {
             // Coordinator owns exact space revision, actor scope, and response publication.
-            if coordinator.snapshot == nil {
+            if coordinator.snapshot != snapshot {
                 try await coordinator.refresh()
                 guard currentForegroundSession(epoch) else { return nil }
-                guard coordinator.snapshot == snapshot else {
-                    snapshot = coordinator.snapshot
+                guard let refreshed = coordinator.snapshot, let visible = snapshot else {
+                    throw SharedStateFailure.staleState
+                }
+                guard refreshed.revision >= visible.revision else {
+                    // The genuine membership snapshot may be newer than the first
+                    // explicit-space fetch. Keep it visible and retry from its floor.
+                    throw SharedStateFailure.staleState
+                }
+                if refreshed.revision == visible.revision && refreshed != visible {
+                    throw SharedStateFailure.invalidResponse
+                }
+                guard refreshed == visible else {
+                    snapshot = refreshed
                     throw SharedStateFailure.staleState
                 }
             }
@@ -1297,7 +1333,17 @@ final class ConnectedAppModel {
                 }
                 #endif
                 if handleSessionOrScopeLoss(error) { return nil }
-                snapshot = coordinator.snapshot
+                let keepVerifiedSnapshot: Bool
+                if let visible = snapshot, let fetched = coordinator.snapshot,
+                   fetched.spaceID == visible.spaceID {
+                    keepVerifiedSnapshot = fetched.revision < visible.revision ||
+                        (fetched.revision == visible.revision && fetched != visible)
+                } else {
+                    keepVerifiedSnapshot = false
+                }
+                if !keepVerifiedSnapshot {
+                    snapshot = coordinator.snapshot
+                }
                 let unconfirmed = coordinator.hasUnconfirmedCommand(commandID: commandID) ||
                     coordinator.hasConfirmedReceipt(commandID: commandID, command: command)
                 if unconfirmed && !unconfirmedActions.contains(where: { $0.id == commandID }) {
@@ -1318,9 +1364,27 @@ final class ConnectedAppModel {
                 let message = unconfirmed
                     ? "Could not confirm this action. Use Retry this action to check its original result."
                     : Self.safeMessage(error)
-                errorMessage = message
+                #if SECONDLOOK_DEMO
+                let awaitingFloorDiagnostic = initialRevisionFloorForAcceptance != nil &&
+                    error as? SharedStateFailure == .staleState
+                #else
+                let awaitingFloorDiagnostic = false
+                #endif
+                if !awaitingFloorDiagnostic { errorMessage = message }
                 if unconfirmed { retryActionForError = commandID }
-                if error as? SharedStateFailure == .staleState { await refreshInstalledSpace() }
+                if error as? SharedStateFailure == .staleState {
+                    await refreshInstalledSpace()
+                    #if SECONDLOOK_DEMO
+                    if let initialRevisionFloorForAcceptance,
+                       currentForegroundSession(epoch) {
+                        // The diagnostic reflects the final model state even if the
+                        // automatic genuine membership refresh happened to succeed.
+                        let diagnostic = "Simulated lagging explicit-space response: visible revision \(snapshot?.revision ?? -1), genuine membership revision \(initialRevisionFloorForAcceptance)"
+                        status = diagnostic
+                        errorMessage = diagnostic
+                    }
+                    #endif
+                }
             }
             return nil
         }
@@ -1400,6 +1464,7 @@ final class ConnectedAppModel {
         simulatedLifecycleRevalidationPause = false
         resumeRefreshForAcceptance()
         delayNextRefreshForAcceptance = false
+        initialRevisionFloorForAcceptance = nil
         confirmedCreationConsumptionContinuation?.resume()
         confirmedCreationConsumptionContinuation = nil
         simulatedConfirmedCreationConsumptionPause = false
@@ -1466,6 +1531,7 @@ final class ConnectedAppModel {
         lifecycleRevalidationPauseCount = 0
         resumeRefreshForAcceptance()
         delayNextRefreshForAcceptance = false
+        initialRevisionFloorForAcceptance = nil
         restoreCandidateCount = 0
         didDropRenewalReply = false
         didDropCreateReply = false
@@ -1522,3 +1588,31 @@ final class ConnectedAppModel {
         }
     }
 }
+
+#if SECONDLOOK_DEMO
+/// Localhost UI acceptance only. Each fetch checks the real server first; the
+/// first two decoded explicit-space snapshots then report a simulated older revision.
+private actor SharedLaggingInitialSnapshotClient: SharedStateClient {
+    let base: SharedHTTPClient
+    let initialRevision: Int
+    var laggingResponsesRemaining = 2
+
+    init(base: SharedHTTPClient, initialRevision: Int) {
+        self.base = base
+        self.initialRevision = initialRevision
+    }
+
+    func fetch(spaceID: UUID) async throws -> SharedSnapshot {
+        var genuine = try await base.fetch(spaceID: spaceID)
+        if laggingResponsesRemaining > 0 && genuine.revision >= initialRevision {
+            laggingResponsesRemaining -= 1
+            genuine.revision = initialRevision - 1
+        }
+        return genuine
+    }
+
+    func execute(_ envelope: SharedCommandEnvelope) async throws -> SharedCommandResult {
+        try await base.execute(envelope)
+    }
+}
+#endif

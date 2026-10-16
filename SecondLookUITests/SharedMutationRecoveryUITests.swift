@@ -141,6 +141,69 @@ final class SharedMutationRecoveryUITests: XCTestCase {
         assertSignedOutWithoutRoutine(title, in: app)
     }
 
+    func testInitialMembershipRevisionSurvivesLaggingExplicitFetch() throws {
+        let fixture = try loadFixture(for: "revision-floor")
+        let app = launch(fixture, scenario: "-shared-test-initial-revision-floor")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+
+        // A new space starts at revision zero. Commit one real preparatory write,
+        // then sign in again so discovery holds revision N before the coordinator
+        // has fetched an explicit-space snapshot in this new session.
+        let preparationTitle = "Revision floor preparation synthetic routine"
+        tap("sharedCreateRoutine", in: app)
+        enter("sharedRoutineTitle", text: preparationTitle, in: app)
+        enter("sharedStepTitle-0", text: "Prepare synthetic revision", in: app)
+        tap("sharedSaveRoutine", in: app)
+        XCTAssertTrue(revealRoutine(preparationTitle, in: app))
+        tap("Account settings", in: app)
+        tap("sharedSignOut", in: app)
+        let email = app.textFields["sharedEmail"]
+        let password = app.secureTextFields["sharedPassword"]
+        XCTAssertTrue(email.waitForExistence(timeout: 20))
+        email.tap()
+        email.typeText(fixture.owner.email)
+        XCTAssertTrue(password.waitForExistence(timeout: 8))
+        password.tap()
+        password.typeText(fixture.owner.password)
+        tap("sharedSignIn", in: app)
+        XCTAssertTrue(app.buttons["sharedCreateRoutine"].waitForExistence(timeout: 20),
+                      "The genuine membership lookup must restore the existing space")
+
+        let title = "Initial revision floor synthetic routine"
+        let step = "Check synthetic step"
+        tap("sharedCreateRoutine", in: app)
+        enter("sharedRoutineTitle", text: title, in: app)
+        enter("sharedStepTitle-0", text: step, in: app)
+        tap("sharedSaveRoutine", in: app)
+
+        let rejection = app.alerts["Shared action not completed"]
+        XCTAssertTrue(rejection.waitForExistence(timeout: 20),
+                      "A simulated older explicit-space response must block the first command")
+        let prefix = "Simulated lagging explicit-space response: visible revision "
+        let diagnostic = rejection.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        XCTAssertTrue(diagnostic.waitForExistence(timeout: 20),
+                      "The Debug diagnostic must identify the simulated response and retained revision")
+        let revisions = String(diagnostic.label.dropFirst(prefix.count))
+            .components(separatedBy: ", genuine membership revision ")
+        XCTAssertEqual(revisions.count, 2)
+        if revisions.count == 2 {
+            XCTAssertEqual(Int(revisions[0]), Int(revisions[1]),
+                           "The first genuine membership revision must remain visible after both lagging fetches")
+            XCTAssertGreaterThan(Int(revisions[0]) ?? -1, 0)
+        }
+        rejection.buttons["OK"].tap()
+
+        XCTAssertEqual(app.textFields["sharedRoutineTitle"].value as? String, title,
+                       "The rejected attempt must preserve the unsaved editor")
+        waitUntilEnabled(app.buttons["sharedSaveRoutine"], context: "Retry after lagging fetches")
+        tap("sharedSaveRoutine", in: app)
+        XCTAssertTrue(revealRoutine(title, in: app),
+                      "A later genuine explicit-space fetch must permit one accepted routine")
+        XCTAssertEqual(app.staticTexts.matching(identifier: "sharedRoutine-\(title)").count, 1,
+                       "Only the successful retry may create the target routine")
+    }
+
     private func loadFixture(for scenario: String) throws -> Fixture {
         continueAfterFailure = false
         guard let path = ProcessInfo.processInfo.environment["SECONDLOOK_SHARED_UI_FIXTURE"] else {

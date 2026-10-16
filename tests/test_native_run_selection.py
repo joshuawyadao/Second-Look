@@ -84,13 +84,17 @@ class NativeRunSelectionTests(unittest.TestCase):
             self.assertFalse((products / OLD_NAME).exists())
             self.assert_unrelated_preserved(unrelated)
 
-    def test_lifecycle_and_alert_recovery_use_separate_fixtures(self):
+    def test_recovery_probes_select_their_own_method_and_fixture(self):
         runner = load_runner("verify-connected-native.py")
         methods = {
-            "lifecycle": "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership",
-            "alert": "testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation",
+            "lifecycle": ("SharedInvitationReceiptRecoveryUITests",
+                          "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership"),
+            "alert": ("SharedInvitationReceiptRecoveryUITests",
+                      "testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation"),
+            "revision-floor": ("SharedMutationRecoveryUITests",
+                               "testInitialMembershipRevisionSurvivesLaggingExplicitFetch"),
         }
-        for scenario, method in methods.items():
+        for scenario, (suite, method) in methods.items():
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
                 derived, products, _ = self.make_products(directory)
                 fixture = Path(directory) / "fixture.json"
@@ -116,7 +120,7 @@ class NativeRunSelectionTests(unittest.TestCase):
                                                 "SECONDLOOK_DERIVED_DATA": str(derived)}), \
                         patch.object(runner, "run_owned", side_effect=fake_native), redirect_stdout(io.StringIO()):
                     runner.main()
-                prefix = "-only-testing:SecondLookUITests/SharedInvitationReceiptRecoveryUITests/"
+                prefix = "-only-testing:SecondLookUITests/" + suite + "/"
                 self.assertEqual(selected, [prefix + method])
 
     def test_hosted_main_uses_current_build_configuration(self):

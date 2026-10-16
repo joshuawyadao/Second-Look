@@ -31,7 +31,10 @@ public struct SharedSnapshot: Codable, Equatable, Sendable {
         }
         let memberSet = Set(members)
         for run in state.runs {
-            guard memberSet.contains(run.performerID),
+            // A terminal item mutation increments once for the edit and once for closure.
+            // Keep Int.max unused in the resulting snapshot as well as the loaded input.
+            guard (!run.isOpen || run.revision < Int.max - 2),
+                  memberSet.contains(run.performerID),
                   run.reviewerID.map(memberSet.contains) ?? true else {
                 throw SharedStateFailure.invalidResponse
             }

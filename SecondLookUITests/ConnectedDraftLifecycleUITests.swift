@@ -131,7 +131,21 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
         app.activate()
         XCTAssertTrue(app.buttons["sharedSignIn"].waitForExistence(timeout: 30),
                       "A forbidden foreground membership result must clear the connected session")
-        XCTAssertFalse(app.textFields["sharedRoutineTitle"].exists)
+        let oldEditor = app.textFields["sharedRoutineTitle"]
+        XCTAssertFalse(oldEditor.isHittable,
+                       "The old editor must not be interactive when sign-in appears")
+        XCTAssertFalse(app.keyboards.firstMatch.exists,
+                       "Access loss must hide the private editor's keyboard")
+        if oldEditor.exists {
+            let transition = XCTAttachment(screenshot: app.screenshot())
+            transition.name = "Synthetic access-loss dismissal transition"
+            transition.lifetime = .keepAlways
+            add(transition)
+        }
+        let dismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: oldEditor)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 8), .completed,
+                       "Access loss must finish dismissing the old editor")
         XCTAssertFalse(app.staticTexts["Must clear on access loss"].exists)
 
         signIn(fixture.owner, in: app)
@@ -190,10 +204,21 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
     }
 
     private func ensureOwnerSpace(in app: XCUIApplication) {
-        if app.buttons["createPrivateSpace"].waitForExistence(timeout: 5) {
+        let routines = app.buttons["sharedCreateRoutine"]
+        let create = app.buttons["createPrivateSpace"]
+        // Discovery initially mounts disabled Create even for an existing member.
+        // Decide which setup path to use only after genuine membership settles.
+        let membership = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            routines.exists || (create.exists && create.isEnabled)
+        }, object: app)
+        guard XCTWaiter.wait(for: [membership], timeout: 30) == .completed else {
+            XCTFail("Genuine membership must reveal the existing space or enable creation")
+            return
+        }
+        if !routines.exists {
             tap("createPrivateSpace", in: app)
         }
-        XCTAssertTrue(app.buttons["sharedCreateRoutine"].waitForExistence(timeout: 20))
+        XCTAssertTrue(routines.waitForExistence(timeout: 20))
     }
 
     private func loadFixture() throws -> Fixture {

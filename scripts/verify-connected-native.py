@@ -91,7 +91,7 @@ def main():
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     selection.add_argument("--only-pairing-recovery", action="store_true",
                            help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
-    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "forbidden", "creation", "cleanup", "draft-lifecycle"),
+    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "forbidden", "creation", "cleanup", "draft-lifecycle"),
                         help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
     if args.only_pairing_recovery != (args.recovery_case is not None):
@@ -162,7 +162,7 @@ def main():
                          "ConnectedCleanupStatusUITests" if args.recovery_case == "cleanup" else
                          "SharedCreationReceiptRecoveryUITests" if args.recovery_case == "creation" else
                          "SharedForbiddenRestoreUITests" if args.recovery_case == "forbidden" else
-                         "SharedInvitationReceiptRecoveryUITests" if args.recovery_case in ("receipt", "lifecycle") else
+                         "SharedInvitationReceiptRecoveryUITests" if args.recovery_case in ("receipt", "lifecycle", "alert") else
                          "SharedMutationRecoveryUITests" if args.recovery_case in ("busy", "draft", "identity")
                          else "SharedPairingRecoveryUITests")
                 selected_tests = ["-only-testing:SecondLookUITests/" + suite + "/" + {
@@ -175,6 +175,7 @@ def main():
                     "receipt": "testRenewalPreservesOriginalCommandReceipt",
                     "create": "testInitialCreateReplyLossRequiresMembershipCheckBeforeRenewal",
                     "lifecycle": "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership",
+                    "alert": "testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation",
                     "forbidden": "testForbiddenRestoreClearsSavedCredentialsBeforeRelaunch",
                     "draft-lifecycle": "testEditorDraftSurvivesVerifiedForegroundReturn",
                     "cleanup": "testConnectedArchivesShowDistinctSyntheticCleanupStates",
@@ -184,9 +185,6 @@ def main():
                     selected_tests = ["-only-testing:SecondLookUITests/ConnectedDraftLifecycleUITests"]
                 if args.recovery_case == "creation":
                     selected_tests = ["-only-testing:SecondLookUITests/SharedCreationReceiptRecoveryUITests"]
-                if args.recovery_case == "lifecycle":
-                    selected_tests.append("-only-testing:SecondLookUITests/SharedInvitationReceiptRecoveryUITests/"
-                                          "testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation")
             elif args.only_invitation_access_loss:
                 selected_tests = ["-only-testing:SecondLookUITests/SharedInvitationAccessLossUITests"]
             else:

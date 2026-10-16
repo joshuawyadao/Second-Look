@@ -153,7 +153,7 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
 
     func testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation() throws {
         continueAfterFailure = false
-        let fixture = try loadFixture(for: "lifecycle")
+        let fixture = try loadFixture(for: "alert")
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing", "-shared-testing", "-reset-demo",
                                "-shared-no-periodic-poll", "-shared-test-lifecycle-receipt"]
@@ -175,19 +175,12 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
         password.tap()
         password.typeText(fixture.owner.password)
         tap("sharedSignIn", in: app)
-        // The other lifecycle case may already have created this fixture space.
-        // Renew the existing owner's invitation to start a fresh local probe.
-        let routines = app.buttons["sharedCreateRoutine"]
+        // This recovery case gets its own empty synthetic aggregate.
         let create = app.buttons["createPrivateSpace"]
-        let deadline = Date().addingTimeInterval(30)
-        while Date() < deadline && !routines.exists && !(create.exists && create.isEnabled) {
-            Thread.sleep(forTimeInterval: 0.25)
-        }
-        if routines.exists { tap("Account settings", in: app) }
         let eligible = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == true AND enabled == true"), object: create)
         XCTAssertEqual(XCTWaiter.wait(for: [eligible], timeout: 20), .completed,
-                       "A verified new or existing owner must be eligible before setup writes")
+                       "Genuine membership lookup must enable Create before setup writes")
         create.tap()
 
         let result = app.staticTexts["sharedInvitationReceiptResult"]

@@ -1,20 +1,23 @@
-# Plan
+# Plan — October 16 connected acceptance and PR review
 
-Finish the remaining connected acceptance and review of Second Look PR #2 after the October 16 Docker restart. Preserve existing hosted accounts and records, validate real localhost Auth/Postgres/HTTP separately from explicitly simulated response failures, and leave the PR unmerged.
+Complete the remaining local connected tests and review of PR #2 on `codex/milestone-2-private-shared-state`. Preserve hosted accounts, sessions and records. Leave the PR unmerged; hosted server/schema deployment, paid services, real media and distribution remain outside this task.
 
-## Scope
-- In: Existing codex/milestone-2-private-shared-state branch; dedicated synthetic local stack and task-owned simulator; three new native probes plus the full 24 connected cases; both local API-key integration/restart modes; focused harness or product fixes justified by failures; canonical evidence, review, CI, commits and push.
-- Out: Hosted provisioning, schema/server deployment, account resets/allowlist changes, real photos, uploads, deletion, push, paid services, signing/distribution and merge. The deployed server/schema remain unchanged; M2 completion is separate from PR code readiness.
+## Completed local work
 
-## Action items
-[x] Checkpoint this resolved plan after reading product/operations/verification docs, tests and current PR state. Existing source f758c4d is clean, all eight CI checks pass, and 57 of 59 review threads are resolved; the user authorized resolving validated threads throughout this cycle.
-[x] Recover bounded simulator discovery without erasing devices or resetting existing clients. Docker29.6.1 responds and the four named local containers report healthy/running; no broad Docker reset or pruning is needed.
-[x] Isolate the pending-alert native probe in its own fresh synthetic recovery scenario. The current combined lifecycle selection leaves a space that makes the second method target a nonexistent Create button in account settings. Preserve privacy/retry assertions and explicit simulation labels; add meaningful runner-selection coverage.
-[ ] Run the official modern-key localhost schema/Auth/HTTP/restart workflow; execute the complete 24 connected native cases, including the creation and alert probes with the unchanged original assertions. Diagnose actual failures before changing code; keep private logs and credentials outside Git.
-[ ] Run legacy-key localhost integration/restart. Run repository/package/server/native Debug/Release/Release-exclusion checks appropriate to any new code changes, without crediting fixture-gated skips as acceptance.
-[ ] Update docs/Verification.md and docs/Backend-Operations.md with actual source/results and remaining hosted/device limits. Update Architecture/ADR only if product/session behavior changes; fixture isolation alone changes no production contract.
-[ ] Run scoped Brooks follow-up and fresh Codex review, fix actionable feedback per item with regression evidence/save/push/reaction, and resolve the two pending threads only after their native probes pass. Existing GitHub helper skill files are unavailable; use the connected thread tools and equivalent gh reads/checks.
-[ ] Save/push final evidence; verify terminal saved-head CI, fresh thread/review/conflict state; keep original hosted sessions/records, stop only task-owned local resources with volumes preserved, and report PR readiness without merging.
+- [x] Read canonical product/architecture/operations/verification instructions and checkpoint the resolved plan.
+- [x] Restore bounded simulator discovery and the named localhost stack without data erasure, pruning or global resets.
+- [x] Isolate alert and lifecycle fixtures; preserve privacy, receipt and version assertions.
+- [x] Address all five new Codex findings separately with meaningful regressions, commits/pushes and acknowledgment. Resolve all 64 validated threads under the user's authorization.
+- [x] Validate all 25 distinct connected native cases on current application/server source 4a488b2 across bounded resumed invocations. Keep failed attempts and simulated faults labeled; do not claim one uninterrupted full-command pass.
+- [x] Fix only demonstrated test setup/synchronization gaps in fdb9024/b2bc7e6. Require genuine membership, immediate privacy, actual sheet removal and later-sign-in draft purge.
+- [x] Pass both official modern/legacy local schema/Auth/Postgres/HTTP/command-server-restart workflows; 123 portable cases, 29 Debug/27 Release server boundary cases and 51 repository tooling cases. Fixture-gated skips are not acceptance.
+- [x] Repeat current-app hosted existing-session checks on both original clients without changing deployed server/schema or prior records.
+- [x] Update canonical evidence/contracts/operations and complete scoped Brooks follow-up. Stop only named synthetic resources with volumes/data preserved.
+
+## Final save and remote gate
+
+Save and push task-owned evidence on the existing feature branch. Read final-head checks through terminal completion, including both CI Verify aggregates and ordinary native Debug/Release/exclusion. Recheck threads/review/conflicts immediately before closing; the PR body and GitHub check records hold the final remote result, avoiding a self-referential documentation-commit hash. Keep the PR draft and unmerged while current-server hosted upgrade/acceptance is deferred. Do not treat an earlier green head as final-head CI.
 
 ## Open questions
-- None for implementation or testing. Docker restart is confirmed. Modern-key SQL/Auth/HTTP/restart and all 51 repository tooling cases pass; the complete native workflow is running on the task-owned iOS 26.5 simulator. Hosted deployment and paid/distribution decisions remain outside this request.
+
+None for this task. Milestone 2 remains in progress: coordinated hosted server/schema upgrade and its current-source acceptance are a separate follow-up. No real photos, uploads, connected cleanup jobs, push, physical-device/VoiceOver or distribution acceptance is claimed.

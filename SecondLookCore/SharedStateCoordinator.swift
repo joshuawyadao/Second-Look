@@ -20,6 +20,9 @@ public final class SharedStateCoordinator {
     /// A command with an unknown outcome must keep its full original request for receipt lookup.
     /// This is session memory only; durable offline intent belongs to a later milestone.
     private var unconfirmedCommands: [SharedCommandEnvelope] = []
+    /// Keep the view from when each command was first sent. A later refresh may
+    /// already contain its genuine creation before an exact receipt retry.
+    private var originalObjectIDsByCommand: [UUID: Set<UUID>] = [:]
     private struct ConfirmedRecord {
         let scope: SharedAccountScope
         let receipt: ConfirmedCommandReceipt
@@ -43,6 +46,7 @@ public final class SharedStateCoordinator {
         snapshot = nil
         if (suspendedScope ?? self.scope) != scope {
             unconfirmedCommands = []
+            originalObjectIDsByCommand = [:]
             confirmedCommands = []
             revisionFloor = 0
         }
@@ -70,6 +74,7 @@ public final class SharedStateCoordinator {
         generation &+= 1
         snapshot = nil
         unconfirmedCommands = []
+        originalObjectIDsByCommand = [:]
         confirmedCommands = []
         inFlightAttempts = [:]
         acknowledgedInFlight = [:]
@@ -148,7 +153,12 @@ public final class SharedStateCoordinator {
             envelope = SharedCommandEnvelope(spaceID: scope.spaceID, commandID: commandID,
                                              expectedSpaceRevision: snapshot.revision, command: command)
             // Register before awaiting the client so an explicit overlapping retry shares this ID.
+            originalObjectIDsByCommand[commandID] = Set(snapshot.state.runs.map(\.id))
+                .union(snapshot.state.routines.map(\.id))
             unconfirmedCommands.append(envelope)
+        }
+        guard let originalObjectIDs = originalObjectIDsByCommand[commandID] else {
+            throw SharedStateFailure.invalidResponse
         }
         inFlightAttempts[attemptKey, default: 0] += 1
         defer { finishAttempt(attemptKey) }
@@ -161,7 +171,8 @@ public final class SharedStateCoordinator {
             }
             try validateCreatedID(result.createdID, for: command, in: result.snapshot,
                                   accountID: scope.accountID,
-                                  expectedSpaceRevision: envelope.expectedSpaceRevision)
+                                  expectedSpaceRevision: envelope.expectedSpaceRevision,
+                                  originalObjectIDs: originalObjectIDs)
             let receipt = ConfirmedCommandReceipt(commandID: commandID, command: command,
                 snapshotRevision: result.snapshot.revision, createdID: result.createdID)
             if let existing = confirmedCommands.first(where: { $0.receipt.commandID == commandID }) {
@@ -181,11 +192,13 @@ public final class SharedStateCoordinator {
                 confirmedCommands.append(ConfirmedRecord(scope: scope, receipt: receipt))
             }
             unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
+            originalObjectIDsByCommand.removeValue(forKey: envelope.commandID)
             return result.createdID
         } catch {
             try requireCurrent(scope: scope, generation: capturedGeneration)
             if isDefiniteRejection(error) {
                 unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
+                originalObjectIDsByCommand.removeValue(forKey: envelope.commandID)
             }
             try handle(error, scope: scope, generation: capturedGeneration)
             throw error
@@ -206,29 +219,32 @@ public final class SharedStateCoordinator {
     private func validateCreatedID(_ createdID: UUID?, for command: SharedCommand,
                                    in snapshot: SharedSnapshot,
                                    accountID: UUID,
-                                   expectedSpaceRevision: Int) throws {
+                                   expectedSpaceRevision: Int,
+                                   originalObjectIDs: Set<UUID>) throws {
         switch command {
         case let .startRun(routineID, _):
-            guard let createdID,
+            guard let createdID, !originalObjectIDs.contains(createdID),
                   let run = snapshot.state.runs.first(where: { $0.id == createdID }),
                   run.performerID == accountID, run.routineID == routineID else {
                 throw SharedStateFailure.invalidResponse
             }
         case .startOneOff:
-            guard let createdID,
+            guard let createdID, !originalObjectIDs.contains(createdID),
                   let run = snapshot.state.runs.first(where: { $0.id == createdID }),
                   run.performerID == accountID, run.routineID == nil else {
                 throw SharedStateFailure.invalidResponse
             }
         case let .repeatRun(sourceID, _):
-            guard let createdID, createdID != sourceID,
+            guard let createdID, createdID != sourceID, !originalObjectIDs.contains(createdID),
                   let source = snapshot.state.runs.first(where: { $0.id == sourceID }),
                   let run = snapshot.state.runs.first(where: { $0.id == createdID }),
                   run.performerID == accountID, run.routineID == source.routineID else {
                 throw SharedStateFailure.invalidResponse
             }
         case .saveRunAsRoutine:
-            guard let createdID else { throw SharedStateFailure.invalidResponse }
+            guard let createdID, !originalObjectIDs.contains(createdID) else {
+                throw SharedStateFailure.invalidResponse
+            }
             // An exact commit view must contain the new routine. A receipt replay
             // may carry a later current view after that routine was deleted.
             if snapshot.revision - expectedSpaceRevision == 1,

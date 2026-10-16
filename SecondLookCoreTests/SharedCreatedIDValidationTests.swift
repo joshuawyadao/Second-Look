@@ -71,6 +71,37 @@ private actor DeletedCreatedRoutineReplayClient: SharedStateClient {
     }
 }
 
+private actor LostCreationReplyClient: SharedStateClient {
+    private var current: SharedSnapshot
+    private var originalEnvelope: SharedCommandEnvelope?
+    private var committed: SharedCommandResult?
+    private let actorID: UUID
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    init(snapshot: SharedSnapshot, actorID: UUID) {
+        current = snapshot
+        self.actorID = actorID
+    }
+
+    func fetch(spaceID: UUID) async throws -> SharedSnapshot {
+        guard spaceID == current.spaceID else { throw SharedStateFailure.scopeMismatch }
+        return current
+    }
+
+    func execute(_ envelope: SharedCommandEnvelope) async throws -> SharedCommandResult {
+        if let committed {
+            guard originalEnvelope == envelope else { throw SharedStateFailure.invalidResponse }
+            return committed
+        }
+        let result = try SharedCommandProcessor.apply(envelope, to: current,
+                                                      actorID: actorID, now: now)
+        current = result.snapshot
+        originalEnvelope = envelope
+        committed = result
+        throw SharedStateFailure.serviceUnavailable
+    }
+}
+
 @MainActor
 final class SharedCreatedIDValidationTests: XCTestCase {
     private let actorID = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
@@ -194,6 +225,74 @@ final class SharedCreatedIDValidationTests: XCTestCase {
         } catch { XCTAssertEqual(error as? SharedStateFailure, .invalidResponse) }
         XCTAssertEqual(coordinator.snapshot, initial)
         XCTAssertTrue(coordinator.hasUnconfirmedCommand(commandID: actionID))
+    }
+
+    func testCreationCannotClaimPreexistingSameAccountObject() async throws {
+        let items = [RoutineItem(title: "Keys")]
+        let routine = Routine(title: "Morning", items: items)
+        var state = SecondLookState()
+        try state.saveRoutine(routine)
+        let priorRoutineRunID = try state.startRun(routineID: routine.id,
+                                                   performerID: actorID, reviewerID: reviewerID, now: now)
+        let otherRoutineRunID = try state.startRun(routineID: routine.id,
+                                                   performerID: actorID, reviewerID: reviewerID, now: now)
+        let priorOneOffID = try state.startOneOff(title: "Old one-off", items: items,
+                                                 performerID: actorID, reviewerID: reviewerID, now: now)
+        let priorOneOffRevision = try XCTUnwrap(state.runs.first { $0.id == priorOneOffID }?.revision)
+        try state.cancel(runID: priorRoutineRunID, actorID: actorID, now: now)
+        let closedRunRevision = try XCTUnwrap(state.runs.first { $0.id == priorRoutineRunID }?.revision)
+        let initial = snapshot(state: state)
+        let cases: [(String, SharedCommand, UUID)] = [
+            ("startRun", .startRun(routineID: routine.id, expectedDefinitionVersion: 1), priorRoutineRunID),
+            ("startOneOff", .startOneOff(title: "New one-off", items: items, settings: .init()), priorOneOffID),
+            ("repeatRun", .repeatRun(runID: priorRoutineRunID, expectedRunRevision: closedRunRevision),
+             otherRoutineRunID),
+            ("saveRunAsRoutine", .saveRunAsRoutine(runID: priorOneOffID,
+                                                   expectedRunRevision: priorOneOffRevision, title: nil), routine.id)
+        ]
+        for (name, command, oldID) in cases {
+            let client = CreatedIDResponseClient(snapshot: initial, actorID: actorID,
+                                                 change: .existing(oldID))
+            let coordinator = SharedStateCoordinator()
+            coordinator.beginSession(scope: scope, client: client)
+            _ = try await coordinator.refresh()
+            let actionID = UUID()
+            do {
+                _ = try await coordinator.execute(command, commandID: actionID)
+                XCTFail("\(name) accepted a preexisting created ID")
+            } catch { XCTAssertEqual(error as? SharedStateFailure, .invalidResponse, name) }
+            XCTAssertEqual(coordinator.snapshot, initial, name)
+            XCTAssertTrue(coordinator.hasUnconfirmedCommand(commandID: actionID), name)
+            XCTAssertFalse(coordinator.hasConfirmedReceipt(commandID: actionID, command: command), name)
+        }
+    }
+
+    func testGenuineCreatedIDSurvivesLostReplyAndRefreshBeforeExactRetry() async throws {
+        var state = SecondLookState()
+        _ = try state.startOneOff(title: "Old one-off", items: [RoutineItem(title: "Keys")],
+                                  performerID: actorID, reviewerID: reviewerID, now: now)
+        let initial = snapshot(state: state)
+        let command = SharedCommand.startOneOff(title: "New one-off",
+                                                 items: [RoutineItem(title: "Wallet")], settings: .init())
+        let client = LostCreationReplyClient(snapshot: initial, actorID: actorID)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        let actionID = UUID()
+        do {
+            _ = try await coordinator.execute(command, commandID: actionID)
+            XCTFail("The first reply should have been lost")
+        } catch { XCTAssertEqual(error as? SharedStateFailure, .serviceUnavailable) }
+        XCTAssertEqual(coordinator.snapshot, initial)
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(commandID: actionID))
+        _ = try await coordinator.refresh()
+        XCTAssertEqual(coordinator.snapshot?.revision, 1)
+        let resultID = try await coordinator.execute(command, commandID: actionID)
+        let createdID = try XCTUnwrap(resultID)
+        XCTAssertFalse(initial.state.runs.contains { $0.id == createdID })
+        XCTAssertEqual(coordinator.takeConfirmedReceipt(commandID: actionID,
+                                                        command: command)?.createdID, createdID)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(commandID: actionID))
     }
 
     func testSaveAsRoutineReplayAfterRoutineDeletionRetainsOriginalCreatedID() async throws {

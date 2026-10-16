@@ -15,14 +15,17 @@ public enum SharedEndpointValidation {
     }
 }
 
-/// Rejects known private Supabase API-key forms before configuration is saved or Auth HTTP is sent.
+/// Rejects unsafe header values and known private Supabase API-key forms before saving or Auth HTTP.
 /// Opaque public test keys remain valid; this does not authenticate a key with Supabase.
 public enum SharedPublicKeyValidation {
     public static func validate(_ key: String) throws {
-        guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        guard !key.isEmpty,
               key.utf8.count <= 8_192,
-              !key.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
-              !key.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sb_secret_"),
+              key.unicodeScalars.allSatisfy({
+                  !CharacterSet.controlCharacters.contains($0) &&
+                      !CharacterSet.whitespacesAndNewlines.contains($0)
+              }),
+              !key.hasPrefix("sb_secret_"),
               !isLegacyServiceRoleJWT(key) else {
             throw SharedStateFailure.invalidResponse
         }

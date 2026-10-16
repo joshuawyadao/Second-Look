@@ -29,10 +29,26 @@ final class SharedAuthTransportTests: XCTestCase {
         }
     }
 
-    func testEmptyAndHeaderControlKeysFailValidation() {
-        for key in ["", "  ", "public\rkey", "public\nkey", "public\u{0000}key"] {
+    func testEmptyWhitespaceAndHeaderControlKeysFailValidation() {
+        for key in ["", "  ", " public-test-key", "public-test-key ", "public test key",
+                    "public\tkey", "public\rkey", "public\nkey", "public\u{0000}key",
+                    "public\u{00A0}key", "public\u{2003}key", "\u{00A0}\u{2003}"] {
             XCTAssertThrowsError(try SharedPublicKeyValidation.validate(key)) {
                 XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+            }
+        }
+    }
+
+    func testWhitespaceKeysFailBeforeAuthHTTP() async throws {
+        for key in ["public test key", "public\tkey", "public\nkey",
+                    "public\u{00A0}key", "public\u{2003}key"] {
+            do {
+                _ = try await SharedAuthClient(authURL: url(host: "invalid-key-probe.test"),
+                    publishableKey: key, session: session()).signIn(
+                        email: "person@example.test", password: "invented-password")
+                XCTFail("Whitespace key must be rejected before Auth HTTP")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, .invalidResponse)
             }
         }
     }

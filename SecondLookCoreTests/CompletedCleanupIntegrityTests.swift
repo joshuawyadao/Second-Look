@@ -42,15 +42,26 @@ final class CompletedCleanupIntegrityTests: XCTestCase {
         }
     }
 
-    private func assertAccepted(_ state: SecondLookState) throws {
+    private func assertAccepted(_ state: SecondLookState, connected: Bool = true) throws {
         try state.validateForLoad()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = JSONStateStore(url: directory.appendingPathComponent("state.json"))
         try store.save(state)
         XCTAssertEqual(try store.load(), state)
-        try SharedSnapshot(spaceID: UUID(), revision: 1,
-                           members: [performer, reviewer], state: state).validate(for: performer)
+        let snapshot = SharedSnapshot(spaceID: UUID(), revision: 1,
+                                      members: [performer, reviewer], state: state)
+        if connected {
+            try snapshot.validate(for: performer)
+        } else {
+            let restored = try SharedWireCodec.decode(SharedSnapshot.self,
+                                                      from: SharedWireCodec.encode(snapshot))
+            for value in [snapshot, restored] {
+                XCTAssertThrowsError(try value.validate(for: performer)) {
+                    XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+                }
+            }
+        }
     }
 
     func testCompletedHighPriorityRunCannotClaimNoCleanupInRunAndArchive() throws {
@@ -62,12 +73,30 @@ final class CompletedCleanupIntegrityTests: XCTestCase {
         try assertRejected(SecondLookState(runs: [run], archives: [archive]))
     }
 
-    func testCompletedHighPriorityCleanupPendingAndConfirmedRemainValid() throws {
+    func testCompletedCleanupAcknowledgmentRemainsLocalOnly() throws {
         var state = try completedHighPriorityRun()
         try assertAccepted(state)
         try state.confirmSimulatedCleanup(runID: state.runs[0].id)
         XCTAssertEqual(state.runs[0].cleanupStatus, .simulatedConfirmed)
+        try assertAccepted(state, connected: false)
+    }
+
+    func testCanceledEvidenceCleanupAcknowledgmentRemainsLocalOnly() throws {
+        var state = SecondLookState()
+        let run = try state.startOneOff(title: "Stove", items: [
+            RoutineItem(title: "Check stove", priority: .high)
+        ], performerID: performer, reviewerID: reviewer, now: now)
+        let item = state.runs[0].items[0].id
+        try state.prepareDraft(runID: run, itemID: item, actorID: performer,
+            fixtureID: "M2-SYNTHETIC-NO-REAL-PHOTO", source: .simulatedCamera, now: now)
+        let version = try state.beginSend(runID: run, itemID: item, actorID: performer, now: now)
+        try state.acceptSend(runID: run, itemID: item, actorID: performer,
+                             expectedVersion: version, now: now)
+        try state.cancel(runID: run, actorID: performer, now: now)
+        XCTAssertEqual(state.runs[0].cleanupStatus, .pending)
         try assertAccepted(state)
+        try state.confirmSimulatedCleanup(runID: run)
+        try assertAccepted(state, connected: false)
     }
 
     func testCompletedStandardAndCanceledUnsubmittedHighNeedNoCleanup() throws {

@@ -34,6 +34,7 @@ public struct SharedSnapshot: Codable, Equatable, Sendable {
             // A terminal item mutation increments once for the edit and once for closure.
             // Keep Int.max unused in the resulting snapshot as well as the loaded input.
             guard (!run.isOpen || run.revision < Int.max - 2),
+                  run.cleanupStatus != .simulatedConfirmed,
                   memberSet.contains(run.performerID),
                   run.reviewerID.map(memberSet.contains) ?? true else {
                 throw SharedStateFailure.invalidResponse
@@ -47,7 +48,9 @@ public struct SharedSnapshot: Codable, Equatable, Sendable {
             }
         }
         for archive in state.archives {
-            guard memberSet.contains(archive.performerID),
+            // Cleanup acknowledgment is a local-demo transition, not a connected command.
+            guard archive.cleanupStatus != .simulatedConfirmed,
+                  memberSet.contains(archive.performerID),
                   archive.reviewerID.map(memberSet.contains) ?? true else {
                 throw SharedStateFailure.invalidResponse
             }

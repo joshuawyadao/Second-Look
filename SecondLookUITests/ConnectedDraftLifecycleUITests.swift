@@ -265,6 +265,9 @@ final class ConnectedDraftLifecycleUITests: XCTestCase {
 
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
+        if identifier == "createPrivateSpace" {
+            guard waitForPrivateSpaceCreate(in: app, file: file, line: line) else { return }
+        }
         let matches = app.buttons.matching(identifier: identifier)
         var button = matches.allElementsBoundByIndex.first(where: \.isHittable) ?? matches.firstMatch
         for _ in 0..<8 where !button.isHittable {

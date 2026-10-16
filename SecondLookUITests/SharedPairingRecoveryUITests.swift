@@ -254,6 +254,9 @@ final class SharedPairingRecoveryUITests: XCTestCase {
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
         let button = app.buttons[identifier].firstMatch
+        if identifier == "createPrivateSpace" {
+            guard waitForPrivateSpaceCreate(in: app, file: file, line: line) else { return }
+        }
         for _ in 0..<8 where !button.isHittable { app.swipeUp() }
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing button: \(identifier)", file: file, line: line)
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: button)

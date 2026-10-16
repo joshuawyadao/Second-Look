@@ -285,6 +285,9 @@ final class SharedMutationRecoveryUITests: XCTestCase {
 
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
+        if identifier == "createPrivateSpace" {
+            guard waitForPrivateSpaceCreate(in: app, file: file, line: line) else { return }
+        }
         let button = app.buttons[identifier].firstMatch
         let exists = button.waitForExistence(timeout: 8)
         XCTAssertTrue(exists, "Missing button: \(identifier)", file: file, line: line)

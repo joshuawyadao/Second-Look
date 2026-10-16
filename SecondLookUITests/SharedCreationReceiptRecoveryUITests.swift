@@ -246,6 +246,7 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         if !routines.exists {
             XCTAssertTrue(create.exists && create.isEnabled,
                           "Membership lookup must enable Create before setup can proceed")
+            guard waitForPrivateSpaceCreate(in: app) else { return }
             create.tap()
         }
         let connected = routines.waitForExistence(timeout: 20)
@@ -257,6 +258,9 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
 
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
+        if identifier == "createPrivateSpace" {
+            guard waitForPrivateSpaceCreate(in: app, file: file, line: line) else { return }
+        }
         let button = app.buttons[identifier].firstMatch
         for _ in 0..<8 where !button.isHittable { app.swipeUp() }
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing button: \(identifier)", file: file, line: line)

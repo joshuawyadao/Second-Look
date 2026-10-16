@@ -181,6 +181,7 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
             predicate: NSPredicate(format: "exists == true AND enabled == true"), object: create)
         XCTAssertEqual(XCTWaiter.wait(for: [eligible], timeout: 20), .completed,
                        "Genuine membership lookup must enable Create before setup writes")
+        guard waitForPrivateSpaceCreate(in: app) else { return }
         create.tap()
 
         let result = app.staticTexts["sharedInvitationReceiptResult"]
@@ -235,6 +236,9 @@ final class SharedInvitationReceiptRecoveryUITests: XCTestCase {
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
         let button = app.buttons[identifier].firstMatch
+        if identifier == "createPrivateSpace" {
+            guard waitForPrivateSpaceCreate(in: app, file: file, line: line) else { return }
+        }
         for _ in 0..<8 where !button.isHittable { app.swipeUp() }
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing button: \(identifier)", file: file, line: line)
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: button)

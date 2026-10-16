@@ -121,19 +121,6 @@ final class ConnectedSharedStateUITests: XCTestCase {
             failWithSafeAlert("Owner could not reach new-space pairing", in: app)
             return
         }
-        let createReady = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == true AND enabled == true"),
-            object: app.buttons["createPrivateSpace"])
-        guard XCTWaiter.wait(for: [createReady], timeout: 20) == .completed else {
-            failWithSafeAlert("Verified membership did not enable new-space creation", in: app)
-            return
-        }
-        let createPositioned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            let frame = app.buttons["createPrivateSpace"].frame
-            return !frame.isEmpty && frame.intersects(app.frame)
-        }, object: app.buttons["createPrivateSpace"])
-        XCTAssertEqual(XCTWaiter.wait(for: [createPositioned], timeout: 8), .completed,
-                       "Create must have a screen position before XCTest checks activation")
         tap("createPrivateSpace", in: app)
         tap("Account settings", in: app)
         let invitation = app.staticTexts["pairingInvitation"]
@@ -207,6 +194,9 @@ final class ConnectedSharedStateUITests: XCTestCase {
     private func tap(_ identifier: String, in app: XCUIApplication,
                      file: StaticString = #filePath, line: UInt = #line) {
         let button = app.buttons[identifier].firstMatch
+        if identifier == "createPrivateSpace" {
+            guard waitForPrivateSpaceCreate(in: app, file: file, line: line) else { return }
+        }
         for _ in 0..<8 where !button.isHittable { app.swipeUp() }
         XCTAssertTrue(button.waitForExistence(timeout: 8), "Missing button: \(identifier)", file: file, line: line)
         button.tap()

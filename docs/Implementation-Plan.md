@@ -1,19 +1,19 @@
 # Plan
 
-Address the three new Codex findings from review5593113471 on b79f437, then repeat affected current-source hosted/local validation and final PR gates. Keep the installed schema, paired space, accounts and Free safeguards; leave PR #2 unmerged.
+Finish PR #2 after review5593261083 on6b79926 adds two P2 findings (69total): reject unusable successful Auth credentials and retain text-only cleanup provenance for canceled undecided evidence. Preserve the installed schema, paired space, accounts, Free safeguards and all previous source-specific evidence. Leave the PR unmerged.
 
 ## Scope
-- In: invitation response validation before publication; canceled final-evidence cleanup validation; owned-process timeout cleanup in the hosted wrapper; meaningful regressions, canonical evidence and final review/CI.
-- Out: resets/unpairing, new accounts/credentials, paid services, real media/deletion, distribution and merge.
+- In: successful sign-in/refresh response validation; closure provenance, backward-compatible local/shared decoding and behavior regressions; canonical docs; required current-source local/native/hosted tests and final review/CI.
+- Out: private-data reset/unpairing, credential changes, paid services, real media or cleanup jobs, push, distribution and merge.
 
 ## Action items
-[x] Inspect the three exact Codex threads and existing transport, archive-loading and process-cleanup seams. Resolve narrow interfaces and checkpoint this plan before edits.
-[x] Add HTTP200 invitation metadata regressions:7 behavioral red assertions;3 focused and21 related transport cases green, full package126 and native publication syntax pass. Validate before transport return and again immediately before UI publication. Save/push item1 and acknowledge after successful push; full native/shared/hosted gates remain below.
-[x] Add canceled current-final-decision regressions:8 behavioral red assertions across direct/JSON/shared-wire loading,22 related and128 full-package cases green. Preserve withdrawn/unsubmitted/local simulated-confirmed cases. Save/push item2 and acknowledge; server/shared/native/hosted gates remain below.
-[x] Add a real file-backed leader/TERM-ignoring child regression, observe continued heartbeat red, then match owned-group unconditional KILL/bounded reap. Hosted2/connected3/selection5 and full tooling53 pass; save/push item3 and acknowledge.
-[ ] Update canonical contracts/Verification and this plan with actual evidence, including the prior intermittent socket timeout. Retain the complete October20 hosted upgrade evidence on source0517e33 as historical until current executable follow-up is verified.
-[ ] Repeat required native Debug/Release/exclusion, current local shared-state validation and both preserved-session hosted wrappers after deploying reviewed server repairs. No new schema is expected; inspect before any hosted mutation.
-[ ] Complete fresh scoped Brooks/Codex review and exact-head terminal CI; resolve only validated/pushed threads under prior authorization, then mark ready if all gates pass. Never merge.
+[x] Read both findings, map Auth transport and Core closure/persistence seams, preserve6b79926 hosted before/after-restart passes and checkpoint this resolved queue before new edits.
+[ ] Add meaningful HTTP200 sign-in and refresh regressions for empty/unusable token fields, observe red, reject before sessions can be installed/persisted, retain valid opaque bytes, validate relevant/full package, save/push and acknowledge item1.
+[ ] Resolve the smallest compatible text-only closure provenance design from the existing model/persistence contracts, document its legacy semantics before implementation, then add undecided-evidence mirrored-cleanup red coverage plus legitimate withdrawn/unsubmitted/acknowledged controls. Validate direct/JSON/shared-wire behavior and save/push/acknowledge item2.
+[ ] Update canonical product/architecture/operation/verification docs and this plan with exact sources, tests and limitations. Previous69-minus2 repairs remain individually committed, tested and acknowledged; do not call unfinished global gates passed.
+[ ] Complete current-source package/tooling/server Debug+Release, ordinary native Debug/Release/exclusion, both official local key modes and focused connected native cases. Private focused driver is prepared and elevated preflight passes; no focused cases have run. Use only task-owned B838 simulator/resettable localhost stack.
+[ ] Upgrade the existing manual Render service to reviewed final server source if affected; run both preserved-session hosted wrappers before/after an actual service restart. No further SQL is assumed until design proves otherwise; inspect before any hosted mutation.
+[ ] Complete scoped Brooks and fresh Codex review plus exact saved-head terminal CI, resolve only validated/pushed threads under existing authorization, and mark ready only when all gates pass. Never merge.
 
 ## Open questions
-- None. Apply narrow fail-closed validation and reuse existing coverage seams. Invitation tokens follow the server's two canonical UUID strings (72ASCIIbytes) and must have future finite expiry. A canceled archive suffix decision proves current evidence existed at closure; cleanup may be pending or a valid local simulated acknowledgment, never notNeeded. Timeout cleanup owns only its spawned process group.
+- None for the user. Keep successful Auth credentials bounded/nonempty and reject whitespace/control characters rather than trimming opaque tokens. Choose a reversible, explicit compatibility path for text-only closure provenance; a legacy record cannot reconstruct already discarded evidence, so document that limit instead of fabricating proof. No private record may be erased to satisfy a validation test.

@@ -333,7 +333,10 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 guard archived.decisions.isEmpty,
                       run.outcome != .completed || item.checkedAt != nil else { return false }
             } else if let currentDecision {
-                guard validHistoricalDecision(currentDecision),
+                // This suffix came from the submission stripped at closure,
+                // unlike the withdrawn decisions retained in priorDecisions.
+                guard run.cleanupStatus != .notNeeded,
+                      validHistoricalDecision(currentDecision),
                       currentDecision.submissionVersion == item.lastVersion,
                       currentDecision.submissionVersion > (item.priorDecisions.last?.submissionVersion ?? 0)
                 else { return false }

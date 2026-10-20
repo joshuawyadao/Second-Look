@@ -115,14 +115,20 @@ def run_owned(command: list[str], timeout: int, *, environment: dict[str, str],
         try:
             process.communicate(timeout=5)
         except subprocess.TimeoutExpired:
+            pass
+        # File-backed output lets the leader exit while a TERM-ignoring descendant lives.
+        # KILL the owned group even if communicate already reaped the leader.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
             try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            try:
-                process.communicate(timeout=5)
+                process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                pass
+                raise HostedFailure("cleanup") from None
         raise HostedFailure(timed_out) from None
     if process.returncode != 0:
         raise HostedFailure(failure)
@@ -264,6 +270,7 @@ if __name__ == "__main__":
         "test": "acceptance failed; inspect the private derived-data log",
         "build_timeout": "build timed out; owned process group stopped; remote runner cleanup may be needed",
         "test_timeout": "test timed out; owned process group stopped; remote runner cleanup may be needed",
+        "cleanup": "owned process cleanup did not complete",
     }
     try:
         main()

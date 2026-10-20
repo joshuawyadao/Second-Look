@@ -1,23 +1,20 @@
-# Plan — October 16 connected acceptance and PR review
+# Plan
 
-Complete the remaining local connected tests and review of PR #2 on `codex/milestone-2-private-shared-state`. Preserve hosted accounts, sessions and records. Leave the PR unmerged; hosted server/schema deployment, paid services, real media and distribution remain outside this task.
+Upgrade the existing hosted Second Look database and Swift server to PR #2's reviewed source, preserve the current two-account space and records, and verify current-source hosted operation before marking the PR ready. Use plan-implement-save and the PR review cycle; leave the PR unmerged.
 
-## Completed local work
+## Scope
+- In: Existing Supabase project and Render Free service; pending conditional-invitation migration; reviewed remote source0517e33; authenticated hosted acceptance, restart durability, public denial boundaries, canonical evidence, final save/review/CI and readiness promotion.
+- Out: Paid upgrades, new projects/accounts, credential or allowlist changes, destructive resets/unpairing, real photos/uploads/deletion, push, physical-device distribution and merge.
 
-- [x] Read canonical product/architecture/operations/verification instructions and checkpoint the resolved plan.
-- [x] Restore bounded simulator discovery and the named localhost stack without data erasure, pruning or global resets.
-- [x] Isolate alert and lifecycle fixtures; preserve privacy, receipt and version assertions.
-- [x] Address all five new Codex findings separately with meaningful regressions, commits/pushes and acknowledgment. Resolve all 64 validated threads under the user's authorization.
-- [x] Validate all 25 distinct connected native cases on current application/server source 4a488b2 across bounded resumed invocations. Keep failed attempts and simulated faults labeled; do not claim one uninterrupted full-command pass.
-- [x] Fix only demonstrated test setup/synchronization gaps in fdb9024/b2bc7e6. Require genuine membership, immediate privacy, actual sheet removal and later-sign-in draft purge.
-- [x] Pass both official modern/legacy local schema/Auth/Postgres/HTTP/command-server-restart workflows; 123 portable cases, 29 Debug/27 Release server boundary cases and 51 repository tooling cases. Fixture-gated skips are not acceptance.
-- [x] Repeat current-app hosted existing-session checks on both original clients without changing deployed server/schema or prior records.
-- [x] Update canonical evidence/contracts/operations and complete scoped Brooks follow-up. Stop only named synthetic resources with volumes/data preserved.
-
-## Final save and remote gate
-
-Save and push task-owned evidence on the existing feature branch. Read final-head checks through terminal completion, including both CI Verify aggregates and ordinary native Debug/Release/exclusion. Recheck threads/review/conflicts immediately before closing; the PR body and GitHub check records hold the final remote result, avoiding a self-referential documentation-commit hash. Keep the PR draft and unmerged while current-server hosted upgrade/acceptance is deferred. Do not treat an earlier green head as final-head CI.
+## Action items
+[x] Read canonical product/operations/verification docs and map the existing migration and hosted test tools. Confirm clean feature branch, current PR head, healthy Free Supabase project, five existing RPC signatures and an intact paired space. Checkpoint this resolved plan before hosted changes.
+[ ] Verify current Render Free/manual-deploy/billing safeguards and exact old deployment. Preserve existing environment, allowlist, previews and source branch.
+[ ] Prepare the exact pending migration in one explicit transaction with bounded locks and private before/after row equality assertions. Do not rerun initial installation or local reset scripts against hosted data.
+[ ] Apply the append-only migration through Supabase; verify catalog/role boundaries, six RPC signatures and unchanged existing space/receipts. Treat the empty-installation check as inapplicable after pairing.
+[ ] Deploy the reviewed remote branch on the existing Render service without clearing cache or enabling automatic deploys. Confirm the deployed commit and Release/health/denial boundaries; retain schema while rolling back server if necessary.
+[ ] Run both preserved-session hosted native wrappers against the new deployment, restart the actual service and rerun for durability. Keep real Auth/commands distinct from optional simulated lookup failure and synthetic media metadata. Preserve sessions and original records; successful fresh pairing/renewal cannot be re-exercised on the already paired singleton without resetting it.
+[ ] Update README, Product-Spec, Roadmap, Backend-Operations, Supabase-Free-Setup, Architecture if needed and Verification with actual source/results/limits. No test-source changes are expected because existing meaningful hosted wrappers and prior same-source local25/package123 coverage apply; add targeted coverage only if a genuine gap or failure requires it.
+[ ] Run repository verification and final-head CI, including ordinary native Debug/Release/exclusion and both local key modes. Complete fresh Codex/scoped Brooks follow-up, address actionable feedback, save/push evidence and confirm clean/mergeable status before marking PR #2 ready; do not merge.
 
 ## Open questions
-
-None for this task. Milestone 2 remains in progress: coordinated hosted server/schema upgrade and its current-source acceptance are a separate follow-up. No real photos, uploads, connected cleanup jobs, push, physical-device/VoiceOver or distribution acceptance is claimed.
+- None. The user explicitly authorized this hosted database/server upgrade and remaining acceptance. Keep Free safeguards, accounts, credentials and existing records unchanged. The old schema was installed manually and has no recorded migration history; inspect catalog before applying the sole pending migration and document its actual recorded version.

@@ -8,7 +8,7 @@ Address the three new Codex findings from review5593113471 on b79f437, then repe
 
 ## Action items
 [x] Inspect the three exact Codex threads and existing transport, archive-loading and process-cleanup seams. Resolve narrow interfaces and checkpoint this plan before edits.
-[ ] Add HTTP200 invitation metadata regressions (malformed token/expired reply and valid canonical reply), observe behavioral failure, validate before publication, run targeted transport/package/native checks, save/push item1 and acknowledge its comment.
+[x] Add HTTP200 invitation metadata regressions:7 behavioral red assertions;3 focused and21 related transport cases green, full package126 and native publication syntax pass. Validate before transport return and again immediately before UI publication. Save/push item1 and acknowledge after successful push; full native/shared/hosted gates remain below.
 [ ] Add canceled current-final-decision cleanup regressions through direct validation, JSON restore and connected snapshots; preserve withdrawn/unsubmitted/local simulated-confirmed cases. Observe red, fix the precise invariant, validate package/server/shared boundary, save/push item2 and acknowledge.
 [ ] Add a real file-backed timed-out leader/TERM-ignoring descendant regression; observe survivor evidence, match connected wrapper owned-group KILL/reap, verify safe failure and full tooling, save/push item3 and acknowledge.
 [ ] Update canonical contracts/Verification and this plan with actual evidence, including the prior intermittent socket timeout. Retain the complete October20 hosted upgrade evidence on source0517e33 as historical until current executable follow-up is verified.

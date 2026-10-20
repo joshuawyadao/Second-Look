@@ -407,7 +407,12 @@ final class ConnectedAppModel {
             guard currentForegroundSession(epoch) else { return }
             // A concurrent fetch may have observed a newer rotation or join. Never
             // display this reply's token against a different published snapshot.
-            invitation = snapshot == result.snapshot ? result : nil
+            if snapshot == result.snapshot {
+                // Publishing the snapshot can await another fetch. Recheck the
+                // deadline immediately before exposing its code to the reviewer.
+                try result.validateForPublication()
+                invitation = result
+            }
             busy = false
             #if SECONDLOOK_DEMO
             startInvitationReceiptAcceptanceIfRequested()

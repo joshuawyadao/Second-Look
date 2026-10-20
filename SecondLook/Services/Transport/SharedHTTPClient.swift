@@ -52,6 +52,20 @@ public struct PairingInvitation: Codable, Equatable, Sendable {
     public let snapshot: SharedSnapshot
     public let inviteToken: String
     public let expiresAt: Date
+
+    /// The service emits two canonical UUID strings. Keep the token opaque and
+    /// unchanged, but never offer a malformed or expired reply for sharing.
+    func validateForPublication(now: Date = Date()) throws {
+        guard inviteToken.utf8.count == 72, inviteToken.utf8.allSatisfy({ $0 < 128 }),
+              expiresAt.timeIntervalSince1970.isFinite, now.timeIntervalSince1970.isFinite,
+              expiresAt > now else { throw SharedStateFailure.invalidResponse }
+        for part in [String(inviteToken.prefix(36)), String(inviteToken.suffix(36))] {
+            guard let uuid = UUID(uuidString: part),
+                  part.lowercased() == uuid.uuidString.lowercased() else {
+                throw SharedStateFailure.invalidResponse
+            }
+        }
+    }
 }
 
 /// HTTP transport for the authenticated private-space service. The token supplier belongs to
@@ -79,8 +93,11 @@ public struct SharedHTTPClient: SharedStateClient {
 
     public func createSpace(expectedSpaceRevision: Int? = nil) async throws -> PairingInvitation {
         if let expectedSpaceRevision, expectedSpaceRevision < 0 { throw SharedStateFailure.invalidResponse }
-        return try await endpoint.send(path: ["v1", "spaces"], method: "POST", token: bearerToken(),
-                                       body: CreateSpaceRequest(expectedSpaceRevision: expectedSpaceRevision))
+        let invitation: PairingInvitation = try await endpoint.send(
+            path: ["v1", "spaces"], method: "POST", token: bearerToken(),
+            body: CreateSpaceRequest(expectedSpaceRevision: expectedSpaceRevision))
+        try invitation.validateForPublication()
+        return invitation
     }
 
     public func joinSpace(inviteToken: String) async throws -> SharedSnapshot {

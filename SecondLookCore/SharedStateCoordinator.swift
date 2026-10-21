@@ -528,6 +528,18 @@ public final class SharedStateCoordinator {
                   current.startedAt == run.startedAt,
                   current.items.count == run.items.count,
                   run.isOpen || current == run else { return false }
+            if later.revision > earlier.revision,
+               later.revision - earlier.revision == 1,
+               run.isOpen, current.outcome == .canceled {
+                guard let closedAt = current.closedAt,
+                      let expected = try? SharedCommandProcessor.apply(
+                        SharedCommandEnvelope(spaceID: earlier.spaceID, commandID: UUID(),
+                            expectedSpaceRevision: earlier.revision,
+                            command: .cancel(runID: run.id,
+                                             expectedRunRevision: run.revision)),
+                        to: earlier, actorID: run.performerID, now: closedAt),
+                      expected.createdID == nil, expected.snapshot == later else { return false }
+            }
             for (index, pair) in zip(run.items, current.items).enumerated() {
                 let (original, updated) = pair
                 guard updated.id == original.id,

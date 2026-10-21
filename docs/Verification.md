@@ -21,6 +21,12 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -showdestinations
 
 Open `SecondLook.xcodeproj` and Run the **SecondLook** scheme on a simulator. Debug uses `com.joshuawyadao.SecondLook.demo` and Application Support/SecondLookDemo/state-v1.json. Release uses `com.joshuawyadao.SecondLook.local` and SecondLookLocal/state-v1.json. UI tests use a separate SecondLookUITests document; only Debug test launches accept `-ui-testing -reset-demo`. A normal launch never resets existing data.
 
+## Further revision/commit follow-up —84 tracked
+
+Review5594419300 on693bf0d adds two P2 comments after all82 prior threads are resolved and the frozen-definition Brooks repair is saved. Retained-run comment4332566866 first reproduces13 meaningful assertion failures across5 cases. The history predicate now requires nondecreasing run revisions and exact full run equality when the revision is unchanged. Focused5/5 and full **177 Debug/177 Release portable tests** (148Core+29transport each) pass, preserving genuine retry, unchanged runs during other changes, progress/undo/preferences/closure and independent creation. Immediate commit-result proof and separately planned known evidence-version/review-fact preservation remain pending; PR is draft.
+
+The completed693client/0acserver hosted checkpoint preserves both original sessions before/after Render's actual **19:56 Pacific October20 restart**, with new startup **02:56:50.630UTC October21**. Peer23.790s before/21.452s after; owner26.095s before/35.500s after; all four wrappers exit0. Public200/401/401/404 and five database preservation flags pass. Source0ac deploydep-dbc2faks728c73dp1j90 is live at02:53:03UTC after5m57s. Final required native693 passes172portablebothconfigs,10ordinaryUI/29gatedskips39total203.580s and Release identity/control/marker exclusion. Both official local key modes pass genuine Auth/Postgres/HTTP/restart. These are exact-source checkpoints, not acceptance of the later84-comment repairs. No SQL/account/allowlist/paid settings change.
+
 ## Further fixed-role and initial-create follow-up — October20
 
 Review5594261694 on17b1bd9 adds two actionable P2 comments (**82tracked**), while all80 prior threads are resolved (79fixes+1validated receipt-contract clarification). The17 server is live asdep-dbc26nbncjis7383iis0 at02:34:44UTC with public200/401/401/404 and both official local key modes passing; this remains its exact source checkpoint, not final acceptance.

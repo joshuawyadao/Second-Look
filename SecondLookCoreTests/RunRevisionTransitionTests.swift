@@ -1,0 +1,219 @@
+import Foundation
+import XCTest
+@testable import SecondLookCore
+
+private actor RunRevisionClient: SharedStateClient {
+    private var current: SharedSnapshot
+    private let actorID: UUID
+    private let now: Date
+    private var nextCommandView: SharedSnapshot?
+    private var receipts: [UUID: SharedCommandResult] = [:]
+
+    init(current: SharedSnapshot, actorID: UUID, now: Date) {
+        self.current = current
+        self.actorID = actorID
+        self.now = now
+    }
+
+    func setCurrent(_ snapshot: SharedSnapshot) { current = snapshot }
+    func overrideNextCommand(with snapshot: SharedSnapshot) { nextCommandView = snapshot }
+
+    func fetch(spaceID: UUID) async throws -> SharedSnapshot {
+        guard current.spaceID == spaceID else { throw SharedStateFailure.scopeMismatch }
+        return current
+    }
+
+    func execute(_ envelope: SharedCommandEnvelope) async throws -> SharedCommandResult {
+        if let receipt = receipts[envelope.commandID] { return receipt }
+        let result = try SharedCommandProcessor.apply(envelope, to: current,
+                                                      actorID: actorID, now: now)
+        current = result.snapshot
+        receipts[envelope.commandID] = result
+        if let nextCommandView {
+            self.nextCommandView = nil
+            return SharedCommandResult(snapshot: nextCommandView, createdID: result.createdID)
+        }
+        return result
+    }
+}
+
+@MainActor
+final class RunRevisionTransitionTests: XCTestCase {
+    private let owner = UUID(uuidString: "D0000000-0000-0000-0000-000000000001")!
+    private let peer = UUID(uuidString: "D0000000-0000-0000-0000-000000000002")!
+    private let space = UUID(uuidString: "D0000000-0000-0000-0000-000000000003")!
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private var scope: SharedAccountScope {
+        SharedAccountScope(backend: "revision-test", accountID: owner, spaceID: space)
+    }
+
+    private func fixture() throws -> (SecondLookState, UUID, UUID) {
+        var state = SecondLookState()
+        let routine = Routine(title: "Invented departure", items: [
+            RoutineItem(title: "Keys"), RoutineItem(title: "Door")
+        ])
+        try state.saveRoutine(routine)
+        let runID = try state.startRun(routineID: routine.id, performerID: owner,
+                                       reviewerID: peer, now: now)
+        return (state, runID, routine.id)
+    }
+
+    private func view(_ state: SecondLookState, revision: Int) -> SharedSnapshot {
+        SharedSnapshot(spaceID: space, revision: revision, members: [owner, peer], state: state)
+    }
+
+    private func changedRun(_ state: SecondLookState,
+                            edit: (inout ChecklistRun) -> Void) -> SecondLookState {
+        var run = state.runs[0]
+        edit(&run)
+        return SecondLookState(routines: state.routines, runs: [run], archives: state.archives)
+    }
+
+    private func expectInvalid(_ coordinator: SharedStateCoordinator,
+                               references: [SharedSnapshot] = [],
+                               file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await coordinator.refresh(validatingAgainst: references)
+            XCTFail("A retained run changed without advancing its revision", file: file, line: line)
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .invalidResponse, file: file, line: line)
+        }
+    }
+
+    func testUnseededReferencesRejectProgressRollbackAndSameRevisionSettingsRewrite() async throws {
+        let (state, runID, _) = try fixture()
+        var progressed = state
+        try progressed.setStandardChecked(runID: runID, itemID: state.runs[0].items[0].id,
+                                          checked: true, actorID: owner, now: now)
+        let earlier = view(progressed, revision: 2)
+        let regressions = [state, changedRun(progressed) {
+            $0.settings = RunSettings(reminders: ReminderPreferences(remindPerformer: true))
+        }]
+        for candidate in regressions {
+            let incoming = view(candidate, revision: 3)
+            try incoming.validate(for: owner)
+            let client = RunRevisionClient(current: incoming, actorID: owner, now: now)
+            let coordinator = SharedStateCoordinator()
+            coordinator.beginSession(scope: scope, client: client)
+            await expectInvalid(coordinator, references: [earlier])
+            XCTAssertNil(coordinator.snapshot)
+        }
+    }
+
+    func testChronologicalReferencesRejectSameRevisionProgressRewriteEvenIfLaterRestored() async throws {
+        let (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        var progress = state
+        try progress.setStandardChecked(runID: runID, itemID: state.runs[0].items[0].id,
+                                        checked: true, actorID: owner, now: now)
+        let altered = view(changedRun(progress) {
+            $0.revision = state.runs[0].revision
+        }, revision: 2)
+        let restored = view(state, revision: 3)
+        try altered.validate(for: owner)
+        let client = RunRevisionClient(current: restored, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        await expectInvalid(coordinator, references: [altered, first])
+        XCTAssertNil(coordinator.snapshot)
+        XCTAssertEqual(restored.state.runs[0].id, runID)
+    }
+
+    func testSeededRefreshRejectsSameRevisionClosureRewrite() async throws {
+        let (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        let seeded = try await coordinator.refresh()
+        XCTAssertTrue(seeded)
+        var closedState = state
+        try closedState.cancel(runID: runID, actorID: owner, now: now)
+        let closed = changedRun(closedState) { $0.revision = state.runs[0].revision }
+        let incoming = view(closed, revision: 2)
+        try incoming.validate(for: owner)
+        await client.setCurrent(incoming)
+        await expectInvalid(coordinator)
+        XCTAssertEqual(coordinator.snapshot, first)
+    }
+
+    func testCommandResponseRejectsSameRevisionRewriteAndExactReceiptRetryRecovers() async throws {
+        let (state, _, _) = try fixture()
+        let first = view(state, revision: 0)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        let seeded = try await coordinator.refresh()
+        XCTAssertTrue(seeded)
+        let command: SharedCommand = .saveRoutine(definition: Routine(title: "Another",
+            items: [RoutineItem(title: "Coat")]), expectedDefinitionVersion: nil)
+        let commandID = UUID()
+        let envelope = SharedCommandEnvelope(spaceID: space, commandID: commandID,
+                                             expectedSpaceRevision: 0, command: command)
+        let genuine = try SharedCommandProcessor.apply(envelope, to: first,
+                                                       actorID: owner, now: now)
+        let altered = view(changedRun(genuine.snapshot.state) {
+            $0.settings = RunSettings(reminders: ReminderPreferences(remindPerformer: true))
+        }, revision: 1)
+        try altered.validate(for: owner)
+        await client.overrideNextCommand(with: altered)
+        do {
+            _ = try await coordinator.execute(command, commandID: commandID)
+            XCTFail("A command response rewrote a retained run at the same run revision")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .invalidResponse)
+        }
+        XCTAssertEqual(coordinator.snapshot, first)
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(commandID: commandID))
+        XCTAssertFalse(coordinator.hasConfirmedReceipt(commandID: commandID, command: command))
+        _ = try await coordinator.execute(command, commandID: commandID)
+        XCTAssertEqual(coordinator.snapshot, genuine.snapshot)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(commandID: commandID))
+        XCTAssertTrue(coordinator.hasConfirmedReceipt(commandID: commandID, command: command))
+    }
+
+    func testHigherRunRevisionsAndUnchangedRunDuringOtherWritesRemainValid() async throws {
+        let (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        let seeded = try await coordinator.refresh()
+        XCTAssertTrue(seeded)
+
+        var next = state
+        let itemID = state.runs[0].items[0].id
+        try next.setStandardChecked(runID: runID, itemID: itemID, checked: true,
+                                    actorID: owner, now: now)
+        let checked = view(next, revision: 2)
+        await client.setCurrent(checked)
+        let checkedPublished = try await coordinator.refresh(validatingAgainst: [first])
+        XCTAssertTrue(checkedPublished)
+        try next.setStandardChecked(runID: runID, itemID: itemID, checked: false,
+                                    actorID: owner, now: now)
+        try next.updateRunSettings(runID: runID, actorID: owner,
+            settings: RunSettings(reminders: ReminderPreferences(remindPerformer: true)))
+        let settings = view(next, revision: 3)
+        await client.setCurrent(settings)
+        let settingsPublished = try await coordinator.refresh(validatingAgainst: [checked])
+        XCTAssertTrue(settingsPublished)
+
+        let newID = try next.startOneOff(title: "New independent run",
+            items: [RoutineItem(title: "Lights")], performerID: peer, reviewerID: owner, now: now)
+        let independent = view(next, revision: 4)
+        await client.setCurrent(independent)
+        let independentPublished = try await coordinator.refresh(validatingAgainst: [settings])
+        XCTAssertTrue(independentPublished)
+        XCTAssertEqual(independent.state.runs[0], settings.state.runs[0])
+        XCTAssertTrue(independent.state.runs.contains { $0.id == newID })
+
+        try next.cancel(runID: runID, actorID: owner, now: now)
+        let closed = view(next, revision: 5)
+        await client.setCurrent(closed)
+        let closedPublished = try await coordinator.refresh(validatingAgainst: [independent])
+        XCTAssertTrue(closedPublished)
+        XCTAssertEqual(coordinator.snapshot, closed)
+        XCTAssertGreaterThan(closed.state.runs[0].revision, independent.state.runs[0].revision)
+    }
+}

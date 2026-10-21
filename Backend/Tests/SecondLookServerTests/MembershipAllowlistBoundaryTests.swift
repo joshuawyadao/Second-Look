@@ -96,7 +96,13 @@ import SecondLookCore
                     self.request(&request)
                     request.body = ByteBuffer(string: "{}")
                 }) { response in
-                    #expect(response.status == .ok)
+                    if mode == .single {
+                        #expect(response.status == .ok)
+                    } else {
+                        #expect(response.status == .serviceUnavailable)
+                        #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
+                        #expect(response.headers[.cacheControl] == ["no-store"])
+                    }
                 }
                 try await app.testing().test(.POST, "/v1/pairing/join", beforeRequest: { request in
                     self.request(&request)

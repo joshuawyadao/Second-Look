@@ -186,7 +186,9 @@ private actor RequestedSpaceStore: SpaceStore {
         mode == .wrongRead ? wrongSnapshot : validSnapshot
     }
     func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
-                expectedRevision: Int?) async throws -> SharedSnapshot { wrongSnapshot }
+                expectedRevision: Int?) async throws -> SharedSnapshot {
+        SharedSnapshot(spaceID: other, revision: 0, members: [actor], state: .init())
+    }
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { wrongSnapshot }
     func receipt(actor: UUID, envelope: SharedCommandEnvelope,
                  digest: String) async throws -> SharedCommandResult? {

@@ -137,6 +137,12 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                       snapshot.state == renewalBaseline.state else {
                     throw SharedStateFailure.invalidResponse
                 }
+            } else {
+                guard snapshot.revision == 0,
+                      snapshot.members == [actor],
+                      snapshot.state == SecondLookState() else {
+                    throw SharedStateFailure.invalidResponse
+                }
             }
             return try json(Invitation(snapshot: snapshot, inviteToken: token, expiresAt: expiresAt))
         }

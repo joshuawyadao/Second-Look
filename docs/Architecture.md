@@ -57,7 +57,7 @@ Only a command-service response explicitly coded notPaired establishes absent me
 
 Every retained run preserves its original performer and reviewer across newer shared revisions, including the transition to closure; structural membership alone cannot authorize a role reassignment.
 
-For invitation renewal at expected revision N, the server captures a validated current snapshot and publishes a token only when the authoritative create result retains that owner-only space, ordered members and aggregate at exactly N+1. Exhausted revisions fail before addition. Initial creation needs no prior snapshot; SQL remains authoritative for stale revisions, ineligible callers and concurrent renewal/join outcomes. Malformed successful replies receive bounded503/no-store without a token.
+For invitation renewal at expected revision N, the server captures a validated current snapshot and publishes a token only when the authoritative create result retains that owner-only space, ordered members and aggregate at exactly N+1. Exhausted revisions fail before addition. Initial creation needs no prior snapshot and publishes a token only for revision0, ordered members[actor] and the exact empty initial aggregate; SQL remains authoritative for stale revisions, ineligible callers and concurrent renewal/join outcomes. Malformed successful replies receive bounded503/no-store without a token.
 
 A successful join additionally requires both distinct allowlisted accounts in its validated result; a caller-only reply receives bounded503/no-store rather than publishing a paired state. This does not constrain the actor to one member index, preserving idempotent SQL joins.
 

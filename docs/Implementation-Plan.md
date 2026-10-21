@@ -1,40 +1,43 @@
 # Plan
 
-Complete the authorized hosted upgrade and make PR #2 ready for merge while preserving its private space, accounts, sessions and Free safeguards. Leave the PR unmerged. The deployed server is235ed53; the latest executable phone source is903f46a. Subsequent documentation does not change executable behavior.
+Complete the authorized existing-service hosted upgrade and make PR #2 ready for merge while preserving its paired space, accounts, sessions and Free safeguards. Leave the PR unmerged. Final executable server and phone source is9f16c2f; later documentation does not change behavior.
 
 ## Scope
-- In: reviewed conditional-invitation schema, manual existing-service deployment/restart, actionable review repairs, meaningful regressions, connected acceptance, canonical documentation and final PR gates.
-- Out: paid upgrades, account/allowlist changes, hosted reset/unpairing, real media or deletion workers, push, distribution and merge.
+- In: reviewed conditional-invitation schema, existing Free service deployment/restart, actionable review repairs, meaningful regressions, connected acceptance, canonical docs and final publication gates.
+- Out: paid upgrades, account/allowlist changes, hosted reset/unpairing, real media/deletion workers, push, distribution and merge.
 
 ## Action items
-[x] Inspect applicable product/architecture/operations/tests and checkpoint the resolved plan before implementation.
-[x] Apply the exact conditional-invitation SQL atomically with complete before/after row equality; verify six catalog/security checks and preserve the paired singleton and157 prior receipts.
-[x] Upgrade the existing Free server and verify actual startup/restart, public access denial and Release test-route exclusion.
-[x] Address all74 tracked Codex findings with meaningful regressions, separate validated saves/pushes, acknowledgment and authorized thread resolution. Keep the complete concern/commit ledger on PR #2.
-[x] Validate the final three repairs: membership monotonicity (16 red assertions,6 focused/152 portable green); retained Start navigation (91.194s red/75.649s green); busy local-mode transition (75.994s behavioral red/98.014s green). Record setup failures separately.
-[x] Complete scoped Brooks review across all12 sources:100/100, no actionable finding after repairing the earlier token-limit Warning.
-[x] Run53 repository tooling cases and the required native verifier:152 portable,10 ordinary UI passes,29 explicit gated skips/39 total in198.888s, then Release identity/development-control exclusion. Skips are not connected acceptance.
-[x] Preserve source-specific server29Debug/27Release, official legacy/modern local Auth/Postgres/HTTP/restart workflows and cumulative/focused connected native evidence. Re-run the official modern workflow after membership repair.
-[x] Complete both preserved hosted clients on903f46a before/after an actual service restart, with genuine Auth/commands, record preservation and saved-session relaunch/foreground checks.
-[x] Record final evidence in canonical docs and stop only task-owned local services/simulator while preserving data. Save/push this final evidence and track subsequent external publication gates on PR #2.
-[ ] Request/classify final-head Codex review, wait for terminal passing CI Verify/required checks, confirm no open actionable threads or merge conflicts, and mark ready while leaving PR unmerged.
+[x] Read applicable contracts/tests and checkpoint resolved plans before implementation.
+[x] Install the exact conditional-invitation SQL atomically with complete row-preservation assertions; verify six catalog/security checks and the paired singleton/prior157 receipts.
+[x] Address all75 tracked Codex findings with tested, pushed fixes, thumbs-up and authorized thread resolution; retain the complete concern/commit ledger on PR #2.
+[x] Repair Release admission of current synthetic submissions:12 meaningful red assertions,154 Debug/154 Release portable green,30 Debug/28 Release server boundaries, permanent Release test gates and app binary marker exclusion. Preserve Debug synthetic support, local persistence and closed text-only archives.
+[x] Run both official local key modes through genuine Auth/Postgres/HTTP/restart; verify affected Debug synthetic native cleanup86.295s and source-specific prior navigation/busy/receipt/lifecycle cases. No full27-case invocation is claimed.
+[x] Run the required revised native verifier:10 ordinary UI passes/29 gated skips,39total202.313s, plus Release identity/control/marker exclusion. Run53 repository tooling cases and scoped Brooks review100/100 across12 sources. Skips are not acceptance.
+[x] Deploy exact9f16c2f to the existing Free service; verify both preserved hosted clients before/after actual18:52Pacific restart, public denial/test-route boundaries and five database preservation flags.
+[x] Update canonical evidence/contracts and stop only the named local stack and task-owned simulator with data preserved; keep both original hosted sessions intact.
+[ ] Save/push final documentation, classify fresh final-head Codex review, wait for terminal passing CI Verify/required checks, confirm zero actionable threads and no conflicts, then mark ready without merging.
 
 ## External publication gates
 
-Final saved-head review, CI, thread and mergeability results belong in PR #2's live review ledger/checks after the evidence push. Do not substitute older-head success, local skips or hosted health for these gates. No further documentation-only commit is required to duplicate live GitHub check state.
+Final saved-head review, CI, thread and mergeability state belongs in PR #2's live ledger/checks after the final evidence push. Older-head green checks cannot substitute. No further documentation-only commit is required to duplicate live GitHub check state.
 
 ## Documentation
 
-Maintain README, Product-Spec, Architecture, Roadmap, Backend-Operations, Supabase-Free-Setup, decision002 and Verification. Preserve exact historical sources, failures and limits. Milestone2 remains in progress under its full roadmap gates; PR readiness covers this bounded private shared-state implementation.
+Maintain README, Product-Spec, Architecture, Roadmap, Backend-Operations, Supabase-Free-Setup, decision002 and Verification. Preserve exact historical sources, failures and limits. The e200 push CI privacy-hide timeout has no demonstrated source cause; independent same-SHA PR CI and unchanged local cases pass. Do not weaken its assertions or claim a speculative fix. Milestone2 remains in progress under its full roadmap gates; PR readiness covers the bounded private shared-state implementation.
 
 ## Open questions
 
-None. Text-only closure provenance, strict legacy normalization, bounded successful Auth duration and membership/presentation guards are documented reversible choices. Physical-device/VoiceOver, fresh hosted pairing/renewal races on a new singleton, real media/cleanup, backup/restore and wider operational acceptance remain separate work.
+None. Physical-device/VoiceOver, real media/cleanup, fresh hosted pairing/renewal on a new singleton, backup/restore and wider operational acceptance remain separate work. No SQL, account or paid decision is needed for the Release repair.
 
-## Final review follow-up
 
-Review5593883283 on e200398 adds one P2 finding (75 tracked): Release validation still admits current synthetic submissions with the exact test fixture marker. Add a compile-time Release rejection for all connected current submissions; retain the existing strict metadata checks in Debug and local demo persistence. No arbitrary runtime capability or production media path is introduced. Add meaningful direct/wire/processor Release regressions and preserve Debug synthetic acceptance. Verify Debug and Release package/server boundaries, native Release exclusion, both local key workflows and affected synthetic connected acceptance. The server-used Core boundary changes, so deploy the reviewed repaired server and repeat both saved hosted clients before/after an actual restart with data preserved. Update canonical contracts/evidence, save/push/acknowledge/resolve the new finding, then repeat final review and exact-head CI. No open user question or SQL/account/paid setting change.
+## Further review queue —80 tracked
 
-Release repair checkpoint:12 meaningful Release rejection reds;154 Debug/154 Release portable green,30 Debug/28 Release server boundaries green with genuine provider read/command rejection and zero Release commits; official legacy/modern local workflows pass; revised native verifier10UI+29gated skips/39total202.313s plus synthetic-marker exclusion passes.53 repository cases pass14.870s. Scoped Brooks100 across12 sources. Guarded Debug cleanup native running, then save/push/deploy repaired server and repeat both hosted clients/restart. The previous e200 native CI privacy-hide predicate timed out on one slow runner; local unchanged privacy case passes, no assertion weakened or speculative CI fix made.
+Review5594031113 on9f16c2f adds four actionable guards and one authoritative-receipt contract clarification. No open user question. Preserve the75 prior resolved/runtime-validated findings and exact source evidence.
 
-Guarded Debug synthetic cleanup native passes86.295s; final53 repository cases pass15.267s. Core/server/native/local acceptance is complete for this repair. Save/push, acknowledge finding75, deploy its exact server source, verify both saved hosted clients before/after actual restart and then resolve only after hosted validation.
+1. Add increasing-revision preservation of all known run/archive IDs and exact closed records across trusted-reference chronology, incoming refresh and seeded command publication. Preserve open edits/closure/new runs, legitimate routine deletion, pending envelopes and genuine receipt recovery. Meaningful direct coordinator regressions first; save/push/acknowledge before the next item.
+2. Classify late save-as identity comment4332244295 as non-actionable under the explicit authoritative server/private-SQL receipt contract. Validate genuine HTTP save-as→delete→exact replay, actor/body binding and extra-field rejection, plus duplicate SQL commit ignoring a forged replacement createdID. Clarify the contract and report the classification without new schema, wire witness or secret.
+3. For invitation renewal, capture the current validated owner-only snapshot at expectedN, reject exhaustedN before arithmetic, then require store result same space atN+1 with unchanged state/members before exposing the new token. Keep nil initial creation and SQL CAS/race failure behavior intact.
+4. Require generic validated join results to contain both distinct allowlisted accounts before HTTP200; preserve legitimate idempotent joins.
+5. Reject Debug synthetic-evidence space revisionInt.max before mutation/addition with bounded503/no-store/no commit; preserve Int.max-1→Int.max positive. Reproduce the trap only in a focused disposable test process.
+
+Keep each feedback item separately tested/saved/pushed/acknowledged; Git sequential. Reuse bounded workers for disjoint ownership, with parent owning docs/Git/providers. Server guards require one final reviewed deployment and both saved hosted clients before/after actual restart. Update canonical contracts/evidence and repeat final review/CI gates. No account/allowlist/reset, paid setting, SQL migration or receipt protocol expansion.

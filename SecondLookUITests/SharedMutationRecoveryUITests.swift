@@ -17,6 +17,7 @@ final class SharedMutationRecoveryUITests: XCTestCase {
     }
 
     func testBusyRefreshDisablesMutationUntilRefreshCompletes() throws {
+        continueAfterFailure = false
         let fixture = try loadFixture(for: "busy")
         let app = launch(fixture, scenario: "-shared-test-delayed-refresh")
         connectOwnerAndCreateSpace(fixture.owner, in: app)
@@ -51,8 +52,21 @@ final class SharedMutationRecoveryUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Refresh"].firstMatch.isEnabled,
                        "Manual refresh must remain disabled until the owning refresh finishes")
 
+        tap("Account settings", in: app)
+        let useLocal = app.buttons["returnToLocal"]
+        for _ in 0..<6 where !useLocal.exists { app.swipeUp() }
+        XCTAssertTrue(useLocal.waitForExistence(timeout: 8))
+        XCTAssertFalse(useLocal.isEnabled,
+                       "Local mode must not abandon a busy refresh that may rotate saved credentials")
+        tap("Done", in: app)
+
         tap("testResumeSharedRefresh", in: app)
         waitUntilEnabled(start, context: "Start after genuine refresh")
+        tap("Account settings", in: app)
+        for _ in 0..<6 where !useLocal.exists { app.swipeUp() }
+        XCTAssertTrue(useLocal.waitForExistence(timeout: 8))
+        XCTAssertTrue(useLocal.isEnabled, "Local mode becomes available after refresh completes")
+        tap("Done", in: app)
         tap("sharedStartRoutine-\(title)", in: app)
         XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20),
                       "An accepted start must open the server-created run")

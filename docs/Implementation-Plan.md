@@ -1,6 +1,6 @@
 # Plan
 
-Finish the authorized existing-service hosted upgrade and PR#2 private shared-state review. Preserve paired records/accounts and Free safeguards; leave the PR unmerged. Final executable native source isd9658a5 and deployed server/state-enforcement source235ed53; later native repairs do not change server routes/RPCs.
+Finish the authorized existing-service hosted upgrade and PR#2 private shared-state review. Preserve paired records/accounts and Free safeguards; leave the PR unmerged. The completed hosted checkpoint uses native sourced9658a5 and deployed server/state-enforcement source235ed53; later native repairs do not change server routes/RPCs.
 
 ## Scope
 - In: exact pending schema installation, manual Free deployment/restart, review repairs/regressions, connected acceptance, canonical docs and final PR readiness.
@@ -33,3 +33,7 @@ No open user questions. Keep exact external review/CI gates until these new repa
 Membership item checkpoint:16behavioral red assertions;6focused+152total package green (123Core+29transport/session), stable paired membership and valid one-to-two join retained. Save/push/acknowledge4331882677 before UIimplementation. Read-only UI mapping confirms routines root has retained TabView/NavigationStack identity; remove only root disappearance cleanup, preserve explicit editor/detail abandonment. Add a dedicated start-navigation lost-reply fixture/test so existing multi-case creation assumptions remain isolated. Busy mode test can use existing real-membership publication pause plus Account settings/Done/resume, without a new Auth fault hook.
 
 Creation ownership checkpoint: the unmodified regression fails at original-checklist navigation after recovered receipt (91.194s), then passes75.649s after retaining only the root callback. Original ID and one target run are verified.53 repository cases pass15.224s after a sandbox socket-permission setup failure. Save/push/acknowledge4331882683 before busy-mode implementation. Scoped Brooks follow-up is100/100 for membership and root lifetime.
+
+Busy local-mode checkpoint: initial81.556s attempt fails before the behavioral assertion because the lazy bottom Form row is not mounted; bounded scrolling fixes setup. The actual unchanged enabled-state assertion then fails75.994s. Guard local-mode entry in the main-actor model, disable both Use local lists controls and guard settings dismissal. Green must preserve the existing positive accepted Start after the genuine refresh completes. The test pauses after genuine local membership publication; it does not establish a hosted Auth-rotation race.
+
+Busy native green98.014s preserves original positive Start and verifies local control disabled/re-enabled.53 repository cases pass15.074s. Scoped final three-repair Brooks100/100, no actionable finding. Save/push/acknowledge4331882687, then complete ordinary native/Release, final hosted phone-source acceptance, documentation evidence and fresh terminal review/CI.

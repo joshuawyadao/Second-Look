@@ -188,6 +188,7 @@ final class ConnectedAppModel {
     }
 
     func useLocal() {
+        guard !busy else { return }
         selected = false
         UserDefaults.standard.set(false, forKey: Self.selectedKey)
         resetSession()

@@ -272,6 +272,7 @@ private struct ConnectedSignInView: View {
                 }
                 Section {
                     Button("Use local lists") { model.useLocal() }
+                        .disabled(model.busy)
                 } footer: {
                     Text("Local demo lists are separate and never uploaded to a private space.")
                 }
@@ -400,7 +401,12 @@ private struct ConnectedAccountSettingsView: View {
                     Text("No local lists or synthetic demo evidence are uploaded. Real photo capture and notifications are not available yet.")
                 }
                 Section {
-                    Button("Use local lists") { model.useLocal(); dismiss() }
+                    Button("Use local lists") {
+                        guard !model.busy else { return }
+                        model.useLocal()
+                        dismiss()
+                    }
+                        .disabled(model.busy)
                         .accessibilityIdentifier("returnToLocal")
                 }
             }

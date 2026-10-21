@@ -202,6 +202,19 @@ private struct CreateSpaceRequest: Encodable, Sendable { let expectedSpaceRevisi
 private struct RefreshRequest: Encodable, Sendable { let refresh_token: String }
 private enum HTTPFailureFormat { case commandService, supabaseAuth }
 
+/// Applies to each task, including tasks sent through a caller-supplied session.
+/// Auth POST bodies must never be resent to a redirect destination.
+private final class RejectTransportRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    static let shared = RejectTransportRedirect()
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
 /// Kept in the same target as the app's transport so package tests exercise exact request code.
 private struct PrivateHTTPEndpoint: @unchecked Sendable {
     let baseURL: URL
@@ -251,9 +264,13 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
         }
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await session.data(for: request,
+                                                      delegate: RejectTransportRedirect.shared) }
         catch { throw SharedStateFailure.serviceUnavailable }
         guard let http = response as? HTTPURLResponse else { throw SharedStateFailure.invalidResponse }
+        guard !(300..<400).contains(http.statusCode) else {
+            throw SharedStateFailure.serviceUnavailable
+        }
         guard (200..<300).contains(http.statusCode) else {
             throw failure(status: http.statusCode, data: data)
         }

@@ -5,6 +5,7 @@ import FoundationNetworking
 import XCTest
 import SecondLookCore
 import SecondLookTransport
+@testable import SecondLookServer
 
 /// Runs only against the disposable local Auth, Postgres, and Swift server fixture.
 /// It never provisions a service or uses the checked-in Debug demo identities.
@@ -478,6 +479,40 @@ final class LocalIntegrationTests: XCTestCase {
                                         apiKey: f.publishableKey, profile: "secondlook_private")
         XCTAssertTrue([401, 403, 404, 406].contains(deniedTable.0))
 
+        // Force the receipt-miss/read race against the actual private SQL commit.
+        // The wrapper commits a different legitimate result for this exact envelope
+        // first, then forwards the server's losing computed candidate to SQL.
+        let localConfiguration = try ServerConfiguration(environment: [
+            "SECONDLOOK_PROVIDER_URL": f.providerURL.absoluteString,
+            "SECONDLOOK_PUBLISHABLE_KEY": f.publishableKey,
+            "SECONDLOOK_SERVICE_KEY": f.serviceKey,
+            "SECONDLOOK_ALLOWED_ACCOUNTS": "\(f.owner.id),\(f.peer.id)",
+            "SECONDLOOK_LOCAL_DEVELOPMENT": "1",
+        ])
+        let provider = SupabaseProvider(configuration: localConfiguration)
+        let verifiedActor = try await provider.account(for: refreshedOwner.access_token)
+        XCTAssertEqual(verifiedActor, f.owner.id)
+        let injected = command(.startOneOff(title: "SQL duplicate winner",
+            items: [RoutineItem(title: "One")], settings: .init()), snapshot: shared)
+        let store = CommitWinnerStore(provider: provider, baseline: shared)
+        let directService = PrivateSpaceService(verifier: provider, store: store,
+                                                configuration: localConfiguration)
+        let resolved = try await directService.execute(injected, actor: verifiedActor)
+        let recordedWinner = await store.winner()
+        let recordedLoserID = await store.losingCreatedID()
+        let actualWinner = try XCTUnwrap(recordedWinner)
+        let losingID = try XCTUnwrap(recordedLoserID)
+        XCTAssertNotEqual(losingID, actualWinner.createdID)
+        XCTAssertEqual(resolved, actualWinner)
+        let commitCalls = await store.commitCalls()
+        XCTAssertEqual(commitCalls, 1)
+        shared = try await owner.fetch(spaceID: shared.spaceID)
+        XCTAssertEqual(shared.revision, injected.expectedSpaceRevision + 1)
+        XCTAssertEqual(shared, resolved.snapshot)
+        XCTAssertEqual(shared.state.runs.filter { $0.id == actualWinner.createdID }.count, 1)
+        XCTAssertFalse(shared.state.runs.contains { $0.id == losingID })
+        XCTAssertEqual(shared.state.archives.filter { $0.id == highRunID }.count, 1)
+
         if let path = ProcessInfo.processInfo.environment["SECONDLOOK_RESTART_EXPECTED"] {
             try SharedWireCodec.encode(shared).write(to: URL(fileURLWithPath: path), options: .atomic)
         }
@@ -502,5 +537,49 @@ final class LocalIntegrationTests: XCTestCase {
         XCTAssertEqual(ownerSnapshot, expected)
         XCTAssertEqual(peerSnapshot, expected)
         XCTAssertEqual(ownerSnapshot.state.archives.filter { $0.outcome == .completed }.count, 1)
+    }
+}
+
+private actor CommitWinnerStore: SpaceStore {
+    let provider: SupabaseProvider
+    let baseline: SharedSnapshot
+    private var storedWinner: SharedCommandResult?
+    private var computedLoserID: UUID?
+    private var commits = 0
+
+    init(provider: SupabaseProvider, baseline: SharedSnapshot) {
+        self.provider = provider
+        self.baseline = baseline
+    }
+
+    func winner() -> SharedCommandResult? { storedWinner }
+    func losingCreatedID() -> UUID? { computedLoserID }
+    func commitCalls() -> Int { commits }
+
+    func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot {
+        try await provider.read(actor: actor, space: space)
+    }
+    func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
+                expectedRevision: Int?) async throws -> SharedSnapshot {
+        try await provider.create(actor: actor, peer: peer, inviteHash: inviteHash,
+                                  expiresAt: expiresAt, expectedRevision: expectedRevision)
+    }
+    func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot {
+        try await provider.join(actor: actor, inviteHash: inviteHash)
+    }
+    func receipt(actor: UUID, envelope: SharedCommandEnvelope,
+                 digest: String) async throws -> SharedCommandResult? {
+        try await provider.receipt(actor: actor, envelope: envelope, digest: digest)
+    }
+    func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String,
+                result: SharedCommandResult) async throws -> SharedCommandResult {
+        commits += 1
+        computedLoserID = result.createdID
+        let alternate = try SharedCommandProcessor.apply(envelope, to: baseline,
+            actorID: actor, now: Date(timeIntervalSince1970: 1_600_000_000))
+        storedWinner = try await provider.commit(actor: actor, envelope: envelope,
+                                                 digest: digest, result: alternate)
+        return try await provider.commit(actor: actor, envelope: envelope,
+                                         digest: digest, result: result)
     }
 }

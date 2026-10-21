@@ -37,10 +37,28 @@ struct PrivateSpaceService: Sendable {
         }
     }
 
+    func validateAcceptedResult(_ result: SharedCommandResult,
+                                actor: UUID, envelope: SharedCommandEnvelope) throws {
+        try validateSnapshot(result.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
+        guard result.snapshot.revision > envelope.expectedSpaceRevision else {
+            throw SharedStateFailure.invalidResponse
+        }
+        let createsObject: Bool
+        switch envelope.command {
+        case .startRun, .startOneOff, .repeatRun, .saveRunAsRoutine:
+            createsObject = true
+        default:
+            createsObject = false
+        }
+        guard (result.createdID != nil) == createsObject else {
+            throw SharedStateFailure.invalidResponse
+        }
+    }
+
     func execute(_ envelope: SharedCommandEnvelope, actor: UUID) async throws -> SharedCommandResult {
         let digest = Self.digest(try SharedWireCodec.encode(envelope))
         if let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) {
-            try validateSnapshot(receipt.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
+            try validateAcceptedResult(receipt, actor: actor, envelope: envelope)
             return receipt
         }
         let snapshot = try await store.read(actor: actor, space: envelope.spaceID)
@@ -52,15 +70,32 @@ struct PrivateSpaceService: Sendable {
             // An identical retry can miss its receipt just before the first request commits.
             // Recheck after the newer read; distinct actor/payload collisions still fail in SQL.
             if let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) {
-                try validateSnapshot(receipt.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
+                try validateAcceptedResult(receipt, actor: actor, envelope: envelope)
                 return receipt
             }
             throw SharedStateFailure.staleState
         }
         try validateSnapshot(result.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
         let committed = try await store.commit(actor: actor, envelope: envelope, digest: digest, result: result)
+        return try await confirmCommit(committed, computed: result, actor: actor,
+                                       envelope: envelope, digest: digest)
+    }
+
+    func confirmCommit(_ committed: SharedCommandResult, computed result: SharedCommandResult,
+                       actor: UUID, envelope: SharedCommandEnvelope,
+                       digest: String) async throws -> SharedCommandResult {
         try validateSnapshot(committed.snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
-        return committed
+        if committed == result {
+            try validateAcceptedResult(committed, actor: actor, envelope: envelope)
+            return committed
+        }
+        // SQL may have committed an identical request first and returned its own
+        // result (or a newer current view). Only its bound receipt proves that case.
+        guard let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) else {
+            throw SharedStateFailure.invalidResponse
+        }
+        try validateAcceptedResult(receipt, actor: actor, envelope: envelope)
+        return receipt
     }
 
     static func digest(_ data: Data) -> String {
@@ -205,10 +240,12 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                 let result = SharedCommandResult(snapshot: .init(spaceID: snapshot.spaceID,
                     revision: snapshot.revision + 1, members: snapshot.members, state: state))
                 try service.validateSnapshot(result.snapshot, actor: actor, expectedSpaceID: body.spaceID)
+                let digest = PrivateSpaceService.digest(try SharedWireCodec.encode(body))
                 let committed = try await service.store.commit(actor: actor, envelope: envelope,
-                    digest: PrivateSpaceService.digest(try SharedWireCodec.encode(body)), result: result)
-                try service.validateSnapshot(committed.snapshot, actor: actor, expectedSpaceID: body.spaceID)
-                return try json(committed.snapshot)
+                    digest: digest, result: result)
+                let confirmed = try await service.confirmCommit(committed, computed: result,
+                    actor: actor, envelope: envelope, digest: digest)
+                return try json(confirmed.snapshot)
             }
         }
     }

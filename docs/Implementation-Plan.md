@@ -30,3 +30,7 @@ Maintain README, Product-Spec, Architecture, Roadmap, Backend-Operations, Supaba
 ## Open questions
 
 None. Text-only closure provenance, strict legacy normalization, bounded successful Auth duration and membership/presentation guards are documented reversible choices. Physical-device/VoiceOver, fresh hosted pairing/renewal races on a new singleton, real media/cleanup, backup/restore and wider operational acceptance remain separate work.
+
+## Final review follow-up
+
+Review5593883283 on e200398 adds one P2 finding (75 tracked): Release validation still admits current synthetic submissions with the exact test fixture marker. Add a compile-time Release rejection for all connected current submissions; retain the existing strict metadata checks in Debug and local demo persistence. No arbitrary runtime capability or production media path is introduced. Add meaningful direct/wire/processor Release regressions and preserve Debug synthetic acceptance. Verify Debug and Release package/server boundaries, native Release exclusion, both local key workflows and affected synthetic connected acceptance. The server-used Core boundary changes, so deploy the reviewed repaired server and repeat both saved hosted clients before/after an actual restart with data preserved. Update canonical contracts/evidence, save/push/acknowledge/resolve the new finding, then repeat final review and exact-head CI. No open user question or SQL/account/paid setting change.

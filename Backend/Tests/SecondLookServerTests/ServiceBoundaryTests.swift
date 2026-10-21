@@ -355,15 +355,19 @@ private struct SyntheticVerifier: AccountVerifier {
 
 private actor InvitationRevisionStore: SpaceStore {
     let owner: UUID
+    let space = UUID()
     private var revisions: [Int?] = []
     init(owner: UUID) { self.owner = owner }
     func lastExpectedRevision() -> Int? { revisions.last ?? nil }
     func createCount() -> Int { revisions.count }
-    func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }
+    func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot {
+        guard actor == owner, space == nil else { throw SharedStateFailure.forbidden }
+        return SharedSnapshot(spaceID: self.space, revision: 2, members: [owner], state: .init())
+    }
     func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
                 expectedRevision: Int?) async throws -> SharedSnapshot {
         revisions.append(expectedRevision)
-        return SharedSnapshot(spaceID: UUID(), revision: expectedRevision ?? 0,
+        return SharedSnapshot(spaceID: space, revision: expectedRevision.map { $0 + 1 } ?? 0,
                               members: [owner], state: .init())
     }
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { throw SharedStateFailure.forbidden }

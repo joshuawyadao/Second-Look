@@ -1,6 +1,6 @@
 # Plan
 
-Complete the authorized existing-service hosted upgrade and make PR #2 ready for merge while preserving its paired space, accounts, sessions and Free safeguards. Leave the PR unmerged. Final executable server and phone source is9f16c2f; later documentation does not change behavior.
+Complete the authorized existing-service hosted upgrade and make PR #2 ready for merge while preserving its paired space, accounts, sessions and Free safeguards. Leave the PR unmerged. Hosted executable server checkpoint is9f16c2f; the separately saved follow-up guards below require a final deployment and acceptance.
 
 ## Scope
 - In: reviewed conditional-invitation schema, existing Free service deployment/restart, actionable review repairs, meaningful regressions, connected acceptance, canonical docs and final publication gates.
@@ -45,3 +45,5 @@ Keep each feedback item separately tested/saved/pushed/acknowledged; Git sequent
 History item checkpoint:17 meaningful red assertions in5tests;5focused Debug/Release and159total portable perconfiguration pass, preserving pending/genuine retry andconfirmedreceipts. Save/push/ack4332244288 before receipt-contract test implementation. No server route/SQL changes.
 
 Receipt contract item verified with genuine HTTP/SQL in both official local key modes: post-delete replay retains originalID/currentstate/revision, actor+body mismatch denied, extraresult-ID input400invalidResponse, duplicate privilegedcommit ignores forgedreplacementstate/ID and leavesone receipt. Classificationnonactionable underauthoritativecontract; no production/protocol/schema change. Initialwrongtesterrorcodeexpectationcorrected;53tooling14.964pass. Save/push/acknowledgeclassificationbefore renewalimplementation.
+
+Renewal item:31 meaningful red issues/3focused tests;4focused Debug+Release and34full Debug/32full Release green. Capture validated baseline, exact same-space/state/membersN+1 owner-only result, pre-addition capacity bound. SQL failure eligibility/CAS remains authoritative; nil initial create skips baseline. Existing forwarding fake corrected to coherent expected baseline/result without weakening assertions. Final genuine local and hosted runtime acceptance remains required before publication.

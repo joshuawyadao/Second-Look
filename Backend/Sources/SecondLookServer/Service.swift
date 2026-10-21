@@ -108,6 +108,18 @@ func configure(_ app: Application, configuration: ServerConfiguration,
             guard let peer = configuration.allowedAccounts.first(where: { $0 != actor }) else {
                 throw SharedStateFailure.pairingUnavailable
             }
+            var renewalBaseline: SharedSnapshot?
+            if let expectedRevision = body.expectedSpaceRevision {
+                guard expectedRevision < Int.max else { throw SharedStateFailure.invalidResponse }
+                do {
+                    let current = try await service.store.read(actor: actor, space: nil)
+                    try service.validateSnapshot(current, actor: actor)
+                    renewalBaseline = current
+                } catch SharedStateFailure.notPaired {
+                    // A conditional renewal cannot create an absent singleton.
+                    throw SharedStateFailure.staleState
+                }
+            }
             // Two independent UUIDs supply 244 random bits; only a SHA256 digest reaches the database.
             let token = UUID().uuidString + UUID().uuidString
             let expiresAt = Date().addingTimeInterval(15 * 60)
@@ -115,6 +127,17 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                 inviteHash: PrivateSpaceService.digest(Data(token.utf8)), expiresAt: expiresAt,
                 expectedRevision: body.expectedSpaceRevision)
             try service.validateSnapshot(snapshot, actor: actor)
+            if let expectedRevision = body.expectedSpaceRevision {
+                guard let renewalBaseline,
+                      renewalBaseline.revision == expectedRevision,
+                      renewalBaseline.members == [actor],
+                      snapshot.spaceID == renewalBaseline.spaceID,
+                      snapshot.revision == expectedRevision + 1,
+                      snapshot.members == renewalBaseline.members,
+                      snapshot.state == renewalBaseline.state else {
+                    throw SharedStateFailure.invalidResponse
+                }
+            }
             return try json(Invitation(snapshot: snapshot, inviteToken: token, expiresAt: expiresAt))
         }
     }

@@ -121,8 +121,28 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
         var request = request
         request.timeoutInterval = 15
-        do { return try await session.data(for: request) }
+        do {
+            let result = try await session.data(for: request, delegate: RejectProviderRedirect.shared)
+            guard let http = result.1 as? HTTPURLResponse,
+                  !(300..<400).contains(http.statusCode) else {
+                throw SharedStateFailure.serviceUnavailable
+            }
+            return result
+        }
         catch { throw SharedStateFailure.serviceUnavailable }
+    }
+}
+
+/// A per-task delegate applies even when callers inject a URLSession. A provider
+/// redirect must never get a second request carrying Auth or RPC credentials.
+private final class RejectProviderRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    static let shared = RejectProviderRedirect()
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }
 

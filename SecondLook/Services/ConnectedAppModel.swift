@@ -1350,8 +1350,10 @@ final class ConnectedAppModel {
                 } else {
                     keepVerifiedSnapshot = false
                 }
-                if !keepVerifiedSnapshot {
-                    snapshot = coordinator.snapshot
+                // A rejected initial preflight may leave the coordinator empty.
+                // Keep the already verified view; access/scope loss was handled above.
+                if !keepVerifiedSnapshot, let admitted = coordinator.snapshot {
+                    snapshot = admitted
                 }
                 let unconfirmed = coordinator.hasUnconfirmedCommand(commandID: commandID) ||
                     coordinator.hasConfirmedReceipt(commandID: commandID, command: command)

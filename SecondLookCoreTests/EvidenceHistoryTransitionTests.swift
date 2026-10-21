@@ -274,15 +274,15 @@ final class EvidenceHistoryTransitionTests: XCTestCase {
         XCTAssertTrue(seeded)
         var state = try accepted(source, runID: runID, itemID: itemID)
         var last = first
-        func advance() async throws {
-            let next = view(state, revision: last.revision + 1)
+        func advance(spaceWrites: Int = 1) async throws {
+            let next = view(state, revision: last.revision + spaceWrites)
             try next.validate(for: owner)
             await client.setCurrent(next)
             let published = try await coordinator.refresh(validatingAgainst: [last])
             XCTAssertTrue(published)
             last = next
         }
-        try await advance()
+        try await advance(spaceWrites: 3) // Local prepare/send/accept are three Core steps.
         try state.requestAnother(runID: runID, itemID: itemID, actorID: peer,
             expectedVersion: 1, note: "Different angle", now: now.addingTimeInterval(3))
         try await advance()
@@ -295,7 +295,7 @@ final class EvidenceHistoryTransitionTests: XCTestCase {
         let secondVersion = try state.beginSend(runID: runID, itemID: itemID, actorID: owner)
         try state.acceptSend(runID: runID, itemID: itemID, actorID: owner,
                              expectedVersion: secondVersion, now: now.addingTimeInterval(6))
-        try await advance()
+        try await advance(spaceWrites: 3)
         try state.approve(runID: runID, itemID: itemID, actorID: peer,
                           expectedVersion: secondVersion, now: now.addingTimeInterval(7))
         try await advance()
@@ -322,7 +322,7 @@ final class EvidenceHistoryTransitionTests: XCTestCase {
             settings: RunSettings(reminders: ReminderPreferences(remindPerformer: true)))
         try state.setStandardChecked(runID: runID, itemID: state.runs[0].items[1].id,
                                      checked: true, actorID: owner, now: now)
-        let next = view(state, revision: 2)
+        let next = view(state, revision: 3)
         try next.validate(for: owner)
         await client.setCurrent(next)
         let progressed = try await coordinator.refresh(validatingAgainst: [first])
@@ -330,7 +330,7 @@ final class EvidenceHistoryTransitionTests: XCTestCase {
         try state.cancel(runID: runID, actorID: owner, now: now.addingTimeInterval(5))
         _ = try state.startOneOff(title: "Independent", items: [RoutineItem(title: "Bag")],
             performerID: peer, reviewerID: owner, now: now.addingTimeInterval(6))
-        let closed = view(state, revision: 4)
+        let closed = view(state, revision: 5)
         try closed.validate(for: owner)
         await client.setCurrent(closed)
         let published = try await coordinator.refresh(validatingAgainst: [first, next])

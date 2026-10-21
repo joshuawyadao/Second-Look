@@ -194,14 +194,14 @@ final class RunRevisionTransitionTests: XCTestCase {
                                     actorID: owner, now: now)
         try next.updateRunSettings(runID: runID, actorID: owner,
             settings: RunSettings(reminders: ReminderPreferences(remindPerformer: true)))
-        let settings = view(next, revision: 3)
+        let settings = view(next, revision: 4)
         await client.setCurrent(settings)
         let settingsPublished = try await coordinator.refresh(validatingAgainst: [checked])
         XCTAssertTrue(settingsPublished)
 
         let newID = try next.startOneOff(title: "New independent run",
             items: [RoutineItem(title: "Lights")], performerID: peer, reviewerID: owner, now: now)
-        let independent = view(next, revision: 4)
+        let independent = view(next, revision: 5)
         await client.setCurrent(independent)
         let independentPublished = try await coordinator.refresh(validatingAgainst: [settings])
         XCTAssertTrue(independentPublished)
@@ -209,7 +209,7 @@ final class RunRevisionTransitionTests: XCTestCase {
         XCTAssertTrue(independent.state.runs.contains { $0.id == newID })
 
         try next.cancel(runID: runID, actorID: owner, now: now)
-        let closed = view(next, revision: 5)
+        let closed = view(next, revision: 6)
         await client.setCurrent(closed)
         let closedPublished = try await coordinator.refresh(validatingAgainst: [independent])
         XCTAssertTrue(closedPublished)

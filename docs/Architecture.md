@@ -110,3 +110,5 @@ When real media arrives, closure must write cleanup intent with the logical term
 ## Build and verification workflow
 
 Open `SecondLook.xcodeproj` in Xcode or use a discovered iOS Simulator destination with `xcodebuild`; run `swift test` for the portable package and `./scripts/verify-repository.sh` for public repository safety. Exact successful commands, destinations, and limitations are recorded in [Verification.md](Verification.md). Real-device media and deletion checks require later milestones.
+
+When an adjacent revision changes only existing runs, exactly one retained run changes and the complete resulting snapshot must equal an actual Core command effect. This covers settings, check/undo, withdrawal, human decisions and cancellation, including automatic completion. Debug synthetic evidence uses its real three-step Core composition at one timestamp. Unchanged paired aggregates cannot consume a revision; owner-only renewal can. Initial discovery and gaps spanning multiple unseen commands retain their broader history rules.

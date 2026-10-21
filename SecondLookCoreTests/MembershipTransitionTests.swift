@@ -151,7 +151,12 @@ final class MembershipTransitionTests: XCTestCase {
     func testOwnerFirstJoinAndStablePairedMembershipRemainValid() async throws {
         let first = view(1, [owner])
         let joined = view(2, [owner, peer])
-        let stable = view(3, [owner, peer])
+        let save = SharedCommandEnvelope(spaceID: space, commandID: UUID(),
+            expectedSpaceRevision: joined.revision,
+            command: .saveRoutine(definition: Routine(title: "Stable paired write",
+                items: [RoutineItem(title: "Keys")]), expectedDefinitionVersion: nil))
+        let stable = try SharedCommandProcessor.apply(save, to: joined, actorID: owner,
+            now: Date(timeIntervalSince1970: 1_700_000_000)).snapshot
         let client = MembershipTransitionClient(current: stable, actorID: owner)
         let coordinator = SharedStateCoordinator()
         coordinator.beginSession(scope: scope, client: client)

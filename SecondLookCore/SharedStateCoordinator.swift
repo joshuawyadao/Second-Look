@@ -555,8 +555,134 @@ public final class SharedStateCoordinator {
         for archive in earlier.state.archives {
             guard laterArchives[archive.id] == archive else { return false }
         }
+        if later.revision > earlier.revision,
+           later.revision - earlier.revision == 1 {
+            if later.members != earlier.members ||
+               later.state.routines != earlier.state.routines ||
+               later.state.runs.count != earlier.state.runs.count {
+                // The adjacent join, routine, and creation checks above own those writes.
+                return true
+            }
+            let changed = earlier.state.runs.indices.filter {
+                earlier.state.runs[$0] != later.state.runs[$0]
+            }
+            if changed.isEmpty {
+                // An owner-only invitation renewal changes the space revision alone.
+                return earlier.members.count == 1 && later.state == earlier.state
+            }
+            guard changed.count == 1,
+                  matchesSingleRunEffect(earlier: earlier, later: later,
+                                         runIndex: changed[0]) else { return false }
+        }
         return true
     }
+
+    private func matchesSingleRunEffect(earlier: SharedSnapshot,
+                                        later: SharedSnapshot,
+                                        runIndex: Int) -> Bool {
+        let original = earlier.state.runs[runIndex]
+        let updated = later.state.runs[runIndex]
+        let performer = original.performerID
+        let runID = original.id
+        let revision = original.revision
+        if matchesCommandEffect(.updateRunSettings(runID: runID,
+            settings: updated.settings, expectedRunRevision: revision),
+            actorID: performer, now: updated.closedAt ?? Date(timeIntervalSince1970: 0),
+            earlier: earlier, later: later) { return true }
+
+        for (itemIndex, item) in original.items.enumerated() {
+            let incoming = updated.items[itemIndex]
+            if item.priority == .standard {
+                for checked in [true, false] {
+                    guard !checked || incoming.checkedAt != nil else { continue }
+                    let time = checked ? incoming.checkedAt! : Date(timeIntervalSince1970: 0)
+                    if matchesCommandEffect(.setStandardChecked(runID: runID,
+                        itemID: item.id, checked: checked, expectedRunRevision: revision),
+                        actorID: performer, now: time, earlier: earlier, later: later) {
+                        return true
+                    }
+                }
+            }
+            if let version = item.submission?.version {
+                if matchesCommandEffect(.withdraw(runID: runID, itemID: item.id,
+                    expectedVersion: version, expectedRunRevision: revision),
+                    actorID: performer, now: Date(timeIntervalSince1970: 0),
+                    earlier: earlier, later: later) { return true }
+                let archivedDecision = later.state.archives.first(where: { $0.id == runID })
+                    .flatMap { archive in
+                        archive.items.indices.contains(itemIndex) ?
+                            archive.items[itemIndex].decisions.last : nil
+                    }
+                if let reviewer = original.reviewerID,
+                   let decision = incoming.submission?.decision ?? archivedDecision,
+                   decision.actorID == reviewer,
+                   decision.submissionVersion == version {
+                    let command: SharedCommand
+                    switch decision.verdict {
+                    case .approved:
+                        command = .approve(runID: runID, itemID: item.id,
+                            expectedVersion: version, expectedRunRevision: revision)
+                    case .requestedAnother:
+                        guard let note = decision.note else { continue }
+                        command = .requestAnother(runID: runID, itemID: item.id,
+                            expectedVersion: version, note: note,
+                            expectedRunRevision: revision)
+                    }
+                    if matchesCommandEffect(command, actorID: reviewer,
+                        now: decision.decidedAt, earlier: earlier, later: later) { return true }
+                }
+            }
+        }
+        if let closedAt = updated.closedAt,
+           matchesCommandEffect(.cancel(runID: runID, expectedRunRevision: revision),
+               actorID: performer, now: closedAt, earlier: earlier, later: later) {
+            return true
+        }
+        #if DEBUG
+        if matchesSyntheticEvidenceEffect(earlier: earlier, later: later,
+                                          runIndex: runIndex) { return true }
+        #endif
+        return false
+    }
+
+    private func matchesCommandEffect(_ command: SharedCommand, actorID: UUID,
+                                      now: Date, earlier: SharedSnapshot,
+                                      later: SharedSnapshot) -> Bool {
+        let envelope = SharedCommandEnvelope(spaceID: earlier.spaceID, commandID: UUID(),
+            expectedSpaceRevision: earlier.revision, command: command)
+        guard let result = try? SharedCommandProcessor.apply(envelope, to: earlier,
+            actorID: actorID, now: now) else { return false }
+        return result.createdID == nil && result.snapshot == later
+    }
+
+    #if DEBUG
+    private func matchesSyntheticEvidenceEffect(earlier: SharedSnapshot,
+                                                later: SharedSnapshot,
+                                                runIndex: Int) -> Bool {
+        let original = earlier.state.runs[runIndex]
+        let updated = later.state.runs[runIndex]
+        for (index, item) in updated.items.enumerated() {
+            guard let submission = item.submission,
+                  submission.status == .waitingForReview,
+                  let acceptedAt = submission.acceptedAt,
+                  submission.preparedAt == acceptedAt else { continue }
+            var state = earlier.state
+            do {
+                try state.prepareDraft(runID: original.id, itemID: original.items[index].id,
+                    actorID: original.performerID, fixtureID: submission.fixtureID,
+                    source: submission.source, now: acceptedAt)
+                let version = try state.beginSend(runID: original.id,
+                    itemID: original.items[index].id, actorID: original.performerID,
+                    now: acceptedAt)
+                try state.acceptSend(runID: original.id, itemID: original.items[index].id,
+                    actorID: original.performerID, expectedVersion: version, now: acceptedAt)
+                if SharedSnapshot(spaceID: earlier.spaceID, revision: later.revision,
+                    members: earlier.members, state: state) == later { return true }
+            } catch { continue }
+        }
+        return false
+    }
+    #endif
 
     private func preservesSingleRoutineWrite(from earlier: [Routine],
                                              to later: [Routine]) -> Bool {

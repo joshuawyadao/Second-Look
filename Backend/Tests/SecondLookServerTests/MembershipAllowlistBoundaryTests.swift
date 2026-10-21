@@ -113,7 +113,10 @@ import SecondLookCore
                         #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
                         #expect(response.headers[.cacheControl] == ["no-store"])
                     } else {
-                        #expect(response.status == .ok)
+                        #expect(response.status == .serviceUnavailable)
+                        #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
+                        #expect(response.headers[.cacheControl] == ["no-store"])
+                        #expect(!response.body.string.contains("members"))
                     }
                 }
                 let data = try SharedWireCodec.encode(envelope())

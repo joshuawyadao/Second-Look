@@ -19,12 +19,12 @@ import SecondLookCore
         ])
     }
 
-    private func join(_ snapshot: SharedSnapshot,
+    private func join(_ snapshot: SharedSnapshot, actor: UUID,
                       check: @escaping (TestingHTTPResponse) throws -> Void) async throws {
         let store = JoinResultStore(snapshot: snapshot)
         try await withApp { app in
             try configure(app, configuration: try configuration(),
-                          verifier: JoinResultVerifier(account: peer), store: store)
+                          verifier: JoinResultVerifier(account: actor), store: store)
             try await app.testing().test(.POST, "/v1/pairing/join", beforeRequest: { request in
                 request.headers.bearerAuthorization = .init(token: "verified-synthetic")
                 request.body = ByteBuffer(string: "{\"inviteToken\":\"\(String(repeating: "a", count: 72))\"}")
@@ -37,7 +37,7 @@ import SecondLookCore
         let callerOnly = SharedSnapshot(spaceID: space, revision: 1,
                                         members: [peer], state: .init())
         try callerOnly.validate(for: peer) // The generic snapshot validator accepts one member.
-        try await join(callerOnly) { response in
+        try await join(callerOnly, actor: peer) { response in
             #expect(response.status == .serviceUnavailable)
             #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
             #expect(response.headers[.cacheControl] == ["no-store"])
@@ -45,15 +45,29 @@ import SecondLookCore
         }
     }
 
-    @Test func BothAllowlistedMemberOrdersCanCompleteOrRepeatJoin() async throws {
-        for members in [[owner, peer], [peer, owner]] {
+    @Test func eitherAllowlistedRecipientCanJoinAsSecondMember() async throws {
+        for (actor, members) in [(peer, [owner, peer]), (owner, [peer, owner])] {
             let paired = SharedSnapshot(spaceID: space, revision: 2,
                                         members: members, state: .init())
-            try await join(paired) { response in
+            try await join(paired, actor: actor) { response in
                 #expect(response.status == .ok)
                 let decoded = try SharedWireCodec.decode(SharedSnapshot.self,
                     from: Data(response.body.readableBytesView))
                 #expect(decoded == paired)
+            }
+        }
+    }
+
+    @Test func reversedOrderForVerifiedCallerCannotBePublished() async throws {
+        for (actor, members) in [(peer, [peer, owner]), (owner, [owner, peer])] {
+            let paired = SharedSnapshot(spaceID: space, revision: 2,
+                                        members: members, state: .init())
+            try paired.validate(for: actor)
+            try await join(paired, actor: actor) { response in
+                #expect(response.status == .serviceUnavailable)
+                #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
+                #expect(response.headers[.cacheControl] == ["no-store"])
+                #expect(!response.body.string.contains("members"))
             }
         }
     }

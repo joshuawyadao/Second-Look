@@ -189,7 +189,11 @@ private actor RequestedSpaceStore: SpaceStore {
                 expectedRevision: Int?) async throws -> SharedSnapshot {
         SharedSnapshot(spaceID: other, revision: 0, members: [actor], state: .init())
     }
-    func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot { wrongSnapshot }
+    func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot {
+        var joined = wrongSnapshot
+        joined.members = [peer, owner]
+        return joined
+    }
     func receipt(actor: UUID, envelope: SharedCommandEnvelope,
                  digest: String) async throws -> SharedCommandResult? {
         receipts += 1

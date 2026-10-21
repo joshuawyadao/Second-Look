@@ -210,7 +210,7 @@ final class HistoryTransitionTests: XCTestCase {
                                         checked: true, actorID: owner, now: now)
         let newID = try progress.startOneOff(title: "Another invented list",
             items: [RoutineItem(title: "Lights")], performerID: owner, reviewerID: nil, now: now)
-        let third = view(progress, revision: 3)
+        let third = view(progress, revision: 4)
         await client.setCurrent(third)
         let closedAndAdded = try await coordinator.refresh(validatingAgainst: [second, first])
         XCTAssertTrue(closedAndAdded)

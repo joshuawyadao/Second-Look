@@ -210,7 +210,7 @@ final class RunRoleTransitionTests: XCTestCase {
                                         checked: true, actorID: owner, now: now)
         let newID = try progress.startOneOff(title: "New independent run",
             items: [RoutineItem(title: "Lights")], performerID: peer, reviewerID: owner, now: now)
-        let third = view(progress, revision: 3)
+        let third = view(progress, revision: 4)
         await client.setCurrent(third)
         let published = try await coordinator.refresh(validatingAgainst: [first, second])
         XCTAssertTrue(published)

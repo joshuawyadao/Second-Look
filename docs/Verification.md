@@ -21,6 +21,41 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -showdestinations
 
 Open `SecondLook.xcodeproj` and Run the **SecondLook** scheme on a simulator. Debug uses `com.joshuawyadao.SecondLook.demo` and Application Support/SecondLookDemo/state-v1.json. Release uses `com.joshuawyadao.SecondLook.local` and SecondLookLocal/state-v1.json. UI tests use a separate SecondLookUITests document; only Debug test launches accept `-ui-testing -reset-demo`. A normal launch never resets existing data.
 
+## Single-command transition follow-up —91 tracked
+
+Review5594802037 on5f7f473 adds five P2 findings after all86 earlier threads are resolved and that source passes its complete hosted restart checkpoint below. They concern creation-only state changes, creation source binding, new routine shape/count, join-only state changes and invented review facts on adjacent cancellation. Related scoped Brooks analysis identifies existing-only mixed mutations; the resolved plan records a bounded actual-Core effect check rather than an unsafe generic revision cap. All are client-only; server968/schema/Free safeguards remain unchanged.
+
+First item4332897026 requires a fresh adjacent run to be appended while members, routines, prior ordered runs and archives remain exact. Original focused red records22 assertion failures; a separately corrected command-response case records5 meaningful failures in1case. Focused6/6 Debug/Release and full **204Debug/201Release portable tests** (175/172Core+29transport) pass. Four preexisting positive fixtures had compressed multiple Core operations into a single shared increment; only their final revision values change3→4/4/5/4, preserving every state/behavior assertion. Actual start/template/one-off/repeat, multirevision gaps and genuine pending-receipt retry remain valid.
+
+The documentation repository-check attempt under sandbox restrictions reports14 PermissionErrors; the required host-permission rerun passes all53 tests15.179s. This is environment qualification, not a production code repair. Later91-item validation and final saved-head review/CI gates remain pending; earlier runtime evidence retains its exact source.
+
+## Completed hosted upgrade and5f7f473 acceptance checkpoint — October20–21,2026
+
+The operator-authorized upgrade is complete on the existing Free resources. Supabase migration20261020230931 installs the exact checked-in conditional-invitation SQL, with complete prior space/receipt rows asserted equal atomically. The paired singleton and all157 prior receipts were preserved. The initial manually installed schema is not replayed or assigned an invented history row. Six security/catalog checks pass; the empty-state probe is correctly false once paired. No account, allowlist, credential or paid setting changes are made.
+
+The live Render Release API is exact **968a865**, deploy`dep-dbc2v6tg1s2s73bl5gag`, live03:27:04UTC October21 after6m05s. This hosted checkpoint uses iPhone client source **5f7f473**; the subsequent91-comment review queue remains pending. Later client-only coordinator changes are not used by Backend sources, and require no additional server deployment, SQL or wire change. Both preserved signed-in hosted simulators pass before and after the actual **20:57Pacific October20 restart**, verified by its Render event and new startup **03:57:56.840UTC October21**:
+
+| Existing hosted session | Before actual restart | After actual restart |
+| --- | --- | --- |
+| Peer, iPhone17Pro/iOS26.5 |22.900s|21.553s|
+| Owner, iPhone18Pro/iOS27 |24.396s|26.223s|
+
+All four official hosted wrappers exit0. They force genuine Auth refresh with Keychain persistence and run actual standard HTTP command/receipt/collision/stale/concurrency/snapshot/closure/prior-record-preservation checks, relaunch and foreground revalidation. The command probe uses the authenticated HTTP client; focused coordinator rejection tests separately establish malformed-transition handling. No hosted malformed-provider injection or forced SQL interleaving is claimed. Public boundaries pass both sides of restart: health200, no-bearer401, invalid-bearer401, Release synthetic route404. Final read-only database checks return true for singleton preservation, paired ordered membership, prior receipt floor, provenance version1 and closed-run boolean markers.
+
+| Local validation | Actual evidence |
+| --- | --- |
+| Portable client packages |198Debug/195Release pass (169/166Core+29transport). Twelve focused adjacent-transition cases have38 meaningful pre-fix assertion failures; actual Core creation and legal multirevision controls remain valid.|
+| Required native verifier |10ordinary UI passes;29explicit fixture-gated skips/39total199.050s. Release build, separate identity and development-control/synthetic-marker exclusion pass. Skips do not prove connected acceptance.|
+| Server boundary packages |54Debug/49Release pass on API968. Two fixture-gated XCTest skips perconfiguration are not integration acceptance.|
+| Genuine local connected workflows |Both official legacy and modern key modes pass Auth/Postgres/HTTP/restart on API968. Modern mode repeats successfully on final client5f. Controlled in-process service/actual-SQL duplicate winner evidence is described below; it is distinct from hosted HTTP concurrency.|
+| Five affected native selections |703client/968server: create75.512s,invitation66.372s,join89.123s,freshpairing72.927s,syntheticcleanup93.458s. These preserve exact source qualification and are not a full27-case `--native` exit0.|
+
+At this checkpoint all86 Codex threads are resolved:85 tested/pushed repairs and one validated authoritative-receipt clarification. Final scoped Brooks review is100/100 across all12 required sources with no actionable concern. The complete concern/commit/reaction ledger and final saved-head Codex/terminal CI/mergeability gates are maintained in [PR #2](https://github.com/joshuawyadao/Second-Look/pull/2); this evidence checkpoint does not substitute for those live gates. The PR remains unmerged.
+
+Only the named synthetic local stack and the task-owned simulator are stopped, with data retained; both original hosted simulators remain booted with their sessions. Logs, configurations, fixtures, screenshots and build artifacts stay outside Git. Free safeguards, auto-deploy/previewsOff and the existing allowlist remain unchanged. The expected private-table no-policy notices and the previously documented leaked-password-protection limitation remain recorded in the setup guide.
+
+Milestone2 remains in progress under its full roadmap gates. Fresh one-member pairing/renewal and synthetic photo/cleanup paths are local evidence, not hosted real-media acceptance. Physical devices/iOS17/VoiceOver, backup/restore, broader operational cold-start acceptance, real photos/uploads/deletion, push and distribution remain separate work. Earlier observed idle/wake recovery is retained with its original source. No earlier timeout is relabeled as a proven production repair; the historical chapters preserve failures and limitations.
+
 ## Adjacent transition follow-up —86 tracked
 
 Review5594692133 on703a9db adds two P2 findings after all84 earlier threads are resolved: retained routine versions/equality at an adjacent shared revision, and the initial shape/count of newly introduced runs at one revision. Both are client coordinator checks; server968a865 remains the deployed API source. The routine check must allow a genuine delete→recreate-same-UUID sequence over a larger gap, since the server has no routine tombstone. Each finding receives a separate tested save before final runtime/publication gates.

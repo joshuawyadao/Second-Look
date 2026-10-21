@@ -371,6 +371,12 @@ public final class SharedStateCoordinator {
                     item.lastVersion == 0 && item.priorDecisions.isEmpty
                 }
             }) else { return false }
+            if let newRun = newRuns.first {
+                guard later.members == earlier.members,
+                      later.state.routines == earlier.state.routines,
+                      later.state.runs == earlier.state.runs + [newRun],
+                      later.state.archives == earlier.state.archives else { return false }
+            }
         }
         let earlierArchives = Dictionary(uniqueKeysWithValues: earlier.state.archives.map { ($0.id, $0) })
         let laterArchives = Dictionary(uniqueKeysWithValues: later.state.archives.map { ($0.id, $0) })

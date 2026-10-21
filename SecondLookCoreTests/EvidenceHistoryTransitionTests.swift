@@ -330,7 +330,7 @@ final class EvidenceHistoryTransitionTests: XCTestCase {
         try state.cancel(runID: runID, actorID: owner, now: now.addingTimeInterval(5))
         _ = try state.startOneOff(title: "Independent", items: [RoutineItem(title: "Bag")],
             performerID: peer, reviewerID: owner, now: now.addingTimeInterval(6))
-        let closed = view(state, revision: 3)
+        let closed = view(state, revision: 4)
         try closed.validate(for: owner)
         await client.setCurrent(closed)
         let published = try await coordinator.refresh(validatingAgainst: [first, next])

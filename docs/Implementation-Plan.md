@@ -1,39 +1,32 @@
 # Plan
 
-Finish the authorized existing-service hosted upgrade and PR#2 private shared-state review. Preserve paired records/accounts and Free safeguards; leave the PR unmerged. The completed hosted checkpoint uses native sourced9658a5 and deployed server/state-enforcement source235ed53; later native repairs do not change server routes/RPCs.
+Complete the authorized hosted upgrade and make PR #2 ready for merge while preserving its private space, accounts, sessions and Free safeguards. Leave the PR unmerged. The deployed server is235ed53; the latest executable phone source is903f46a. Subsequent documentation does not change executable behavior.
 
 ## Scope
-- In: exact pending schema installation, manual Free deployment/restart, review repairs/regressions, connected acceptance, canonical docs and final PR readiness.
-- Out: account/allowlist/reset/unpairing, paid services, real media/cleanup workers, push, distribution and merge.
+- In: reviewed conditional-invitation schema, manual existing-service deployment/restart, actionable review repairs, meaningful regressions, connected acceptance, canonical documentation and final PR gates.
+- Out: paid upgrades, account/allowlist changes, hosted reset/unpairing, real media or deletion workers, push, distribution and merge.
 
 ## Action items
-[x] Checkpoint the resolved operational plan, inspect applicable docs/tests/provider state and preserve source-specific historical evidence.
-[x] Install exact conditional-invitation SQL atomically with row-preservation assertions; verify six catalog/security checks and existing Free safeguards.
-[x] Upgrade the existing manual Render service, verify actual startup/restart and public denial/test-route boundaries.
-[x] Address71 Codex findings with separately tested/pushed/acknowledged fixes and resolve only validated threads under existing authorization. Preserve the full concern/commit ledger onPR#2.
-[x] Repair the scoped Brooks token-limit Warning; verify final expiry/consistency and session/privacy handoffs without new actionable findings.
-[x] Validate146 portable and53tooling cases; server29Debug/27Release plus both official local key modes; ordinary native checkpoint and final-source affected native recovery. Record meaningful reds, failed setup/runner attempts, skips, exact sources and limits in Verification.
-[x] Verify both original saved-session hosted clients before/after an actual service restart on final app source, with prior-record preservation and persisted closure provenance. Stop only the completed task-owned local services/simulator while retaining data.
-[x] Update canonical architecture/product/decision/operation/setup/verification docs; save/push final evidence and retain terminal review/CI/readiness tracking onPR#2.
+[x] Inspect applicable product/architecture/operations/tests and checkpoint the resolved plan before implementation.
+[x] Apply the exact conditional-invitation SQL atomically with complete before/after row equality; verify six catalog/security checks and preserve the paired singleton and157 prior receipts.
+[x] Upgrade the existing Free server and verify actual startup/restart, public access denial and Release test-route exclusion.
+[x] Address all74 tracked Codex findings with meaningful regressions, separate validated saves/pushes, acknowledgment and authorized thread resolution. Keep the complete concern/commit ledger on PR #2.
+[x] Validate the final three repairs: membership monotonicity (16 red assertions,6 focused/152 portable green); retained Start navigation (91.194s red/75.649s green); busy local-mode transition (75.994s behavioral red/98.014s green). Record setup failures separately.
+[x] Complete scoped Brooks review across all12 sources:100/100, no actionable finding after repairing the earlier token-limit Warning.
+[x] Run53 repository tooling cases and the required native verifier:152 portable,10 ordinary UI passes,29 explicit gated skips/39 total in198.888s, then Release identity/development-control exclusion. Skips are not connected acceptance.
+[x] Preserve source-specific server29Debug/27Release, official legacy/modern local Auth/Postgres/HTTP/restart workflows and cumulative/focused connected native evidence. Re-run the official modern workflow after membership repair.
+[x] Complete both preserved hosted clients on903f46a before/after an actual service restart, with genuine Auth/commands, record preservation and saved-session relaunch/foreground checks.
+[x] Record final evidence in canonical docs and stop only task-owned local services/simulator while preserving data. Save/push this final evidence and track subsequent external publication gates on PR #2.
+[ ] Request/classify final-head Codex review, wait for terminal passing CI Verify/required checks, confirm no open actionable threads or merge conflicts, and mark ready while leaving PR unmerged.
 
 ## External publication gates
-The latest saved PR head must receive terminal Codex review classification, passing CI Verify and every required check, zero open actionable threads, and no merge conflicts before readiness promotion. Record the exact terminal results in the PR review ledger/checks after the final evidence push. Never merge in this workflow. Runtime success or older-head green checks cannot substitute for these gates.
+
+Final saved-head review, CI, thread and mergeability results belong in PR #2's live review ledger/checks after the evidence push. Do not substitute older-head success, local skips or hosted health for these gates. No further documentation-only commit is required to duplicate live GitHub check state.
+
+## Documentation
+
+Maintain README, Product-Spec, Architecture, Roadmap, Backend-Operations, Supabase-Free-Setup, decision002 and Verification. Preserve exact historical sources, failures and limits. Milestone2 remains in progress under its full roadmap gates; PR readiness covers this bounded private shared-state implementation.
 
 ## Open questions
-None. One-day successful Auth duration admission, text-only closure provenance with strict legacy normalization and trusted prepublication snapshot references are documented reversible choices. Physical/operational/real-media roadmap limits remain deferred.
 
-## New review queue
-
-Review5593602824 ond9658a5 adds3 P2 findings (74total) after the completed operational acceptance:4331882677 higher-revision membership regression;4331882683 pending routines Start ownership lost on disappearance;4331882687 local-mode switching while Auth refresh is busy. Existing hosted/schema/data preservation and current-source accepted checks remain source-specific; PR stays draft.
-
-Address one finding at a time with meaningful regressions, a separate save/push/acknowledgment and current affected validation. First, Core coordinator publication must preserve membership at increasing revisions, allowing only identical arrays or the legitimate one-owner to owner-plus-peer append; reject removal/replacement/reordering across trusted references and seeded refresh/command publication. Preserve genuine join and pending/confirmed receipt behavior. Next, map view-owner lifetime and explicit abandonment before retaining a pending Start across ordinary navigation; prove one run and original receipt after return. Finally, block local-mode transition during synchronization in both UI and model and verify later normal switching. No paid/provider/account/server reset or SQL changes.
-
-No open user questions. Keep exact external review/CI gates until these new repairs are saved and validated.
-
-Membership item checkpoint:16behavioral red assertions;6focused+152total package green (123Core+29transport/session), stable paired membership and valid one-to-two join retained. Save/push/acknowledge4331882677 before UIimplementation. Read-only UI mapping confirms routines root has retained TabView/NavigationStack identity; remove only root disappearance cleanup, preserve explicit editor/detail abandonment. Add a dedicated start-navigation lost-reply fixture/test so existing multi-case creation assumptions remain isolated. Busy mode test can use existing real-membership publication pause plus Account settings/Done/resume, without a new Auth fault hook.
-
-Creation ownership checkpoint: the unmodified regression fails at original-checklist navigation after recovered receipt (91.194s), then passes75.649s after retaining only the root callback. Original ID and one target run are verified.53 repository cases pass15.224s after a sandbox socket-permission setup failure. Save/push/acknowledge4331882683 before busy-mode implementation. Scoped Brooks follow-up is100/100 for membership and root lifetime.
-
-Busy local-mode checkpoint: initial81.556s attempt fails before the behavioral assertion because the lazy bottom Form row is not mounted; bounded scrolling fixes setup. The actual unchanged enabled-state assertion then fails75.994s. Guard local-mode entry in the main-actor model, disable both Use local lists controls and guard settings dismissal. Green must preserve the existing positive accepted Start after the genuine refresh completes. The test pauses after genuine local membership publication; it does not establish a hosted Auth-rotation race.
-
-Busy native green98.014s preserves original positive Start and verifies local control disabled/re-enabled.53 repository cases pass15.074s. Scoped final three-repair Brooks100/100, no actionable finding. Save/push/acknowledge4331882687, then complete ordinary native/Release, final hosted phone-source acceptance, documentation evidence and fresh terminal review/CI.
+None. Text-only closure provenance, strict legacy normalization, bounded successful Auth duration and membership/presentation guards are documented reversible choices. Physical-device/VoiceOver, fresh hosted pairing/renewal races on a new singleton, real media/cleanup, backup/restore and wider operational acceptance remain separate work.

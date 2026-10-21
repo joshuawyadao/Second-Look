@@ -105,11 +105,21 @@ public final class SharedStateCoordinator {
                 }
                 trustedByRevision[reference.revision] = reference
             }
+            let chronologicalReferences = trustedByRevision.values.sorted { $0.revision < $1.revision }
+            for (earlier, later) in zip(chronologicalReferences, chronologicalReferences.dropFirst()) {
+                guard preservesJoinedMembers(from: earlier, to: later) else {
+                    throw SharedStateFailure.invalidResponse
+                }
+            }
             for reference in references {
                 guard incoming.revision >= reference.revision else {
                     throw SharedStateFailure.staleState
                 }
                 guard incoming.revision != reference.revision || incoming == reference else {
+                    throw SharedStateFailure.invalidResponse
+                }
+                if incoming.revision > reference.revision,
+                   !preservesJoinedMembers(from: reference, to: incoming) {
                     throw SharedStateFailure.invalidResponse
                 }
             }
@@ -313,10 +323,21 @@ public final class SharedStateCoordinator {
                 guard incoming == snapshot else { throw SharedStateFailure.invalidResponse }
                 return false
             }
+            guard preservesJoinedMembers(from: snapshot, to: incoming) else {
+                throw SharedStateFailure.invalidResponse
+            }
         }
         snapshot = incoming
         revisionFloor = max(revisionFloor, incoming.revision)
         return true
+    }
+
+    /// M2 can add the second participant once; it has no unpair or ownership transfer.
+    private func preservesJoinedMembers(from earlier: SharedSnapshot,
+                                        to later: SharedSnapshot) -> Bool {
+        if later.members == earlier.members { return true }
+        return earlier.members.count == 1 && later.members.count == 2 &&
+            later.members[0] == earlier.members[0]
     }
 
     private func handle(_ error: Error, scope: SharedAccountScope, generation: UInt64) throws {

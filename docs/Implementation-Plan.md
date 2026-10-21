@@ -108,3 +108,12 @@ LinuxCI05e2b59 exposes an actual P1 portability failure: FoundationNetworking fo
 RepairedAPI05e2b59deploydep-dbc4qim1egvs739gv030isLive05:33:45.821UTCOct21 (started05:27:38.392,6m07). Public200/401/401/404pass;theseareoperationalboundaries,notLinuxredirectacceptance. UIred's3privatepreflightfailuresoccurbeforeXcodebecauseworkeruseddefaultsandbox;Dockerfilteredinspecthealthy. CachedpinnedofflineCLIsucceeds~1swithrequiredhostpermissions; nochecks/deadlinesbypassed,noDockerrestart. MeaningfulescalatedoldeditorRED42.764s losesoriginaldraftonreopen.
 
 Session-level provider correction complete: exact final provider/test sources pass all3 actual loopback cases in an isolated official Swift6.2.1 Linux container with no external network, plus Mac focused3both/full59Debug54Release (skipLocalIntegrationTests). Caller-owned injected session remains usable after provider scope. This closes the reproduced transport defect, while complete current-head LinuxCI, genuine localworkflows and hosted redeployment remain readiness gates. Save/push separately before resolving4333167424; no credential/settings/schema change.
+
+
+## Shared phone transport portability follow-up
+
+Actual Linux provider CI proves the shared async per-task delegate is insufficient on FoundationNetworking. The phone uses Darwin, where the existing denial passes, but the same checked-in transport is portable and must preserve the same credential boundary. No new user question or product/API decision.
+
+- [ ] Before the next UI build, freeze a file-disjoint correction in SharedHTTPClient.swift and TransportRedirectBoundaryTests.swift: privately own a derived session with a session-level deny delegate, preserve injected configuration/protocol classes, invalidate only the derived session.
+- [ ] Reproduce the existing redirect regression on the old Linux transport, then require exact-source Linux focused proof and both Mac portable configurations. Preserve every prior assertion and direct-success/caller-session controls; no post-redirect check that leaks first.
+- [ ] Coordinate the source freeze with the UI worker; keep Xcode/build ownership sequential. Update Architecture/Verification, save and push separately. Final native/hosted/CI gates still apply.

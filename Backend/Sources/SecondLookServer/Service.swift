@@ -149,6 +149,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
             let snapshot = try await service.store.join(actor: actor,
                 inviteHash: PrivateSpaceService.digest(Data(body.inviteToken.utf8)))
             try service.validateSnapshot(snapshot, actor: actor)
+            guard snapshot.members.count == 2 else { throw SharedStateFailure.invalidResponse }
             return try json(snapshot)
         }
     }

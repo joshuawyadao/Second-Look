@@ -102,7 +102,13 @@ import SecondLookCore
                     self.request(&request)
                     request.body = ByteBuffer(string: "{\"inviteToken\":\"\(String(repeating: "a", count: 72))\"}")
                 }) { response in
-                    #expect(response.status == .ok)
+                    if mode == .single {
+                        #expect(response.status == .serviceUnavailable)
+                        #expect(response.body.string == "{\"code\":\"serviceUnavailable\"}")
+                        #expect(response.headers[.cacheControl] == ["no-store"])
+                    } else {
+                        #expect(response.status == .ok)
+                    }
                 }
                 let data = try SharedWireCodec.encode(envelope())
                 try await app.testing().test(.POST, "/v1/spaces/\(space)/commands", beforeRequest: { request in

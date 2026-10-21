@@ -119,3 +119,13 @@ Actual Linux provider CI proves the shared async per-task delegate is insufficie
 - [ ] Coordinate the source freeze with the UI worker; keep Xcode/build ownership sequential. Update Architecture/Verification, save and push separately. Final native/hosted/CI gates still apply.
 
 Portable phone session correction complete: frozen source passes officialSwift6.2.1 Linuxfocused2/2 after meaningfulold2tests24failures; Macfocused2/2/full236Debug229Release. Session-level denial preserves URLProtocol/configuration and caller-owned session usability. UIbuildsourcefreezecommunicated. Save/push separately; finalcurrentnative/hosted/CI stillpending.
+
+
+## Invitation display expiry —4333167411
+
+No open user question. Preserve server-issued fifteen-minute TTL, hosted pairing, schema and credentials. Implement only after the pending-creation slice is saved/pushed.
+
+- [ ] Give invitation presentation a cancellable model-owned deadline independent of polling/busy state, fenced by account/backend/space/generation and exact invitation. Cancel on replacement/clear/reset/background; recheck wall time on wake and synchronously at refresh/publication. An old callback cannot clear a new code.
+- [ ] Add one bounded fresh localhost `invitation-expiry` case in SharedPairingRecoveryUITests. Reuse genuine one-member Auth/SQL/HTTP setup and same-revision manual refresh. Arm a visibly simulated short DISPLAY-only deadline after code visibility, while genuine membership publication is paused; the actual timer removes the code while preserving account/space. Resume, genuinely renew, then simulate delivery of the captured OLD expiry callback through the production fence and retain the new code. This proves no actual network outage or hosted renewal.
+- [ ] Wire the single-method selection, isolated recovery tuple, tooling selection regression and Release forbidden markers. Preserve assertions and every existing timeout. Keep new controls behind Debug/UI/shared/localhost/explicit expiry flags.
+- [ ] Run meaningful old-code red, repaired green and affected pairing controls; update canonical Architecture/Backend-Operations/Verification, save/push separately, acknowledge/resolve only after validation. Then final native/hosted/review/CI gates remain.

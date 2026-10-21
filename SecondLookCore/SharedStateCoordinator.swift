@@ -20,9 +20,15 @@ public final class SharedStateCoordinator {
     /// A command with an unknown outcome must keep its full original request for receipt lookup.
     /// This is session memory only; durable offline intent belongs to a later milestone.
     private var unconfirmedCommands: [SharedCommandEnvelope] = []
-    /// Keep the view from when each command was first sent. A later refresh may
-    /// already contain its genuine creation before an exact receipt retry.
-    private var originalObjectIDsByCommand: [UUID: Set<UUID>] = [:]
+    /// A retry or delayed receipt must still be judged against the first send,
+    /// even after a refresh has advanced the visible view.
+    private struct OriginalCommandContext {
+        let baseline: SharedSnapshot
+        let actorID: UUID
+        let objectIDs: Set<UUID>
+        let creationExpectation: CreationExpectation?
+    }
+    private var originalContextsByCommand: [UUID: OriginalCommandContext] = [:]
     private struct ItemDefinition: Equatable {
         let title: String
         let priority: ItemPriority
@@ -57,8 +63,6 @@ public final class SharedStateCoordinator {
         case run(RunCreationExpectation)
         case routine(RoutineCreationExpectation)
     }
-    /// A retry must use the creation source observed before its first send.
-    private var creationExpectationsByCommand: [UUID: CreationExpectation] = [:]
     private struct ConfirmedRecord {
         let scope: SharedAccountScope
         let receipt: ConfirmedCommandReceipt
@@ -82,8 +86,7 @@ public final class SharedStateCoordinator {
         snapshot = nil
         if (suspendedScope ?? self.scope) != scope {
             unconfirmedCommands = []
-            originalObjectIDsByCommand = [:]
-            creationExpectationsByCommand = [:]
+            originalContextsByCommand = [:]
             confirmedCommands = []
             revisionFloor = 0
         }
@@ -111,8 +114,7 @@ public final class SharedStateCoordinator {
         generation &+= 1
         snapshot = nil
         unconfirmedCommands = []
-        originalObjectIDsByCommand = [:]
-        creationExpectationsByCommand = [:]
+        originalContextsByCommand = [:]
         confirmedCommands = []
         inFlightAttempts = [:]
         acknowledgedInFlight = [:]
@@ -221,21 +223,21 @@ public final class SharedStateCoordinator {
             }
             envelope = pending
         } else {
+            try validate(snapshot, for: scope)
             envelope = SharedCommandEnvelope(spaceID: scope.spaceID, commandID: commandID,
                                              expectedSpaceRevision: snapshot.revision, command: command)
             // Register before awaiting the client so an explicit overlapping retry shares this ID.
-            originalObjectIDsByCommand[commandID] = Set(snapshot.state.runs.map(\.id))
-                .union(snapshot.state.routines.map(\.id))
-            if let expectation = creationExpectation(for: command, in: snapshot,
-                                                     actorID: scope.accountID) {
-                creationExpectationsByCommand[commandID] = expectation
-            }
+            originalContextsByCommand[commandID] = OriginalCommandContext(
+                baseline: snapshot, actorID: scope.accountID,
+                objectIDs: Set(snapshot.state.runs.map(\.id))
+                    .union(snapshot.state.routines.map(\.id)),
+                creationExpectation: creationExpectation(for: command, in: snapshot,
+                    actorID: scope.accountID))
             unconfirmedCommands.append(envelope)
         }
-        guard let originalObjectIDs = originalObjectIDsByCommand[commandID] else {
+        guard let original = originalContextsByCommand[commandID] else {
             throw SharedStateFailure.invalidResponse
         }
-        let originalCreationExpectation = creationExpectationsByCommand[commandID]
         inFlightAttempts[attemptKey, default: 0] += 1
         defer { finishAttempt(attemptKey) }
         do {
@@ -245,13 +247,15 @@ public final class SharedStateCoordinator {
             guard result.snapshot.revision > envelope.expectedSpaceRevision else {
                 throw SharedStateFailure.invalidResponse
             }
+            try validateKnownResult(result, envelope: envelope, original: original,
+                                    live: self.snapshot)
             try validateCreatedID(result.createdID, for: command, in: result.snapshot,
                                   accountID: scope.accountID,
                                   expectedSpaceRevision: envelope.expectedSpaceRevision,
-                                  originalObjectIDs: originalObjectIDs)
+                                  originalObjectIDs: original.objectIDs)
             try validateCreation(result.createdID, in: result.snapshot,
                 expectedSpaceRevision: envelope.expectedSpaceRevision,
-                expectation: originalCreationExpectation, command: command)
+                expectation: original.creationExpectation, command: command)
             let receipt = ConfirmedCommandReceipt(commandID: commandID, command: command,
                 snapshotRevision: result.snapshot.revision, createdID: result.createdID)
             if let existing = confirmedCommands.first(where: { $0.receipt.commandID == commandID }) {
@@ -271,15 +275,13 @@ public final class SharedStateCoordinator {
                 confirmedCommands.append(ConfirmedRecord(scope: scope, receipt: receipt))
             }
             unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
-            originalObjectIDsByCommand.removeValue(forKey: envelope.commandID)
-            creationExpectationsByCommand.removeValue(forKey: envelope.commandID)
+            originalContextsByCommand.removeValue(forKey: envelope.commandID)
             return result.createdID
         } catch {
             try requireCurrent(scope: scope, generation: capturedGeneration)
             if isDefiniteRejection(error) {
                 unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
-                originalObjectIDsByCommand.removeValue(forKey: envelope.commandID)
-                creationExpectationsByCommand.removeValue(forKey: envelope.commandID)
+                originalContextsByCommand.removeValue(forKey: envelope.commandID)
             }
             try handle(error, scope: scope, generation: capturedGeneration)
             throw error
@@ -295,6 +297,69 @@ public final class SharedStateCoordinator {
     private func validate(_ incoming: SharedSnapshot, for scope: SharedAccountScope) throws {
         guard incoming.spaceID == scope.spaceID else { throw SharedStateFailure.scopeMismatch }
         try incoming.validate(for: scope.accountID)
+    }
+
+    private func validateKnownResult(_ result: SharedCommandResult,
+                                     envelope: SharedCommandEnvelope,
+                                     original: OriginalCommandContext,
+                                     live: SharedSnapshot?) throws {
+        let candidate = result.snapshot
+        guard original.baseline.revision == envelope.expectedSpaceRevision,
+              original.baseline.spaceID == candidate.spaceID,
+              preservesJoinedMembers(from: original.baseline, to: candidate),
+              preservesConnectedHistory(from: original.baseline, to: candidate) else {
+            throw SharedStateFailure.invalidResponse
+        }
+        // publish deliberately ignores a lagging view. Its history still has to
+        // fit both the original request and the newer visible view.
+        if let live, candidate.revision < live.revision {
+            guard preservesJoinedMembers(from: candidate, to: live),
+                  preservesConnectedHistory(from: candidate, to: live) else {
+                throw SharedStateFailure.invalidResponse
+            }
+        }
+        guard candidate.revision - original.baseline.revision == 1 else { return }
+        switch envelope.command {
+        case .startRun, .startOneOff, .repeatRun, .saveRunAsRoutine:
+            // Server-generated object IDs are checked by the creation descriptor below.
+            return
+        default:
+            guard result.createdID == nil,
+                  let now = observedCommandTime(envelope.command, in: candidate),
+                  let expected = try? SharedCommandProcessor.apply(envelope,
+                      to: original.baseline, actorID: original.actorID, now: now),
+                  expected.createdID == nil, expected.snapshot == candidate else {
+                throw SharedStateFailure.invalidResponse
+            }
+        }
+    }
+
+    private func observedCommandTime(_ command: SharedCommand,
+                                     in candidate: SharedSnapshot) -> Date? {
+        let unused = Date(timeIntervalSince1970: 0)
+        switch command {
+        case let .setStandardChecked(runID, itemID, checked, _):
+            guard checked else { return unused }
+            return candidate.state.runs.first(where: { $0.id == runID })?
+                .items.first(where: { $0.id == itemID })?.checkedAt
+        case let .approve(runID, itemID, version, _),
+             let .requestAnother(runID, itemID, version, _, _):
+            let run = candidate.state.runs.first(where: { $0.id == runID })
+            let current = run?.items.first(where: { $0.id == itemID })?.submission?.decision
+            let index = run?.items.firstIndex(where: { $0.id == itemID })
+            let archive = candidate.state.archives.first(where: { $0.id == runID })
+            let archived = index.flatMap { index in
+                archive?.items.indices.contains(index) == true ?
+                    archive?.items[index].decisions.last : nil
+            }
+            guard let decision = current ?? archived,
+                  decision.submissionVersion == version else { return nil }
+            return decision.decidedAt
+        case let .cancel(runID, _):
+            return candidate.state.runs.first(where: { $0.id == runID })?.closedAt
+        default:
+            return unused
+        }
     }
 
     private func creationExpectation(for command: SharedCommand, in snapshot: SharedSnapshot,

@@ -757,8 +757,14 @@ final class SharedStateCoordinatorTests: XCTestCase {
             SharedCommandEnvelope(spaceID: space, commandID: UUID(),
                                   expectedSpaceRevision: 0, command: command),
             to: baseline(), actorID: accountA, now: now)
-        var newer = applied.snapshot
-        newer.revision += 1
+        let createdRun = try XCTUnwrap(applied.snapshot.state.runs.first)
+        let newer = try SharedCommandProcessor.apply(
+            SharedCommandEnvelope(spaceID: space, commandID: UUID(),
+                expectedSpaceRevision: applied.snapshot.revision,
+                command: .updateRunSettings(runID: createdRun.id,
+                    settings: RunSettings(reminders: ReminderPreferences(remindPerformer: true)),
+                    expectedRunRevision: createdRun.revision)),
+            to: applied.snapshot, actorID: accountA, now: now).snapshot
         let client = LaggingReceiptSharedClient(initial: baseline(), newer: newer, receipt: applied)
         let coordinator = SharedStateCoordinator()
         coordinator.beginSession(scope: scope(accountA), client: client)

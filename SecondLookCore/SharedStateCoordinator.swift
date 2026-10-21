@@ -23,6 +23,42 @@ public final class SharedStateCoordinator {
     /// Keep the view from when each command was first sent. A later refresh may
     /// already contain its genuine creation before an exact receipt retry.
     private var originalObjectIDsByCommand: [UUID: Set<UUID>] = [:]
+    private struct ItemDefinition: Equatable {
+        let title: String
+        let priority: ItemPriority
+        let photoInstructions: String
+
+        init(_ item: RoutineItem) {
+            title = item.title
+            priority = item.priority
+            photoInstructions = item.photoInstructions
+        }
+        init(_ item: RunItem) {
+            title = item.title
+            priority = item.priority
+            photoInstructions = item.photoInstructions
+        }
+    }
+    private struct RunCreationExpectation {
+        let routineID: UUID?
+        let routineVersion: Int?
+        let title: String
+        let items: [ItemDefinition]
+        let settings: RunSettings
+        let performerID: UUID
+        let reviewerID: UUID?
+    }
+    private struct RoutineCreationExpectation {
+        let title: String
+        let items: [ItemDefinition]
+        let settings: RunSettings
+    }
+    private enum CreationExpectation {
+        case run(RunCreationExpectation)
+        case routine(RoutineCreationExpectation)
+    }
+    /// A retry must use the creation source observed before its first send.
+    private var creationExpectationsByCommand: [UUID: CreationExpectation] = [:]
     private struct ConfirmedRecord {
         let scope: SharedAccountScope
         let receipt: ConfirmedCommandReceipt
@@ -47,6 +83,7 @@ public final class SharedStateCoordinator {
         if (suspendedScope ?? self.scope) != scope {
             unconfirmedCommands = []
             originalObjectIDsByCommand = [:]
+            creationExpectationsByCommand = [:]
             confirmedCommands = []
             revisionFloor = 0
         }
@@ -75,6 +112,7 @@ public final class SharedStateCoordinator {
         snapshot = nil
         unconfirmedCommands = []
         originalObjectIDsByCommand = [:]
+        creationExpectationsByCommand = [:]
         confirmedCommands = []
         inFlightAttempts = [:]
         acknowledgedInFlight = [:]
@@ -188,11 +226,16 @@ public final class SharedStateCoordinator {
             // Register before awaiting the client so an explicit overlapping retry shares this ID.
             originalObjectIDsByCommand[commandID] = Set(snapshot.state.runs.map(\.id))
                 .union(snapshot.state.routines.map(\.id))
+            if let expectation = creationExpectation(for: command, in: snapshot,
+                                                     actorID: scope.accountID) {
+                creationExpectationsByCommand[commandID] = expectation
+            }
             unconfirmedCommands.append(envelope)
         }
         guard let originalObjectIDs = originalObjectIDsByCommand[commandID] else {
             throw SharedStateFailure.invalidResponse
         }
+        let originalCreationExpectation = creationExpectationsByCommand[commandID]
         inFlightAttempts[attemptKey, default: 0] += 1
         defer { finishAttempt(attemptKey) }
         do {
@@ -206,6 +249,9 @@ public final class SharedStateCoordinator {
                                   accountID: scope.accountID,
                                   expectedSpaceRevision: envelope.expectedSpaceRevision,
                                   originalObjectIDs: originalObjectIDs)
+            try validateCreation(result.createdID, in: result.snapshot,
+                expectedSpaceRevision: envelope.expectedSpaceRevision,
+                expectation: originalCreationExpectation, command: command)
             let receipt = ConfirmedCommandReceipt(commandID: commandID, command: command,
                 snapshotRevision: result.snapshot.revision, createdID: result.createdID)
             if let existing = confirmedCommands.first(where: { $0.receipt.commandID == commandID }) {
@@ -226,12 +272,14 @@ public final class SharedStateCoordinator {
             }
             unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
             originalObjectIDsByCommand.removeValue(forKey: envelope.commandID)
+            creationExpectationsByCommand.removeValue(forKey: envelope.commandID)
             return result.createdID
         } catch {
             try requireCurrent(scope: scope, generation: capturedGeneration)
             if isDefiniteRejection(error) {
                 unconfirmedCommands.removeAll { $0.commandID == envelope.commandID }
                 originalObjectIDsByCommand.removeValue(forKey: envelope.commandID)
+                creationExpectationsByCommand.removeValue(forKey: envelope.commandID)
             }
             try handle(error, scope: scope, generation: capturedGeneration)
             throw error
@@ -247,6 +295,81 @@ public final class SharedStateCoordinator {
     private func validate(_ incoming: SharedSnapshot, for scope: SharedAccountScope) throws {
         guard incoming.spaceID == scope.spaceID else { throw SharedStateFailure.scopeMismatch }
         try incoming.validate(for: scope.accountID)
+    }
+
+    private func creationExpectation(for command: SharedCommand, in snapshot: SharedSnapshot,
+                                     actorID: UUID) -> CreationExpectation? {
+        let reviewerID = snapshot.members.first { $0 != actorID }
+        switch command {
+        case let .startRun(routineID, expectedVersion):
+            guard let routine = snapshot.state.routines.first(where: {
+                $0.id == routineID && $0.definitionVersion == expectedVersion
+            }) else { return nil }
+            return .run(RunCreationExpectation(routineID: routineID,
+                routineVersion: expectedVersion, title: routine.title,
+                items: routine.items.map(ItemDefinition.init), settings: routine.settings,
+                performerID: actorID, reviewerID: reviewerID))
+        case let .startOneOff(title, items, settings):
+            return .run(RunCreationExpectation(routineID: nil, routineVersion: nil,
+                title: title, items: items.map(ItemDefinition.init), settings: settings,
+                performerID: actorID, reviewerID: reviewerID))
+        case let .repeatRun(runID, expectedRevision):
+            guard let run = snapshot.state.runs.first(where: {
+                $0.id == runID && $0.revision == expectedRevision && !$0.isOpen
+            }) else { return nil }
+            return .run(RunCreationExpectation(routineID: run.routineID,
+                routineVersion: run.routineVersion, title: run.title,
+                items: run.items.map(ItemDefinition.init), settings: run.settings,
+                performerID: actorID, reviewerID: reviewerID))
+        case let .saveRunAsRoutine(runID, expectedRevision, title):
+            guard let run = snapshot.state.runs.first(where: {
+                $0.id == runID && $0.revision == expectedRevision
+            }) else { return nil }
+            return .routine(RoutineCreationExpectation(title: title ?? run.title,
+                items: run.items.map(ItemDefinition.init), settings: run.settings))
+        default:
+            return nil
+        }
+    }
+
+    private func validateCreation(_ createdID: UUID?, in snapshot: SharedSnapshot,
+                                  expectedSpaceRevision: Int,
+                                  expectation: CreationExpectation?,
+                                  command: SharedCommand) throws {
+        switch command {
+        case .startRun, .startOneOff, .repeatRun:
+            guard case let .run(expected) = expectation,
+                  let createdID,
+                  let run = snapshot.state.runs.first(where: { $0.id == createdID }),
+                  run.routineID == expected.routineID,
+                  run.routineVersion == expected.routineVersion,
+                  run.title == expected.title,
+                  run.items.map(ItemDefinition.init) == expected.items,
+                  run.performerID == expected.performerID,
+                  run.reviewerID == expected.reviewerID else {
+                throw SharedStateFailure.invalidResponse
+            }
+            if snapshot.revision - expectedSpaceRevision == 1,
+               run.settings != expected.settings {
+                throw SharedStateFailure.invalidResponse
+            }
+        case .saveRunAsRoutine:
+            guard case let .routine(expected) = expectation, let createdID else {
+                throw SharedStateFailure.invalidResponse
+            }
+            // Newer receipt views may have edited or deleted the routine.
+            if snapshot.revision - expectedSpaceRevision == 1 {
+                guard let routine = snapshot.state.routines.first(where: { $0.id == createdID }),
+                      routine.definitionVersion == 1,
+                      routine.title == expected.title,
+                      routine.items.map(ItemDefinition.init) == expected.items,
+                      routine.settings == expected.settings else {
+                    throw SharedStateFailure.invalidResponse
+                }
+            }
+        default:
+            break
+        }
     }
 
     private func validateCreatedID(_ createdID: UUID?, for command: SharedCommand,
@@ -376,6 +499,8 @@ public final class SharedStateCoordinator {
                       later.state.routines == earlier.state.routines,
                       later.state.runs == earlier.state.runs + [newRun],
                       later.state.archives == earlier.state.archives else { return false }
+                if newRun.routineID != nil,
+                   !matchesEarlierCreationSource(newRun, in: earlier.state) { return false }
             }
         }
         let earlierArchives = Dictionary(uniqueKeysWithValues: earlier.state.archives.map { ($0.id, $0) })
@@ -408,6 +533,24 @@ public final class SharedStateCoordinator {
             guard laterArchives[archive.id] == archive else { return false }
         }
         return true
+    }
+
+    private func matchesEarlierCreationSource(_ run: ChecklistRun,
+                                              in state: SecondLookState) -> Bool {
+        guard let routineID = run.routineID, let version = run.routineVersion else {
+            return false
+        }
+        let definitions = run.items.map(ItemDefinition.init)
+        if state.routines.contains(where: {
+            $0.id == routineID && $0.definitionVersion == version &&
+            $0.title == run.title && $0.settings == run.settings &&
+            $0.items.map(ItemDefinition.init) == definitions
+        }) { return true }
+        return state.runs.contains {
+            !$0.isOpen && $0.routineID == routineID && $0.routineVersion == version &&
+            $0.title == run.title && $0.settings == run.settings &&
+            $0.items.map(ItemDefinition.init) == definitions
+        }
     }
 
     private func preservesEvidenceHistory(original: RunItem, updated: RunItem,

@@ -336,6 +336,7 @@ def main():
                     ("alert", "unknown-outcome alert privacy across foreground revalidation"),
                     ("forbidden", "saved-session cleanup after a forbidden restoration"),
                     ("creation", "originating-flow completion after recovered creation receipts"),
+                    ("creation-navigation", "pending routine Start across tab and navigation changes"),
                     ("cleanup", "explicit synthetic archive cleanup status"),
                     ("draft-lifecycle", "private drafts across verified foreground revalidation"),
                 )

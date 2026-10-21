@@ -697,6 +697,8 @@ final class ConnectedAppModel {
         guard localRecoveryChecksRequested, !didDropCreationReply else { return false }
         let args = ProcessInfo.processInfo.arguments
         switch command {
+        case .startRun:
+            return args.contains("-shared-test-creation-receipt-start-navigation")
         case .startOneOff:
             return args.contains("-shared-test-creation-receipt-one-off") ||
                 args.contains("-shared-test-scope-loss-purge")
@@ -715,6 +717,9 @@ final class ConnectedAppModel {
         }
         let single: Bool
         switch command {
+        case .startRun(let routineID, _):
+            let runs = snapshot.state.runs.filter { $0.routineID == routineID }
+            single = runs.count == 1 && runs.first?.id == expected
         case .startOneOff(let title, _, _):
             let runs = snapshot.state.runs.filter { $0.title == title }
             single = runs.count == 1 && runs.first?.id == expected

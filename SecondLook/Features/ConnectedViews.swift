@@ -439,6 +439,7 @@ private struct ConnectedRoutinesView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        .accessibilityIdentifier("sharedOpenRun-\(run.id)")
                     }
                 }
             }
@@ -494,7 +495,6 @@ private struct ConnectedRoutinesView: View {
                 }.disabled(model.busy)
             }
         }
-        .onDisappear { model.unregisterCreationCompletion(owner: completionOwner) }
     }
 
     private func start(_ routine: Routine) {

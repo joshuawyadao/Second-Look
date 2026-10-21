@@ -87,6 +87,8 @@ class NativeRunSelectionTests(unittest.TestCase):
     def test_recovery_probes_select_their_own_method_and_fixture(self):
         runner = load_runner("verify-connected-native.py")
         methods = {
+            "creation-navigation": ("SharedCreationReceiptRecoveryUITests",
+                                    "testRoutineStartReceiptSurvivesTabAndNavigationChanges"),
             "lifecycle": ("SharedInvitationReceiptRecoveryUITests",
                           "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership"),
             "alert": ("SharedInvitationReceiptRecoveryUITests",

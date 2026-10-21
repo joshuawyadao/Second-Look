@@ -91,7 +91,7 @@ def main():
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     selection.add_argument("--only-pairing-recovery", action="store_true",
                            help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
-    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "revision-consistency", "forbidden", "creation", "cleanup", "draft-lifecycle"),
+    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "revision-consistency", "forbidden", "creation", "creation-navigation", "cleanup", "draft-lifecycle"),
                         help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
     if args.only_pairing_recovery != (args.recovery_case is not None):
@@ -160,7 +160,7 @@ def main():
             if args.only_pairing_recovery:
                 suite = ("ConnectedDraftLifecycleUITests" if args.recovery_case == "draft-lifecycle" else
                          "ConnectedCleanupStatusUITests" if args.recovery_case == "cleanup" else
-                         "SharedCreationReceiptRecoveryUITests" if args.recovery_case == "creation" else
+                         "SharedCreationReceiptRecoveryUITests" if args.recovery_case in ("creation", "creation-navigation") else
                          "SharedForbiddenRestoreUITests" if args.recovery_case == "forbidden" else
                          "SharedInvitationReceiptRecoveryUITests" if args.recovery_case in ("receipt", "lifecycle", "alert") else
                          "SharedMutationRecoveryUITests" if args.recovery_case in ("busy", "draft", "identity", "revision-floor", "revision-consistency")
@@ -181,6 +181,7 @@ def main():
                     "forbidden": "testForbiddenRestoreClearsSavedCredentialsBeforeRelaunch",
                     "draft-lifecycle": "testEditorDraftSurvivesVerifiedForegroundReturn",
                     "cleanup": "testConnectedArchivesShowDistinctSyntheticCleanupStates",
+                    "creation-navigation": "testRoutineStartReceiptSurvivesTabAndNavigationChanges",
                     "creation": "testOneOffRetryOpensOriginalCreatedChecklist"
                 }[args.recovery_case]]
                 if args.recovery_case == "draft-lifecycle":

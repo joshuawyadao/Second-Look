@@ -179,6 +179,55 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         XCTAssertFalse(app.textFields["sharedRoutineTitle"].exists)
     }
 
+    func testRoutineStartReceiptSurvivesTabAndNavigationChanges() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture(for: "creation-navigation")
+        let app = launch(fixture, flag: "-shared-test-creation-receipt-start-navigation")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+
+        // A separate genuine run lets the retained Routines view disappear on push/pop.
+        tap("Create one-off checklist", in: app)
+        enter("sharedRoutineTitle", text: "Earlier navigation synthetic checklist", in: app)
+        enter("sharedStepTitle-0", text: "Earlier synthetic step", in: app)
+        tap("sharedSaveRoutine", in: app)
+        XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20))
+        app.navigationBars["Checklist"].buttons.element(boundBy: 0).tap()
+
+        let title = "Navigation receipt synthetic routine"
+        tap("sharedCreateRoutine", in: app)
+        enter("sharedRoutineTitle", text: title, in: app)
+        enter("sharedStepTitle-0", text: "Original navigation receipt step", in: app)
+        tap("sharedSaveRoutine", in: app)
+        let start = app.buttons["sharedStartRoutine-\(title)"]
+        XCTAssertTrue(start.waitForExistence(timeout: 20))
+        tap("sharedStartRoutine-\(title)", in: app)
+        let alert = app.alerts["Shared action not completed"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 25))
+        XCTAssertTrue(alert.buttons["Retry this action"].exists)
+        alert.buttons["OK"].tap()
+        XCTAssertFalse(start.isEnabled, "The original unresolved Start must be locked")
+
+        app.tabBars.buttons["History"].tap()
+        app.tabBars.buttons["Routines"].tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        XCTAssertFalse(start.isEnabled, "A tab round-trip must retain the original Start ownership")
+
+        let earlier = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "sharedOpenRun-")).firstMatch
+        for _ in 0..<4 where !earlier.isHittable { app.swipeDown() }
+        XCTAssertTrue(earlier.waitForExistence(timeout: 8))
+        earlier.tap()
+        XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Earlier synthetic step"].waitForExistence(timeout: 8))
+        app.navigationBars["Checklist"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        XCTAssertFalse(start.isEnabled, "Pushing another checklist must not abandon the unresolved Start")
+        tap("retryUnconfirmedAction", in: app)
+        tap("Start checklist", in: app)
+        XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Original navigation receipt step"].waitForExistence(timeout: 8))
+        assertVerifiedOriginalReceipt(in: app)
+    }
+
     private func assertVerifiedOriginalReceipt(in app: XCUIApplication,
                                                replyLossExpected: Bool = true) {
         if replyLossExpected {
@@ -192,13 +241,13 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         XCTAssertEqual(result.label, "Creation receipt checks passed")
     }
 
-    private func loadFixture() throws -> Fixture {
+    private func loadFixture(for scenario: String = "creation") throws -> Fixture {
         guard let path = ProcessInfo.processInfo.environment["SECONDLOOK_SHARED_UI_FIXTURE"] else {
             throw XCTSkip("No private localhost fixture was supplied")
         }
         let fixture = try JSONDecoder().decode(Fixture.self,
             from: Data(contentsOf: URL(fileURLWithPath: path)))
-        guard fixture.pairingRecovery == true, fixture.recoveryCase == "creation" else {
+        guard fixture.pairingRecovery == true, fixture.recoveryCase == scenario else {
             throw XCTSkip("Dedicated creation receipt fixture was not supplied")
         }
         for endpoint in [fixture.authURL, fixture.serverURL] {

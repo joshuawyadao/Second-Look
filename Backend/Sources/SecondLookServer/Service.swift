@@ -116,8 +116,8 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                     try service.validateSnapshot(current, actor: actor)
                     renewalBaseline = current
                 } catch SharedStateFailure.notPaired {
-                    // A conditional renewal cannot create an absent singleton.
-                    throw SharedStateFailure.staleState
+                    // Let the authoritative SQL create RPC return staleState for an absent
+                    // singleton rather than inventing a new renewal outcome here.
                 }
             }
             // Two independent UUIDs supply 244 random bits; only a SHA256 digest reaches the database.

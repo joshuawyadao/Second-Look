@@ -122,7 +122,7 @@ import SecondLookCore
             #expect(!response.body.string.contains("inviteToken"))
         }
         #expect(await absent.readCount() == 1)
-        #expect(await absent.createCount() == 0)
+        #expect(await absent.createCount() == 1)
 
         let exhausted = RenewalStore(prior: try baseline(revision: Int.max),
                                      result: try baseline(revision: Int.max))

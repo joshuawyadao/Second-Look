@@ -185,6 +185,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                       snapshot.state.runs.first(where: { $0.id == body.runID })?.revision == body.expectedRunRevision else {
                     throw SharedStateFailure.staleState
                 }
+                guard snapshot.revision < Int.max else { throw SharedStateFailure.invalidResponse }
                 var state = snapshot.state
                 let now = Date()
                 try state.prepareDraft(runID: body.runID, itemID: body.itemID, actorID: actor,

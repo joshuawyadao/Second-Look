@@ -353,7 +353,18 @@ public final class SharedStateCoordinator {
             guard let current = laterRuns[run.id],
                   current.performerID == run.performerID,
                   current.reviewerID == run.reviewerID,
+                  current.title == run.title,
+                  current.routineID == run.routineID,
+                  current.routineVersion == run.routineVersion,
+                  current.startedAt == run.startedAt,
+                  current.items.count == run.items.count,
                   run.isOpen || current == run else { return false }
+            for (original, updated) in zip(run.items, current.items) {
+                guard updated.id == original.id,
+                      updated.title == original.title,
+                      updated.priority == original.priority,
+                      updated.photoInstructions == original.photoInstructions else { return false }
+            }
         }
         for archive in earlier.state.archives {
             guard laterArchives[archive.id] == archive else { return false }

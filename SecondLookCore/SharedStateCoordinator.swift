@@ -473,6 +473,13 @@ public final class SharedStateCoordinator {
         // Only adjacent space revisions prove the routine stayed present. Across a
         // gap, it may have been deleted and recreated with the same ID at version 1.
         if later.revision > earlier.revision && later.revision - earlier.revision == 1 {
+            if earlier.state.routines != later.state.routines {
+                guard later.members == earlier.members,
+                      later.state.runs == earlier.state.runs,
+                      later.state.archives == earlier.state.archives,
+                      preservesSingleRoutineWrite(from: earlier.state.routines,
+                                                  to: later.state.routines) else { return false }
+            }
             let laterRoutines = Dictionary(uniqueKeysWithValues: later.state.routines.map { ($0.id, $0) })
             for routine in earlier.state.routines {
                 guard let current = laterRoutines[routine.id] else { continue }
@@ -533,6 +540,31 @@ public final class SharedStateCoordinator {
             guard laterArchives[archive.id] == archive else { return false }
         }
         return true
+    }
+
+    private func preservesSingleRoutineWrite(from earlier: [Routine],
+                                             to later: [Routine]) -> Bool {
+        if later.count == earlier.count + 1 {
+            return Array(later.dropLast()) == earlier && later.last?.definitionVersion == 1
+        }
+        if earlier.count == later.count + 1 {
+            return earlier.indices.contains { index in
+                var remaining = earlier
+                remaining.remove(at: index)
+                return remaining == later
+            }
+        }
+        guard earlier.count == later.count else { return false }
+        var edited = false
+        for (original, current) in zip(earlier, later) where original != current {
+            guard !edited, current.id == original.id,
+                  original.definitionVersion < Int.max - 1,
+                  current.definitionVersion == original.definitionVersion + 1 else {
+                return false
+            }
+            edited = true
+        }
+        return edited
     }
 
     private func matchesEarlierCreationSource(_ run: ChecklistRun,

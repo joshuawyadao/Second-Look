@@ -203,7 +203,7 @@ final class RoutineVersionTransitionTests: XCTestCase {
         try state.deleteRoutine(id: routineID)
         try state.saveRoutine(Routine(title: "New independent routine",
             items: [RoutineItem(title: "Lights")]))
-        let replacement = view(state, revision: 5)
+        let replacement = view(state, revision: 6)
         try replacement.validate(for: owner)
         await client.setCurrent(replacement)
         let publishedReplacement = try await coordinator.refresh(validatingAgainst: [first, sameContent])

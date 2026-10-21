@@ -220,7 +220,7 @@ final class RunDefinitionTransitionTests: XCTestCase {
         var edited = progress.routines[0]
         edited.title = "Edited future routine"
         try progress.saveRoutine(edited)
-        let second = view(progress, revision: 2)
+        let second = view(progress, revision: 4)
         await client.setCurrent(second)
         let progressed = try await coordinator.refresh(validatingAgainst: [first])
         XCTAssertTrue(progressed)
@@ -229,7 +229,7 @@ final class RunDefinitionTransitionTests: XCTestCase {
         try progress.cancel(runID: runID, actorID: owner, now: now)
         let newID = try progress.startOneOff(title: "New independent run",
             items: [RoutineItem(title: "Lights")], performerID: peer, reviewerID: owner, now: now)
-        let third = view(progress, revision: 5)
+        let third = view(progress, revision: 7)
         await client.setCurrent(third)
         let published = try await coordinator.refresh(validatingAgainst: [first, second])
         XCTAssertTrue(published)

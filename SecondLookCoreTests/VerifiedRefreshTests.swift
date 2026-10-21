@@ -137,7 +137,7 @@ final class VerifiedRefreshTests: XCTestCase {
     func testMatchingReferencesAllowEqualAndHigherViewsButContradictoryOnesDoNot() async throws {
         let base = try snapshot("Original")
         let conflicting = try snapshot("Altered")
-        let higher = try snapshot("Original", revision: 2)
+        let higher = try snapshot("Original", revision: 3)
         let client = VerifiedRefreshClient(current: higher, actorID: account, now: now)
         let coordinator = SharedStateCoordinator()
         coordinator.beginSession(scope: scope, client: client)

@@ -5,10 +5,57 @@ public struct SecondLookState: Codable, Equatable, Sendable {
     public private(set) var runs: [ChecklistRun]
     public private(set) var archives: [TextArchive]
 
+    private enum CodingKeys: String, CodingKey {
+        case routines, runs, archives, closureProvenanceVersion
+    }
+
+    private enum RunProvenanceKey: String, CodingKey {
+        case hadEvidenceAtClosure
+    }
+
     public init(routines: [Routine] = [], runs: [ChecklistRun] = [], archives: [TextArchive] = []) {
         self.routines = routines
         self.runs = runs
         self.archives = archives
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        routines = try container.decode([Routine].self, forKey: .routines)
+        runs = try container.decode([ChecklistRun].self, forKey: .runs)
+        archives = try container.decode([TextArchive].self, forKey: .archives)
+
+        if container.contains(.closureProvenanceVersion) {
+            let version = try container.decode(Int.self, forKey: .closureProvenanceVersion)
+            guard version == 1 else {
+                throw DecodingError.dataCorruptedError(forKey: .closureProvenanceVersion,
+                                                       in: container, debugDescription: "Unsupported closure provenance version")
+            }
+        } else {
+            // An unversioned state is legacy only if no run claims a new marker,
+            // including an explicit null marker omitted by decodeIfPresent.
+            var encodedRuns = try container.nestedUnkeyedContainer(forKey: .runs)
+            while !encodedRuns.isAtEnd {
+                let encodedRun = try encodedRuns.nestedContainer(keyedBy: RunProvenanceKey.self)
+                guard !encodedRun.contains(.hadEvidenceAtClosure) else {
+                    throw DecodingError.dataCorruptedError(forKey: .runs, in: container,
+                                                           debugDescription: "Unversioned closure marker")
+                }
+            }
+            for index in runs.indices where !runs[index].isOpen {
+                guard let archive = archives.first(where: { $0.id == runs[index].id }),
+                      archive.cleanupStatus == runs[index].cleanupStatus else { continue }
+                runs[index].hadEvidenceAtClosure = archive.cleanupStatus != .notNeeded
+            }
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(routines, forKey: .routines)
+        try container.encode(runs, forKey: .runs)
+        try container.encode(archives, forKey: .archives)
+        try container.encode(1, forKey: .closureProvenanceVersion)
     }
 
     public mutating func saveRoutine(_ routine: Routine) throws {
@@ -204,7 +251,8 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         let run = ChecklistRun(id: UUID(), routineID: routineID, routineVersion: routineVersion,
                                title: title, items: items.map(RunItem.init(definition:)), settings: settings,
                                performerID: performerID, reviewerID: reviewerID, startedAt: now,
-                               outcome: nil, closedAt: nil, revision: 1, cleanupStatus: nil)
+                               outcome: nil, closedAt: nil, revision: 1, cleanupStatus: nil,
+                               hadEvidenceAtClosure: nil)
         runs.append(run)
         return run.id
     }
@@ -264,13 +312,16 @@ public struct SecondLookState: Codable, Equatable, Sendable {
             let archive = archives.first(where: { $0.id == run.id })
             if run.isOpen {
                 guard !run.isSatisfied,
-                      run.closedAt == nil, run.cleanupStatus == nil, archive == nil else {
+                      run.closedAt == nil, run.cleanupStatus == nil,
+                      run.hadEvidenceAtClosure == nil, archive == nil else {
                     throw SecondLookError.corruptDocument
                 }
             } else {
                 guard let archive, let outcome = run.outcome, let closedAt = run.closedAt,
+                      let hadEvidenceAtClosure = run.hadEvidenceAtClosure,
                       archive.outcome == outcome, archive.closedAt == closedAt,
                       archive.cleanupStatus == run.cleanupStatus,
+                      (hadEvidenceAtClosure ? run.cleanupStatus != .notNeeded : run.cleanupStatus == .notNeeded),
                       Self.archiveMatchesClosedRun(archive, run: run),
                       outcome != .canceled || !Self.closedRunIsSatisfied(archive, run: run),
                       run.items.contains(where: { $0.priority == .high }) ||
@@ -335,7 +386,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
             } else if let currentDecision {
                 // This suffix came from the submission stripped at closure,
                 // unlike the withdrawn decisions retained in priorDecisions.
-                guard run.cleanupStatus != .notNeeded,
+                guard run.hadEvidenceAtClosure == true,
                       validHistoricalDecision(currentDecision),
                       currentDecision.submissionVersion == item.lastVersion,
                       currentDecision.submissionVersion > (item.priorDecisions.last?.submissionVersion ?? 0)
@@ -447,10 +498,12 @@ public struct SecondLookState: Codable, Equatable, Sendable {
 
     private mutating func close(index: Int, outcome: RunOutcome, now: Date) {
         var run = runs[index]
-        let cleanupStatus: CleanupStatus = run.items.contains { $0.submission != nil || $0.preview != nil } ? .pending : .notNeeded
+        let hadEvidenceAtClosure = run.items.contains { $0.submission != nil || $0.preview != nil }
+        let cleanupStatus: CleanupStatus = hadEvidenceAtClosure ? .pending : .notNeeded
         run.outcome = outcome
         run.closedAt = now
         run.cleanupStatus = cleanupStatus
+        run.hadEvidenceAtClosure = hadEvidenceAtClosure
         run.revision += 1
         let historyItems = run.items.map { item in
             ArchiveItem(title: item.title, priority: item.priority, checkedAt: item.checkedAt,

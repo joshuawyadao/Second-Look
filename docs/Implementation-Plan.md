@@ -9,7 +9,7 @@ Finish PR #2 after review5593261083 on6b79926 adds two P2 findings (69total): re
 ## Action items
 [x] Read both findings, map Auth transport and Core closure/persistence seams, preserve6b79926 hosted before/after-restart passes and checkpoint this resolved queue before new edits.
 [x] Successful Auth token validation:16 meaningful HTTP200 red assertions,26 focused transport/session and130 full package green. Reject before returning sessions for vault installation/persistence; preserve valid bytes. Save/push and acknowledge item1.
-[ ] Resolve the smallest compatible text-only closure provenance design from the existing model/persistence contracts, document its legacy semantics before implementation, then add undecided-evidence mirrored-cleanup red coverage plus legitimate withdrawn/unsubmitted/acknowledged controls. Validate direct/JSON/shared-wire behavior and save/push/acknowledge item2.
+[x] Resolve the smallest compatible text-only closure provenance design from the existing model/persistence contracts, document its legacy semantics before implementation, then add undecided-evidence mirrored-cleanup red coverage plus legitimate withdrawn/unsubmitted/acknowledged controls. Validate direct/JSON/shared-wire behavior and save/push/acknowledge item2.
 [ ] Update canonical product/architecture/operation/verification docs and this plan with exact sources, tests and limitations. Previous69-minus2 repairs remain individually committed, tested and acknowledged; do not call unfinished global gates passed.
 [ ] Complete current-source package/tooling/server Debug+Release, ordinary native Debug/Release/exclusion, both official local key modes and focused connected native cases. Private focused driver is prepared and elevated preflight passes; no focused cases have run. Use only task-owned B838 simulator/resettable localhost stack.
 [ ] Upgrade the existing manual Render service to reviewed final server source if affected; run both preserved-session hosted wrappers before/after an actual service restart. No further SQL is assumed until design proves otherwise; inspect before any hosted mutation.
@@ -22,3 +22,5 @@ Finish PR #2 after review5593261083 on6b79926 adds two P2 findings (69total): re
 
 ## Open questions
 - None for the user. Keep successful Auth credentials bounded/nonempty and reject whitespace/control characters rather than trimming opaque tokens. Choose a reversible, explicit compatibility path for text-only closure provenance; a legacy record cannot reconstruct already discarded evidence, so document that limit instead of fabricating proof. No private record may be erased to satisfy a validation test.
+
+Closure implementation checkpoint: four meaningful undecided-cancellation red assertions; eight focused cases and138 full portable cases green. Text-only marker/version with strict new-shape validation and in-memory legacy inference; no SQL migration. Current-source local/native/hosted and external gates remain pending.

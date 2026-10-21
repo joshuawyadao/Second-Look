@@ -79,8 +79,19 @@ final class OpenRunIntegrityTests: XCTestCase {
         let store = JSONStateStore(url: directory.appendingPathComponent("state.json"))
         try store.save(state)
         XCTAssertEqual(try store.load(), state, file: file, line: line)
-        try SharedSnapshot(spaceID: UUID(), revision: 1,
-                           members: [performer, reviewer], state: state).validate(for: performer)
+        let connected = SharedSnapshot(spaceID: UUID(), revision: 1,
+                                       members: [performer, reviewer], state: state)
+        #if DEBUG
+        try connected.validate(for: performer)
+        #else
+        if state.runs.contains(where: { $0.items.contains(where: { $0.submission != nil }) }) {
+            XCTAssertThrowsError(try connected.validate(for: performer), file: file, line: line) {
+                XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse, file: file, line: line)
+            }
+        } else {
+            try connected.validate(for: performer)
+        }
+        #endif
     }
 
     func testRejectsSatisfiedStandardRunLeftOpen() throws {

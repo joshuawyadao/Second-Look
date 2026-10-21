@@ -41,7 +41,11 @@ final class SharedStateTests: XCTestCase {
         }
         XCTAssertThrowsError(try SharedCommandProcessor.apply(approval, to: original,
                                                                actorID: performer, now: now)) {
+            #if DEBUG
             XCTAssertEqual($0 as? SharedStateFailure, .domain(.unauthorized))
+            #else
+            XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+            #endif
         }
         XCTAssertEqual(original.state.runs[0].items[0].submission?.status, .waitingForReview)
         XCTAssertTrue(original.state.archives.isEmpty)
@@ -52,6 +56,7 @@ final class SharedStateTests: XCTestCase {
         let runRevision = original.state.runs[0].revision
         let badVersion = envelope(.approve(runID: runID, itemID: itemID,
                                            expectedVersion: 0, expectedRunRevision: runRevision))
+        #if DEBUG
         XCTAssertThrowsError(try SharedCommandProcessor.apply(badVersion, to: original,
                                                                actorID: reviewer, now: now)) {
             XCTAssertEqual($0 as? SharedStateFailure, .domain(.staleVersion))
@@ -82,6 +87,17 @@ final class SharedStateTests: XCTestCase {
             to: completed.snapshot, actorID: performer, now: now)) {
             XCTAssertEqual($0 as? SharedStateFailure, .staleState)
         }
+        #else
+        let exactVersion = envelope(.approve(runID: runID, itemID: itemID,
+                                              expectedVersion: 1, expectedRunRevision: runRevision))
+        for command in [badVersion, exactVersion] {
+            XCTAssertThrowsError(try SharedCommandProcessor.apply(command, to: original,
+                                                                    actorID: reviewer, now: now)) {
+                XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+            }
+        }
+        XCTAssertEqual(original.state.runs[0].items[0].submission?.status, .waitingForReview)
+        #endif
     }
 
     func testRoutineVersionNormalizationAndRunSnapshotIsolation() throws {
@@ -120,7 +136,13 @@ final class SharedStateTests: XCTestCase {
 
     func testSnapshotRejectsThirdMemberUnsentEvidenceAndInvalidRoles() throws {
         let (waiting, _, _) = try pendingEvidence()
+        #if DEBUG
         try waiting.validate(for: reviewer)
+        #else
+        XCTAssertThrowsError(try waiting.validate(for: reviewer)) {
+            XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+        }
+        #endif
         XCTAssertThrowsError(try waiting.validate(for: outsider))
         var three = waiting
         three.members.append(outsider)

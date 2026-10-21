@@ -3,7 +3,9 @@ import Foundation
 /// One server-authored view of a private space. The service must still enforce authorization
 /// and commit revisions atomically; decoding this value is not an authorization decision.
 public struct SharedSnapshot: Codable, Equatable, Sendable {
+    #if DEBUG
     private static let connectedSyntheticFixtureID = "M2-SYNTHETIC-NO-REAL-PHOTO"
+    #endif
     public var schemaVersion: Int
     public var spaceID: UUID
     public var revision: Int
@@ -40,9 +42,18 @@ public struct SharedSnapshot: Codable, Equatable, Sendable {
                 throw SharedStateFailure.invalidResponse
             }
             for item in run.items {
+                #if DEBUG
+                let admittedSubmission = item.submission.map {
+                    ![.localDraft, .sending, .uploadFailed].contains($0.status) &&
+                        $0.fixtureID == Self.connectedSyntheticFixtureID && $0.source == .simulatedCamera
+                } ?? true
+                #else
+                // No connected media transport exists in Release. Current evidence cannot enter
+                // a shared snapshot even when it carries the Debug synthetic fixture marker.
+                let admittedSubmission = item.submission == nil
+                #endif
                 guard (0..<Int.max).contains(item.lastVersion), item.preview == nil,
-                      item.submission.map({ ![.localDraft, .sending, .uploadFailed].contains($0.status) &&
-                          $0.fixtureID == Self.connectedSyntheticFixtureID && $0.source == .simulatedCamera }) ?? true else {
+                      admittedSubmission else {
                     throw SharedStateFailure.invalidResponse
                 }
             }

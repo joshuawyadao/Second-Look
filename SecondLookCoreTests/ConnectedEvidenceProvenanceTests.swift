@@ -52,8 +52,15 @@ final class ConnectedEvidenceProvenanceTests: XCTestCase {
         for verdict in [nil, .approved, .requestedAnother] as [ReviewVerdict?] {
             let valid = try acceptedState(verdict: verdict)
             try valid.validateForLoad()
-            try SharedSnapshot(spaceID: UUID(), revision: 1,
-                               members: [performer, reviewer], state: valid).validate(for: performer)
+            let snapshot = SharedSnapshot(spaceID: UUID(), revision: 1,
+                                          members: [performer, reviewer], state: valid)
+            #if DEBUG
+            XCTAssertNoThrow(try snapshot.validate(for: performer))
+            #else
+            XCTAssertThrowsError(try snapshot.validate(for: performer)) {
+                XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+            }
+            #endif
 
             var changedFixture = valid.runs[0]
             changedFixture.items[1].submission?.fixtureID = "different-synthetic-token"

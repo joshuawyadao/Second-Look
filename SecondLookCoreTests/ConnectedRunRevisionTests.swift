@@ -63,6 +63,19 @@ final class ConnectedRunRevisionTests: XCTestCase {
     func testLastSafeStandardAndHighCommandsProduceValidTerminalSnapshots() throws {
         for high in [false, true] {
             let original = try snapshot(revision: Int.max - 3, high: high)
+            #if !DEBUG
+            if high {
+                try original.state.validateForLoad()
+                XCTAssertThrowsError(try original.validate(for: performer)) {
+                    XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+                }
+                XCTAssertThrowsError(try SharedCommandProcessor.apply(command(original, high: true),
+                    to: original, actorID: reviewer, now: now)) {
+                    XCTAssertEqual($0 as? SharedStateFailure, .invalidResponse)
+                }
+                continue
+            }
+            #endif
             try original.validate(for: performer)
             let result = try SharedCommandProcessor.apply(command(original, high: high), to: original,
                 actorID: high ? reviewer : performer, now: now)

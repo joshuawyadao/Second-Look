@@ -27,6 +27,7 @@ for forbidden in ('-shared-test-initial-revision-floor', 'SharedLaggingInitialSn
                   '-shared-test-cleanup-status', 'runSharedCleanupProbe',
                   'sharedCleanupProbeStatus', 'Cleanup archive checks ready',
                   'SharedSyntheticEvidenceTestClient', '_testing/synthetic-evidence',
+                  'M2-SYNTHETIC-NO-REAL-PHOTO',
                   '-shared-test-delayed-refresh', '-shared-test-refresh-account-mismatch',
                   'testDelaySharedRefresh', 'testResumeSharedRefresh', 'testSharedRefreshMismatch',
                   'sharedSimulatedRefreshDelay', 'sharedSimulatedRefreshIdentityMismatch',

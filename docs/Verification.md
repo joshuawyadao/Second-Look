@@ -10,7 +10,7 @@ swift test
 ./scripts/verify-native.sh
 ```
 
-The native script runs the package suite, discovers the newest available iPhone simulator, executes the Debug UI suite, builds Release, and checks its bundle identity and absence of the development adapter/role picker. Override `SECONDLOOK_SIMULATOR_ID` for a particular installed device or `SECONDLOOK_DERIVED_DATA` for output. It does not install a runtime or enroll a developer account.
+The native script runs the package suites in Debug and Release, discovers the newest available iPhone simulator, executes the Debug UI suite, builds Release, and checks its bundle identity and absence of the development adapter/role picker. Override `SECONDLOOK_SIMULATOR_ID` for a particular installed device or `SECONDLOOK_DERIVED_DATA` for output. It does not install a runtime or enroll a developer account.
 
 To inspect destinations or launch manually:
 
@@ -21,9 +21,15 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -showdestinations
 
 Open `SecondLook.xcodeproj` and Run the **SecondLook** scheme on a simulator. Debug uses `com.joshuawyadao.SecondLook.demo` and Application Support/SecondLookDemo/state-v1.json. Release uses `com.joshuawyadao.SecondLook.local` and SecondLookLocal/state-v1.json. UI tests use a separate SecondLookUITests document; only Debug test launches accept `-ui-testing -reset-demo`. A normal launch never resets existing data.
 
-## Latest phone validation — October 20, 2026
+## Release evidence boundary follow-up — October 20, 2026
 
-The three follow-up fixes are saved through **903f46a**. All **74 tracked Codex findings** now have tested, pushed fixes, thumbs-up acknowledgment and resolved threads. The live server remains **235ed53**; these final repairs do not change its routes, state encoding or RPC behavior. Fresh final-head review and CI are still required; the PR remains unmerged.
+Review5593883283 on e200398 adds one P2 finding (**75 tracked**): Release snapshots admit exact synthetic evidence metadata. The old Release behavior produces **12 meaningful rejection failures in two tests**, covering waiting, needs-another and approved current submissions through direct snapshots, wire decoding and command processing. Release now rejects every nonnil current connected submission. Exact fixture/source admission and its marker compile only in Debug; local persistence and closed text-only history remain valid. Four existing positive fixture tests assert the correct build-specific contract while retaining malformed-state negatives and local-load checks.
+
+The revised native verifier exits 0: **154 portable cases in Debug and 154 in Release** (125 Core+29 transport each), followed by **10 ordinary UI passes/29 gated skips (39 total, 202.313s)** and Release build/identity/development-control exclusion, now including absence of the synthetic marker. Both official local key-mode workflows pass genuine Auth/Postgres/HTTP/restart again. Server boundary suites pass **30 Debug/28 Release**; two fixture-gated XCTest skips per boundary run are not integration acceptance. The new provider regression proves authenticated read/command admission in Debug, bounded503/no-store rejection and zero commits in Release. Scoped Brooks review is100/100 across12 sources. The affected Debug synthetic-evidence native case passes **86.295s**, using genuine local Auth/commands and explicitly synthetic metadata, then checking distinct archive cleanup labels. Final repository verification passes **53 cases/15.267s**. Repaired-server deployment and hosted acceptance remain next; previous standard-command hosted results remain source-specific below. No SQL or account changes are needed; a read-only check confirms the preserved hosted state has no current submissions. Final saved-head review/CI and repaired-server acceptance remain pending.
+
+## Completed phone checkpoint — October 20, 2026
+
+The three follow-up fixes are saved through **903f46a**. The **74 Codex findings known at this checkpoint** have tested, pushed fixes, thumbs-up acknowledgment and resolved threads. The live server remains **235ed53**; these final repairs do not change its routes, state encoding or RPC behavior. Fresh final-head review and CI are still required; the PR remains unmerged.
 
 `./scripts/verify-native.sh` exits 0 on the task-owned iPhone 18 Pro/iOS 27: all **152 portable tests** pass, followed by **10 ordinary UI passes and 29 explicit fixture-gated skips (39 total, 198.888s)**. Release builds and verifies its separate identity and absence of development adapter, role picker, privacy and connection test controls. The skipped connected cases are not credited as acceptance; focused connected results below are separate. Both original hosted clients also pass on **903f46a** before and after the actual final service restart:
 

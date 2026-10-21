@@ -14,6 +14,8 @@ A routine is a reusable, ordered definition. A run is an independent attempt wit
 
 ## Evidence and review
 
+The M2 Release boundary rejects every current connected submission, including exact synthetic fixture markers. Debug localhost evidence remains test metadata under its guarded route; local demo persistence and closed text-only history retain their separate contracts. Real media admission is deferred.
+
 Each high-priority item has one current submission version. Optional instructions can describe what to show. Camera capture and library selection both lead to a preview and explicit Send. A local draft is not a sent photo. Honest states include **Photo needed**, **Local draft**, **Sending**, **Upload failed**, **Waiting for review**, **Approved**, **Needs another look**, and **Photo expired**. Show submission time accurately without implying a library photo was captured then. Merely viewing an image is not a decision.
 
 The assigned reviewer may approve the exact current submission version or request another photo with a required explanatory note. That request retains the note and old image until explicit replacement/removal or run closure; its unreviewed timer stops. Discarding a replacement preview preserves the prior submission and approval. Committing a replacement or withdrawing the current submission invalidates approval. A decision against an old, expired, withdrawn, or closed version fails. In a connected app the server, not UI visibility, validates actor, membership, expected version, and open state. Milestone 1 applies the corresponding rules to synthetic local records only.

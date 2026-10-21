@@ -41,3 +41,5 @@ Review5594031113 on9f16c2f adds four actionable guards and one authoritative-rec
 5. Reject Debug synthetic-evidence space revisionInt.max before mutation/addition with bounded503/no-store/no commit; preserve Int.max-1→Int.max positive. Reproduce the trap only in a focused disposable test process.
 
 Keep each feedback item separately tested/saved/pushed/acknowledged; Git sequential. Reuse bounded workers for disjoint ownership, with parent owning docs/Git/providers. Server guards require one final reviewed deployment and both saved hosted clients before/after actual restart. Update canonical contracts/evidence and repeat final review/CI gates. No account/allowlist/reset, paid setting, SQL migration or receipt protocol expansion.
+
+History item checkpoint:17 meaningful red assertions in5tests;5focused Debug/Release and159total portable perconfiguration pass, preserving pending/genuine retry andconfirmedreceipts. Save/push/ack4332244288 before receipt-contract test implementation. No server route/SQL changes.

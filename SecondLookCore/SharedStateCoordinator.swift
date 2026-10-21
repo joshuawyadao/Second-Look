@@ -107,7 +107,8 @@ public final class SharedStateCoordinator {
             }
             let chronologicalReferences = trustedByRevision.values.sorted { $0.revision < $1.revision }
             for (earlier, later) in zip(chronologicalReferences, chronologicalReferences.dropFirst()) {
-                guard preservesJoinedMembers(from: earlier, to: later) else {
+                guard preservesJoinedMembers(from: earlier, to: later),
+                      preservesConnectedHistory(from: earlier, to: later) else {
                     throw SharedStateFailure.invalidResponse
                 }
             }
@@ -119,7 +120,8 @@ public final class SharedStateCoordinator {
                     throw SharedStateFailure.invalidResponse
                 }
                 if incoming.revision > reference.revision,
-                   !preservesJoinedMembers(from: reference, to: incoming) {
+                   (!preservesJoinedMembers(from: reference, to: incoming) ||
+                    !preservesConnectedHistory(from: reference, to: incoming)) {
                     throw SharedStateFailure.invalidResponse
                 }
             }
@@ -323,7 +325,8 @@ public final class SharedStateCoordinator {
                 guard incoming == snapshot else { throw SharedStateFailure.invalidResponse }
                 return false
             }
-            guard preservesJoinedMembers(from: snapshot, to: incoming) else {
+            guard preservesJoinedMembers(from: snapshot, to: incoming),
+                  preservesConnectedHistory(from: snapshot, to: incoming) else {
                 throw SharedStateFailure.invalidResponse
             }
         }
@@ -338,6 +341,21 @@ public final class SharedStateCoordinator {
         if later.members == earlier.members { return true }
         return earlier.members.count == 1 && later.members.count == 2 &&
             later.members[0] == earlier.members[0]
+    }
+
+    /// Connected M2 has no history deletion or cleanup acknowledgment. Open runs may
+    /// progress or close, while a closed run and its text archive remain immutable.
+    private func preservesConnectedHistory(from earlier: SharedSnapshot,
+                                           to later: SharedSnapshot) -> Bool {
+        let laterRuns = Dictionary(uniqueKeysWithValues: later.state.runs.map { ($0.id, $0) })
+        let laterArchives = Dictionary(uniqueKeysWithValues: later.state.archives.map { ($0.id, $0) })
+        for run in earlier.state.runs {
+            guard let current = laterRuns[run.id], run.isOpen || current == run else { return false }
+        }
+        for archive in earlier.state.archives {
+            guard laterArchives[archive.id] == archive else { return false }
+        }
+        return true
     }
 
     private func handle(_ error: Error, scope: SharedAccountScope, generation: UInt64) throws {

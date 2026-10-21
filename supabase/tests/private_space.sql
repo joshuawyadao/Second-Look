@@ -144,6 +144,15 @@ begin
     if public.sl_commit(owner,space,2,command,repeat('c',64),state,command) <> committed then
         raise exception 'duplicate receipt changed result';
     end if;
+    if public.sl_commit(owner,space,2,command,repeat('c',64),'{"forged":true}'::jsonb,outsider) <> committed then
+        raise exception 'duplicate receipt accepted replacement creation identity or state';
+    end if;
+    if committed->>'createdID' is distinct from command::text
+       or public.sl_receipt(owner,space,command,repeat('c',64)) is distinct from committed
+       or public.sl_read(owner,space) is distinct from committed->'snapshot'
+       or (select count(*) from secondlook_private.command_receipts) <> 1 then
+        raise exception 'original receipt identity or atomic state was not preserved';
+    end if;
     begin
         perform public.sl_commit(owner,space,3,command,repeat('d',64),state,null);
         raise exception 'changed request reused receipt';

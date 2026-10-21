@@ -348,6 +348,41 @@ final class LocalIntegrationTests: XCTestCase {
         }
         await assertFailure(.staleState) { try await peer.execute(create) }
 
+        // The immutable actor/request-bound SQL receipt remains authoritative after
+        // a saved-as routine is deleted from the later current snapshot.
+        let sourceRun = try XCTUnwrap(shared.state.runs.first { $0.id == originalCreatedID })
+        let saveAs = command(.saveRunAsRoutine(runID: sourceRun.id,
+            expectedRunRevision: sourceRun.revision, title: "Deleted receipt routine"), snapshot: shared)
+        let savedAs = try await owner.execute(saveAs)
+        let originalRoutineID = try XCTUnwrap(savedAs.createdID)
+        let savedRoutine = try XCTUnwrap(savedAs.snapshot.state.routines.first { $0.id == originalRoutineID })
+        shared = try await peer.execute(command(.deleteRoutine(routineID: originalRoutineID,
+            expectedDefinitionVersion: savedRoutine.definitionVersion), snapshot: savedAs.snapshot)).snapshot
+        XCTAssertFalse(shared.state.routines.contains { $0.id == originalRoutineID })
+        let beforeDeletedReplay = shared
+        let deletedReplay = try await owner.execute(saveAs)
+        XCTAssertEqual(deletedReplay.createdID, originalRoutineID)
+        XCTAssertEqual(deletedReplay.snapshot, beforeDeletedReplay,
+                       "A deleted-object receipt must return the original ID without another write")
+        let changedSaveAs = SharedCommandEnvelope(spaceID: saveAs.spaceID, commandID: saveAs.commandID,
+            expectedSpaceRevision: saveAs.expectedSpaceRevision,
+            command: .saveRunAsRoutine(runID: sourceRun.id,
+                expectedRunRevision: sourceRun.revision, title: "Changed receipt request"))
+        await assertFailure(.staleState) { try await owner.execute(changedSaveAs) }
+        await assertFailure(.staleState) { try await peer.execute(saveAs) }
+
+        var forgedCreation = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: SharedWireCodec.encode(saveAs)) as? [String: Any])
+        forgedCreation["createdID"] = UUID().uuidString
+        let forgedCreationResult = try await raw(f.serverURL.appendingPathComponent(
+            "v1/spaces/\(shared.spaceID)/commands"), method: "POST",
+            token: refreshedOwner.access_token,
+            body: JSONSerialization.data(withJSONObject: forgedCreation, options: [.sortedKeys]))
+        XCTAssertEqual(forgedCreationResult.0, 400, "Clients cannot submit a creation result ID")
+        XCTAssertEqual(forgedCreationResult.1, Data("{\"code\":\"invalidResponse\"}".utf8))
+        let afterDeletedReplayDenials = try await owner.fetch(spaceID: shared.spaceID)
+        XCTAssertEqual(afterDeletedReplayDenials, beforeDeletedReplay)
+
         // Two deliveries of the same intent race through receipt lookup. Both callers
         // must receive the original result even if one arrives after the other's commit.
         let identical = command(.startOneOff(title: "Concurrent receipt",

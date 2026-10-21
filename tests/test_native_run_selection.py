@@ -89,6 +89,16 @@ class NativeRunSelectionTests(unittest.TestCase):
         methods = {
             "creation-navigation": ("SharedCreationReceiptRecoveryUITests",
                                     "testRoutineStartReceiptSurvivesTabAndNavigationChanges"),
+            "creation-editor-oneoff": ("SharedCreationReceiptRecoveryUITests",
+                                       "testOneOffDismissAndReopenRetainsOriginalCreation"),
+            "creation-editor-routine": ("SharedCreationReceiptRecoveryUITests",
+                                        "testNewRoutineDismissAndReopenRetainsOriginalDefinition"),
+            "creation-open-saveas": ("SharedCreationReceiptRecoveryUITests",
+                                     "testOpenChecklistSaveAsSurvivesPopAndReopen"),
+            "creation-archive-repeat": ("SharedCreationReceiptRecoveryUITests",
+                                        "testArchiveRepeatSurvivesPopAndAllowsLaterIntent"),
+            "creation-archive-saveas": ("SharedCreationReceiptRecoveryUITests",
+                                        "testArchiveSaveAsSurvivesPopAndReopen"),
             "lifecycle": ("SharedInvitationReceiptRecoveryUITests",
                           "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership"),
             "alert": ("SharedInvitationReceiptRecoveryUITests",
@@ -126,6 +136,42 @@ class NativeRunSelectionTests(unittest.TestCase):
                     runner.main()
                 prefix = "-only-testing:SecondLookUITests/" + suite + "/"
                 self.assertEqual(selected, [prefix + method])
+
+    def test_original_creation_selection_keeps_only_its_five_existing_methods(self):
+        runner = load_runner("verify-connected-native.py")
+        with tempfile.TemporaryDirectory() as directory:
+            derived, products, _ = self.make_products(directory)
+            fixture = Path(directory) / "fixture.json"
+            fixture.write_text(json.dumps({"authURL": "http://127.0.0.1:56321",
+                "serverURL": "http://127.0.0.1:58080", "pairingRecovery": True,
+                "recoveryCase": "creation"}))
+            selected = []
+
+            def fake_native(command, _timeout, **_kwargs):
+                if command[0] == "xcrun":
+                    return b'{"devices":{}}'
+                if "build-for-testing" in command:
+                    (products / CURRENT_NAME).write_bytes(plistlib.dumps(CURRENT_CONFIG))
+                elif "test-without-building" in command:
+                    selected.extend(value for value in command if value.startswith("-only-testing:"))
+                else:
+                    self.fail("Unexpected native command")
+                return b""
+
+            with patch.object(sys, "argv", ["verify-connected-native.py", "--fixture", str(fixture),
+                    "--only-pairing-recovery", "--recovery-case", "creation"]), \
+                    patch.dict(os.environ, {"SECONDLOOK_SIMULATOR_ID": SIMULATOR,
+                                            "SECONDLOOK_DERIVED_DATA": str(derived)}), \
+                    patch.object(runner, "run_owned", side_effect=fake_native), redirect_stdout(io.StringIO()):
+                runner.main()
+            prefix = "-only-testing:SecondLookUITests/SharedCreationReceiptRecoveryUITests/"
+            self.assertEqual(selected, [prefix + name for name in (
+                "testOneOffRetryOpensOriginalCreatedChecklist",
+                "testConfirmedCreationSurvivesSuspendBeforeModelConsumption",
+                "testSaveAsRoutineRetryUpdatesCompletion",
+                "testSimulatedCommandScopeLossPurgesOtherPendingActions",
+                "testRoutineStartReceiptSurvivesTabAndNavigationChanges",
+            )])
 
     def test_hosted_main_uses_current_build_configuration(self):
         runner = load_runner("verify-hosted-native.py")

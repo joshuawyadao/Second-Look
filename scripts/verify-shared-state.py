@@ -337,6 +337,11 @@ def main():
                     ("forbidden", "saved-session cleanup after a forbidden restoration"),
                     ("creation", "originating-flow completion after recovered creation receipts"),
                     ("creation-navigation", "pending routine Start across tab and navigation changes"),
+                    ("creation-editor-oneoff", "one-off editor recovery after simulated lost reply and dismissal"),
+                    ("creation-editor-routine", "new-routine editor recovery after simulated lost reply and dismissal"),
+                    ("creation-open-saveas", "open-checklist save-as recovery across navigation"),
+                    ("creation-archive-repeat", "archive repeat recovery across navigation"),
+                    ("creation-archive-saveas", "archive save-as recovery across navigation"),
                     ("cleanup", "explicit synthetic archive cleanup status"),
                     ("draft-lifecycle", "private drafts across verified foreground revalidation"),
                 )

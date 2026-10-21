@@ -228,6 +228,162 @@ final class SharedCreationReceiptRecoveryUITests: XCTestCase {
         assertVerifiedOriginalReceipt(in: app)
     }
 
+    func testOneOffDismissAndReopenRetainsOriginalCreation() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture(for: "creation-editor-oneoff")
+        let app = launch(fixture, flag: "-shared-test-creation-editor-oneoff")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+
+        tap("Create one-off checklist", in: app)
+        enter("sharedRoutineTitle", text: "Reopened synthetic one-off", in: app)
+        enter("sharedStepTitle-0", text: "One original run", in: app)
+        tap("sharedSaveRoutine", in: app)
+        acknowledgeSimulatedCreationLoss(in: app)
+        tap("Cancel", in: app)
+
+        tap("Create one-off checklist", in: app)
+        let title = app.textFields["sharedRoutineTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        XCTAssertEqual(title.value as? String, "Reopened synthetic one-off")
+        XCTAssertFalse(app.buttons["sharedSaveRoutine"].isEnabled,
+                       "Dismissing a sheet cannot enable another run while the original receipt is unknown")
+        tap("retryCreationAction", in: app)
+        XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["One original run"].waitForExistence(timeout: 8))
+        assertVerifiedOriginalReceipt(in: app)
+    }
+
+    func testNewRoutineDismissAndReopenRetainsOriginalDefinition() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture(for: "creation-editor-routine")
+        let app = launch(fixture, flag: "-shared-test-creation-editor-routine")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+
+        tap("sharedCreateRoutine", in: app)
+        enter("sharedRoutineTitle", text: "Reopened synthetic routine", in: app)
+        enter("sharedStepTitle-0", text: "One original definition", in: app)
+        tap("sharedSaveRoutine", in: app)
+        acknowledgeSimulatedCreationLoss(in: app)
+        tap("Cancel", in: app)
+
+        tap("sharedCreateRoutine", in: app)
+        let title = app.textFields["sharedRoutineTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        XCTAssertEqual(title.value as? String, "Reopened synthetic routine")
+        XCTAssertFalse(app.buttons["sharedSaveRoutine"].isEnabled,
+                       "Reopening must preserve the original definition ID and unresolved command")
+        tap("retryCreationAction", in: app)
+        XCTAssertTrue(app.staticTexts["sharedRoutine-Reopened synthetic routine"].waitForExistence(timeout: 20))
+        assertVerifiedOriginalReceipt(in: app)
+    }
+
+    func testOpenChecklistSaveAsSurvivesPopAndReopen() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture(for: "creation-open-saveas")
+        let app = launch(fixture, flag: "-shared-test-creation-open-saveas")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+        createOneOff(title: "Open save-as synthetic source", step: "Open source step", in: app)
+
+        tap("Save structure as a routine", in: app)
+        acknowledgeSimulatedCreationLoss(in: app)
+        app.navigationBars["Checklist"].buttons.element(boundBy: 0).tap()
+        let source = app.staticTexts["Open save-as synthetic source"]
+        XCTAssertTrue(source.waitForExistence(timeout: 8))
+        source.tap()
+        let saveAs = app.buttons["Save structure as a routine"]
+        XCTAssertTrue(saveAs.waitForExistence(timeout: 8))
+        XCTAssertFalse(saveAs.isEnabled,
+                       "Popping a checklist cannot enable a second save-as while the original is unknown")
+        retryOriginalCreation(title: "Save checklist as routine", in: app)
+        XCTAssertTrue(app.buttons["Saved as a routine"].waitForExistence(timeout: 20))
+        assertVerifiedOriginalReceipt(in: app)
+    }
+
+    func testArchiveRepeatSurvivesPopAndAllowsLaterIntent() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture(for: "creation-archive-repeat")
+        let app = launch(fixture, flag: "-shared-test-creation-archive-repeat")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+        openSyntheticArchive(title: "Archive repeat synthetic source", in: app)
+
+        tap("Start new run", in: app)
+        acknowledgeSimulatedCreationLoss(in: app)
+        app.navigationBars["History record"].buttons.element(boundBy: 0).tap()
+        let repeatedArchive = app.staticTexts["Archive repeat synthetic source"]
+        XCTAssertTrue(repeatedArchive.waitForExistence(timeout: 8))
+        repeatedArchive.tap()
+        let repeatButton = app.buttons["Start new run"]
+        XCTAssertTrue(repeatButton.waitForExistence(timeout: 8))
+        XCTAssertFalse(repeatButton.isEnabled,
+                       "A popped archive must retain its original unresolved repeat")
+        retryOriginalCreation(title: "Start checklist", in: app)
+        XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20))
+        assertVerifiedOriginalReceipt(in: app)
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(repeatedArchive.waitForExistence(timeout: 8))
+        repeatedArchive.tap()
+        XCTAssertTrue(app.buttons["Start new run"].isEnabled,
+                      "A confirmed repeat permits a deliberate later repeat")
+    }
+
+    func testArchiveSaveAsSurvivesPopAndReopen() throws {
+        continueAfterFailure = false
+        let fixture = try loadFixture(for: "creation-archive-saveas")
+        let app = launch(fixture, flag: "-shared-test-creation-archive-saveas")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+        openSyntheticArchive(title: "Archive save-as synthetic source", in: app)
+
+        tap("Save structure as a routine", in: app)
+        acknowledgeSimulatedCreationLoss(in: app)
+        app.navigationBars["History record"].buttons.element(boundBy: 0).tap()
+        let savedArchive = app.staticTexts["Archive save-as synthetic source"]
+        XCTAssertTrue(savedArchive.waitForExistence(timeout: 8))
+        savedArchive.tap()
+        XCTAssertTrue(app.navigationBars["History record"].waitForExistence(timeout: 8))
+        let saveAs = app.buttons["Save structure as a routine"]
+        for _ in 0..<8 where !saveAs.exists { app.swipeUp() }
+        XCTAssertTrue(saveAs.waitForExistence(timeout: 8))
+        XCTAssertFalse(saveAs.isEnabled,
+                       "A popped archive must retain its original unresolved save-as")
+        retryOriginalCreation(title: "Save checklist as routine", in: app)
+        XCTAssertTrue(app.buttons["Saved as a routine"].waitForExistence(timeout: 20))
+        assertVerifiedOriginalReceipt(in: app)
+    }
+
+    private func createOneOff(title: String, step: String, in app: XCUIApplication) {
+        tap("Create one-off checklist", in: app)
+        enter("sharedRoutineTitle", text: title, in: app)
+        enter("sharedStepTitle-0", text: step, in: app)
+        tap("sharedSaveRoutine", in: app)
+        XCTAssertTrue(app.navigationBars["Checklist"].waitForExistence(timeout: 20))
+    }
+
+    private func openSyntheticArchive(title: String, in app: XCUIApplication) {
+        createOneOff(title: title, step: "Complete original synthetic step", in: app)
+        tap("Complete original synthetic step", in: app)
+        app.tabBars.buttons["History"].tap()
+        let archive = app.staticTexts[title]
+        XCTAssertTrue(archive.waitForExistence(timeout: 20))
+        archive.tap()
+        XCTAssertTrue(app.navigationBars["History record"].waitForExistence(timeout: 20))
+    }
+
+    private func acknowledgeSimulatedCreationLoss(in app: XCUIApplication) {
+        let alert = app.alerts["Shared action not completed"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 25),
+                      "The genuine localhost creation must commit before its decoded reply is simulated lost")
+        XCTAssertTrue(alert.buttons["Retry this action"].exists)
+        alert.buttons["OK"].tap()
+        let marker = app.staticTexts["sharedSimulatedCreationReplyLoss"]
+        XCTAssertTrue(marker.waitForExistence(timeout: 8))
+        XCTAssertEqual(marker.label, "Creation reply loss (simulated for acceptance)")
+    }
+
+    private func retryOriginalCreation(title: String, in app: XCUIApplication) {
+        tap("retryUnconfirmedAction", in: app)
+        tap(title, in: app)
+    }
+
     private func assertVerifiedOriginalReceipt(in app: XCUIApplication,
                                                replyLossExpected: Bool = true) {
         if replyLossExpected {

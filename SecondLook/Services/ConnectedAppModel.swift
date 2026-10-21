@@ -44,6 +44,9 @@ final class ConnectedAppModel {
     }
     @ObservationIgnored private var suspendedSharedAlert: SuspendedSharedAlert?
     @ObservationIgnored private var creationCompletions: [UUID: CreationCompletion] = [:]
+    @ObservationIgnored private var creationIntents: [CreationIntent: CreationIntentRecord] = [:]
+    private(set) var creationIntentRevision: UInt64 = 0
+    private(set) var pendingEditorDrafts: [PendingEditorDraft] = []
     private var errorSheetIDs: [UUID] = []
     var busy = false
 
@@ -81,6 +84,8 @@ final class ConnectedAppModel {
     @ObservationIgnored private var creationReceiptActionID: UUID?
     @ObservationIgnored private var creationReceiptCreatedID: UUID?
     @ObservationIgnored private var creationReceiptCommand: SharedCommand?
+    @ObservationIgnored private var creationReceiptPriorRunIDs: Set<UUID> = []
+    @ObservationIgnored private var creationReceiptPriorRoutineIDs: Set<UUID> = []
     @ObservationIgnored private var creationReceiptLossClient: SharedInvitationReceiptLossClient?
     @ObservationIgnored private var scopeLossActionID: UUID?
     @ObservationIgnored private var didDropCreationReply = false
@@ -538,6 +543,9 @@ final class ConnectedAppModel {
             !coordinator.hasUnconfirmedCommand(commandID: $0.id) &&
                 !coordinator.hasConfirmedReceipt(commandID: $0.id, command: $0.command)
         }
+        let issuedIDs = Set(issuedActions.map(\.id))
+        let abandonedIDs = creationIntents.values.map(\.commandID).filter { !issuedIDs.contains($0) }
+        for id in abandonedIDs { releaseCreation(commandID: id) }
         unconfirmedActions = issuedActions
         restoreSuspendedSharedAlertIfVerified()
     }
@@ -702,30 +710,58 @@ final class ConnectedAppModel {
             return args.contains("-shared-test-creation-receipt-start-navigation")
         case .startOneOff:
             return args.contains("-shared-test-creation-receipt-one-off") ||
-                args.contains("-shared-test-scope-loss-purge")
-        case .saveRunAsRoutine: return args.contains("-shared-test-creation-receipt-save-as-routine")
+                args.contains("-shared-test-scope-loss-purge") ||
+                args.contains("-shared-test-creation-editor-oneoff")
+        case .saveRoutine(_, let expectedDefinitionVersion):
+            return expectedDefinitionVersion == nil && args.contains("-shared-test-creation-editor-routine")
+        case .saveRunAsRoutine:
+            return args.contains("-shared-test-creation-receipt-save-as-routine") ||
+                args.contains("-shared-test-creation-open-saveas") ||
+                args.contains("-shared-test-creation-archive-saveas")
+        case .repeatRun: return args.contains("-shared-test-creation-archive-repeat")
         default: return false
         }
     }
 
     private func finishCreationReceiptAcceptance(_ receipt: ActionReceipt?, actionID: UUID, epoch: UInt64) {
         guard currentForegroundSession(epoch), actionID == creationReceiptActionID,
-              let expected = creationReceiptCreatedID, let command = creationReceiptCommand,
-              let snapshot else { return }
-        guard receipt?.createdID == expected else {
+              let command = creationReceiptCommand, let snapshot else { return }
+        let expected: UUID
+        if case .saveRoutine(let definition, let expectedVersion) = command, expectedVersion == nil {
+            expected = definition.id
+            guard receipt != nil, receipt?.createdID == nil else {
+                creationReceiptAcceptanceStatus = "Creation receipt checks failed: originalID"
+                return
+            }
+        } else if let createdID = creationReceiptCreatedID, receipt?.createdID == createdID {
+            expected = createdID
+        } else {
             creationReceiptAcceptanceStatus = "Creation receipt checks failed: originalID"
             return
         }
         let single: Bool
         switch command {
         case .startRun(let routineID, _):
-            let runs = snapshot.state.runs.filter { $0.routineID == routineID }
-            single = runs.count == 1 && runs.first?.id == expected
+            let added = Set(snapshot.state.runs.map(\.id)).subtracting(creationReceiptPriorRunIDs)
+            single = added == [expected] && snapshot.state.runs.contains {
+                $0.id == expected && $0.routineID == routineID
+            }
         case .startOneOff(let title, _, _):
-            let runs = snapshot.state.runs.filter { $0.title == title }
-            single = runs.count == 1 && runs.first?.id == expected
+            let added = Set(snapshot.state.runs.map(\.id)).subtracting(creationReceiptPriorRunIDs)
+            single = added == [expected] && snapshot.state.runs.contains {
+                $0.id == expected && $0.title == title
+            }
+        case .repeatRun(let sourceID, _):
+            let added = Set(snapshot.state.runs.map(\.id)).subtracting(creationReceiptPriorRunIDs)
+            single = added == [expected] && snapshot.state.runs.contains {
+                $0.id == expected && $0.id != sourceID
+            }
+        case .saveRoutine(let definition, let expectedVersion) where expectedVersion == nil:
+            let added = Set(snapshot.state.routines.map(\.id)).subtracting(creationReceiptPriorRoutineIDs)
+            single = added == [expected] && snapshot.state.routines.contains { $0 == definition }
         case .saveRunAsRoutine:
-            single = snapshot.state.routines.count == 1 && snapshot.state.routines.first?.id == expected
+            let added = Set(snapshot.state.routines.map(\.id)).subtracting(creationReceiptPriorRoutineIDs)
+            single = added == [expected] && snapshot.state.routines.contains { $0.id == expected }
         default: single = false
         }
         creationReceiptAcceptanceStatus = single ? "Creation receipt checks passed"
@@ -1138,6 +1174,18 @@ final class ConnectedAppModel {
         }
     }
 
+    func enqueueCreation(commandID: UUID, _ operation: @escaping @MainActor () async -> Void) {
+        let epoch = generation
+        Task { [weak self] in
+            guard let self else { return }
+            guard self.currentForegroundSession(epoch) else {
+                self.releaseUnissuedCreation(commandID: commandID)
+                return
+            }
+            await operation()
+        }
+    }
+
     func revalidateAfterActivation() async {
         guard selected, canUseForeground else { return }
         if accountID == nil {
@@ -1151,6 +1199,112 @@ final class ConnectedAppModel {
     }
 
     struct ActionReceipt { let createdID: UUID? }
+
+    enum CreationIntent: Hashable {
+        case editor(UUID)
+        case saveAs(UUID)
+        case repeatRun(UUID)
+    }
+
+    struct PendingEditorDraft {
+        let requestID: UUID
+        let routine: Routine?
+        let oneOff: Bool
+        let title: String
+        let items: [RoutineItem]
+        let settings: RunSettings
+    }
+
+    func pendingEditorDraft(routine: Routine?, oneOff: Bool) -> PendingEditorDraft? {
+        pendingEditorDrafts.first {
+            $0.oneOff == oneOff && $0.routine?.id == routine?.id
+        }
+    }
+
+    private struct CreationIntentRecord {
+        let commandID: UUID
+        let presentationEpoch: UInt64
+        var bindingID: UUID?
+        var complete: (@MainActor (ActionReceipt) -> Void)?
+    }
+
+    func hasPendingCreation(_ intent: CreationIntent) -> Bool {
+        _ = creationIntentRevision
+        return creationIntents[intent] != nil
+    }
+
+    func beginCreation(_ intent: CreationIntent, commandID: UUID, bindingID: UUID,
+                       editorDraft: PendingEditorDraft? = nil,
+                       completion: @escaping @MainActor (ActionReceipt) -> Void) -> Bool {
+        guard canUseForeground, snapshot != nil, !busy,
+              creationIntents[intent] == nil else { return false }
+        if case .editor(let requestID) = intent,
+           let editorDraft,
+           let pending = pendingEditorDraft(routine: editorDraft.routine, oneOff: editorDraft.oneOff),
+           pending.requestID != requestID { return false }
+        creationIntents[intent] = CreationIntentRecord(commandID: commandID,
+            presentationEpoch: presentationGeneration, bindingID: bindingID, complete: completion)
+        if let editorDraft { pendingEditorDrafts.append(editorDraft) }
+        creationIntentRevision &+= 1
+        return true
+    }
+
+    func bindCreation(_ intent: CreationIntent, bindingID: UUID,
+                      completion: @escaping @MainActor (ActionReceipt) -> Void) {
+        guard var record = creationIntents[intent],
+              record.presentationEpoch == presentationGeneration else { return }
+        record.bindingID = bindingID
+        record.complete = completion
+        creationIntents[intent] = record
+    }
+
+    func detachCreation(bindingID: UUID) {
+        let matching = creationIntents.filter { $0.value.bindingID == bindingID }.map(\.key)
+        for intent in matching {
+            guard var record = creationIntents[intent] else { continue }
+            record.bindingID = nil
+            record.complete = nil
+            creationIntents[intent] = record
+        }
+    }
+
+    private func releaseCreation(commandID: UUID) {
+        let matching = creationIntents.filter { $0.value.commandID == commandID }.map(\.key)
+        for intent in matching {
+            creationIntents.removeValue(forKey: intent)
+            if case .editor(let requestID) = intent {
+                pendingEditorDrafts.removeAll { $0.requestID == requestID }
+            }
+        }
+        if !matching.isEmpty { creationIntentRevision &+= 1 }
+    }
+
+    private func releaseUnissuedCreation(commandID: UUID) {
+        guard !issuedActions.contains(where: { $0.id == commandID }),
+              !coordinator.hasUnconfirmedCommand(commandID: commandID) else { return }
+        releaseCreation(commandID: commandID)
+    }
+
+    private func unconfirmedCreation(_ intent: CreationIntent) -> UnconfirmedAction? {
+        guard let record = creationIntents[intent],
+              record.presentationEpoch == presentationGeneration else { return nil }
+        return unconfirmedActions.first { action in
+            action.id == record.commandID &&
+                (coordinator.hasUnconfirmedCommand(commandID: action.id) ||
+                 coordinator.hasConfirmedReceipt(commandID: action.id, command: action.command))
+        }
+    }
+
+    func canRetryCreation(_ intent: CreationIntent) -> Bool {
+        guard let action = unconfirmedCreation(intent) else { return false }
+        return canRetryUnconfirmedAction(action.id)
+    }
+
+    @discardableResult
+    func retryCreationAction(_ intent: CreationIntent) async -> ActionReceipt? {
+        guard let action = unconfirmedCreation(intent) else { return nil }
+        return await retryUnconfirmedAction(action.id)
+    }
 
     private struct CreationCompletion {
         let owner: UUID
@@ -1189,10 +1343,16 @@ final class ConnectedAppModel {
     }
 
     private func completeCreationFlow(_ receipt: ActionReceipt, commandID: UUID, epoch: UInt64) {
-        guard currentForegroundSession(epoch), let completion = creationCompletions[commandID],
-              completion.presentationEpoch == presentationGeneration else { return }
-        creationCompletions.removeValue(forKey: commandID)
-        completion.complete(receipt)
+        guard currentForegroundSession(epoch) else { return }
+        if let record = creationIntents.values.first(where: { $0.commandID == commandID }) {
+            releaseCreation(commandID: commandID)
+            if record.presentationEpoch == presentationGeneration { record.complete?(receipt) }
+            // The logical intent is consumed even when its originating view is closed.
+        }
+        if let completion = creationCompletions.removeValue(forKey: commandID),
+           completion.presentationEpoch == presentationGeneration {
+            completion.complete(receipt)
+        }
     }
 
     struct UnconfirmedAction: Identifiable {
@@ -1253,12 +1413,20 @@ final class ConnectedAppModel {
 
     @discardableResult
     func execute(_ command: SharedCommand, commandID: UUID = UUID()) async -> ActionReceipt? {
-        guard canUseForeground else { return nil }
+        guard canUseForeground else {
+            releaseUnissuedCreation(commandID: commandID)
+            return nil
+        }
         guard !busy else {
+            releaseUnissuedCreation(commandID: commandID)
             errorMessage = "Still synchronizing. Wait a moment and try again."
             return nil
         }
-        guard snapshot != nil else { errorMessage = "Refresh this private space before changing it."; return nil }
+        guard snapshot != nil else {
+            releaseUnissuedCreation(commandID: commandID)
+            errorMessage = "Refresh this private space before changing it."
+            return nil
+        }
         let epoch = generation
         busy = true
         defer { if currentForegroundSession(epoch) { busy = false } }
@@ -1286,6 +1454,8 @@ final class ConnectedAppModel {
             #if SECONDLOOK_DEMO
             if shouldDropCreationReceipt(command), let client, let configuration, let accountID,
                let snapshot {
+                creationReceiptPriorRunIDs = Set(snapshot.state.runs.map(\.id))
+                creationReceiptPriorRoutineIDs = Set(snapshot.state.routines.map(\.id))
                 let adapter = SharedInvitationReceiptLossClient(base: client, targetCommandID: commandID)
                 coordinator.beginSession(scope: SharedAccountScope(backend: configuration.backendID,
                     accountID: accountID, spaceID: snapshot.spaceID), client: adapter)
@@ -1367,6 +1537,7 @@ final class ConnectedAppModel {
                     unconfirmedActions.append(UnconfirmedAction(id: commandID, command: command))
                 } else if !unconfirmed {
                     creationCompletions.removeValue(forKey: commandID)
+                    releaseCreation(commandID: commandID)
                     issuedActions.removeAll { $0.id == commandID }
                     unconfirmedActions.removeAll { $0.id == commandID }
                 }
@@ -1489,6 +1660,8 @@ final class ConnectedAppModel {
         creationReceiptActionID = nil
         creationReceiptCreatedID = nil
         creationReceiptCommand = nil
+        creationReceiptPriorRunIDs = []
+        creationReceiptPriorRoutineIDs = []
         creationReceiptLossClient = nil
         scopeLossActionID = nil
         simulatedCreationReplyLoss = false
@@ -1501,6 +1674,9 @@ final class ConnectedAppModel {
         heldSnapshot = nil
         presentationGeneration &+= 1
         creationCompletions = [:]
+        creationIntents = [:]
+        pendingEditorDrafts = []
+        creationIntentRevision &+= 1
     }
 
     private func resetSession() {
@@ -1529,6 +1705,8 @@ final class ConnectedAppModel {
         creationReceiptActionID = nil
         creationReceiptCreatedID = nil
         creationReceiptCommand = nil
+        creationReceiptPriorRunIDs = []
+        creationReceiptPriorRoutineIDs = []
         creationReceiptLossClient = nil
         scopeLossActionID = nil
         didDropCreationReply = false

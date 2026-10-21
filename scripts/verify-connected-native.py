@@ -91,7 +91,7 @@ def main():
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     selection.add_argument("--only-pairing-recovery", action="store_true",
                            help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
-    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "revision-consistency", "forbidden", "creation", "creation-navigation", "cleanup", "draft-lifecycle"),
+    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "revision-consistency", "forbidden", "creation", "creation-navigation", "creation-editor-oneoff", "creation-editor-routine", "creation-open-saveas", "creation-archive-repeat", "creation-archive-saveas", "cleanup", "draft-lifecycle"),
                         help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
     if args.only_pairing_recovery != (args.recovery_case is not None):
@@ -160,7 +160,7 @@ def main():
             if args.only_pairing_recovery:
                 suite = ("ConnectedDraftLifecycleUITests" if args.recovery_case == "draft-lifecycle" else
                          "ConnectedCleanupStatusUITests" if args.recovery_case == "cleanup" else
-                         "SharedCreationReceiptRecoveryUITests" if args.recovery_case in ("creation", "creation-navigation") else
+                         "SharedCreationReceiptRecoveryUITests" if args.recovery_case in ("creation", "creation-navigation", "creation-editor-oneoff", "creation-editor-routine", "creation-open-saveas", "creation-archive-repeat", "creation-archive-saveas") else
                          "SharedForbiddenRestoreUITests" if args.recovery_case == "forbidden" else
                          "SharedInvitationReceiptRecoveryUITests" if args.recovery_case in ("receipt", "lifecycle", "alert") else
                          "SharedMutationRecoveryUITests" if args.recovery_case in ("busy", "draft", "identity", "revision-floor", "revision-consistency")
@@ -182,12 +182,25 @@ def main():
                     "draft-lifecycle": "testEditorDraftSurvivesVerifiedForegroundReturn",
                     "cleanup": "testConnectedArchivesShowDistinctSyntheticCleanupStates",
                     "creation-navigation": "testRoutineStartReceiptSurvivesTabAndNavigationChanges",
-                    "creation": "testOneOffRetryOpensOriginalCreatedChecklist"
+                    "creation": "testOneOffRetryOpensOriginalCreatedChecklist",
+                    "creation-editor-oneoff": "testOneOffDismissAndReopenRetainsOriginalCreation",
+                    "creation-editor-routine": "testNewRoutineDismissAndReopenRetainsOriginalDefinition",
+                    "creation-open-saveas": "testOpenChecklistSaveAsSurvivesPopAndReopen",
+                    "creation-archive-repeat": "testArchiveRepeatSurvivesPopAndAllowsLaterIntent",
+                    "creation-archive-saveas": "testArchiveSaveAsSurvivesPopAndReopen"
                 }[args.recovery_case]]
                 if args.recovery_case == "draft-lifecycle":
                     selected_tests = ["-only-testing:SecondLookUITests/ConnectedDraftLifecycleUITests"]
                 if args.recovery_case == "creation":
-                    selected_tests = ["-only-testing:SecondLookUITests/SharedCreationReceiptRecoveryUITests"]
+                    original_methods = (
+                        "testOneOffRetryOpensOriginalCreatedChecklist",
+                        "testConfirmedCreationSurvivesSuspendBeforeModelConsumption",
+                        "testSaveAsRoutineRetryUpdatesCompletion",
+                        "testSimulatedCommandScopeLossPurgesOtherPendingActions",
+                        "testRoutineStartReceiptSurvivesTabAndNavigationChanges",
+                    )
+                    selected_tests = ["-only-testing:SecondLookUITests/SharedCreationReceiptRecoveryUITests/" + method
+                                      for method in original_methods]
             elif args.only_invitation_access_loss:
                 selected_tests = ["-only-testing:SecondLookUITests/SharedInvitationAccessLossUITests"]
             else:

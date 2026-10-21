@@ -428,10 +428,10 @@ private struct ConnectedRoutinesView: View {
         List {
             Section {
                 Button("Create routine", systemImage: "plus.circle") {
-                    editor = ConnectedEditorRequest(routine: nil, oneOff: false)
+                    openEditor(routine: nil, oneOff: false)
                 }.accessibilityIdentifier("sharedCreateRoutine")
                 Button("Create one-off checklist", systemImage: "plus.rectangle.on.folder") {
-                    editor = ConnectedEditorRequest(routine: nil, oneOff: true)
+                    openEditor(routine: nil, oneOff: true)
                 }
                 Button("Refresh") { model.enqueue { await model.refresh() } }.disabled(model.busy)
             }
@@ -464,7 +464,7 @@ private struct ConnectedRoutinesView: View {
                             }.buttonStyle(.borderedProminent)
                                 .accessibilityIdentifier("sharedStartRoutine-\(routine.title)")
                                 .disabled(model.busy || model.hasUnconfirmedCreation(owner: completionOwner))
-                            Button("Edit") { editor = ConnectedEditorRequest(routine: routine, oneOff: false) }
+                            Button("Edit") { openEditor(routine: routine, oneOff: false) }
                                 .buttonStyle(.bordered)
                             Button(role: .destructive) { deleteChoice = routine } label: {
                                 Image(systemName: "trash")
@@ -478,7 +478,10 @@ private struct ConnectedRoutinesView: View {
         .navigationDestination(for: UUID.self) { ConnectedChecklistView(runID: $0) }
         .navigationDestination(item: $destination) { ConnectedChecklistView(runID: $0) }
         .sheet(item: $editor) {
-            ConnectedRoutineEditorView(request: $0) { destination = $0 }
+            ConnectedRoutineEditorView(request: $0,
+                retainedDraft: model.pendingEditorDraft(routine: $0.routine, oneOff: $0.oneOff)) {
+                destination = $0
+            }
                 .connectedRevalidationGate()
                 .connectedActionErrors(inSheet: true)
         }
@@ -515,12 +518,25 @@ private struct ConnectedRoutinesView: View {
                                   commandID: commandID)
         }
     }
+
+    private func openEditor(routine: Routine?, oneOff: Bool) {
+        if let pending = model.pendingEditorDraft(routine: routine, oneOff: oneOff) {
+            editor = ConnectedEditorRequest(id: pending.requestID, routine: pending.routine,
+                                            oneOff: pending.oneOff)
+        } else {
+            editor = ConnectedEditorRequest(routine: routine, oneOff: oneOff)
+        }
+    }
 }
 
 private struct ConnectedEditorRequest: Identifiable {
-    let id = UUID()
+    let id: UUID
     let routine: Routine?
     let oneOff: Bool
+
+    init(id: UUID = UUID(), routine: Routine?, oneOff: Bool) {
+        self.id = id; self.routine = routine; self.oneOff = oneOff
+    }
 }
 
 private struct ConnectedRoutineEditorView: View {
@@ -532,13 +548,17 @@ private struct ConnectedRoutineEditorView: View {
     @State private var items: [RoutineItem]
     @State private var settings: RunSettings
     @State private var saving = false
-    @State private var completionOwner = UUID()
+    @State private var bindingID = UUID()
 
-    init(request: ConnectedEditorRequest, onStart: @escaping (UUID) -> Void) {
+    private var creationIntent: ConnectedAppModel.CreationIntent { .editor(request.id) }
+
+    init(request: ConnectedEditorRequest, retainedDraft: ConnectedAppModel.PendingEditorDraft?,
+         onStart: @escaping (UUID) -> Void) {
         self.request = request; self.onStart = onStart
-        _title = State(initialValue: request.routine?.title ?? "")
-        _items = State(initialValue: request.routine?.items ?? [RoutineItem(title: "")])
-        _settings = State(initialValue: request.routine?.settings ?? RunSettings())
+        let retained = retainedDraft?.requestID == request.id ? retainedDraft : nil
+        _title = State(initialValue: retained?.title ?? request.routine?.title ?? "")
+        _items = State(initialValue: retained?.items ?? request.routine?.items ?? [RoutineItem(title: "")])
+        _settings = State(initialValue: retained?.settings ?? request.routine?.settings ?? RunSettings())
     }
 
     private var valid: Bool {
@@ -580,13 +600,13 @@ private struct ConnectedRoutineEditorView: View {
                     Button("Add step", systemImage: "plus") { items.append(RoutineItem(title: "")) }
                 }
                 PreferencesFields(settings: $settings, connected: true)
-                if model.hasUnconfirmedCreation(owner: completionOwner) {
+                if model.hasPendingCreation(creationIntent) {
                     Section("Unconfirmed creation") {
                         Button("Retry original creation") {
-                            model.enqueue { _ = await model.retryCreationAction(owner: completionOwner) }
+                            model.enqueue { _ = await model.retryCreationAction(creationIntent) }
                         }
                         .accessibilityIdentifier("retryCreationAction")
-                        .disabled(model.busy)
+                        .disabled(model.busy || !model.canRetryCreation(creationIntent))
                         Text("The original action may already be saved. Retry checks its receipt before creating anything new.")
                             .font(.footnote)
                     }
@@ -601,37 +621,50 @@ private struct ConnectedRoutineEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(request.oneOff ? "Start" : "Save") { save() }
                         .disabled(!valid || saving || model.busy ||
-                                  model.hasUnconfirmedCreation(owner: completionOwner))
+                                  model.hasPendingCreation(creationIntent))
                         .accessibilityIdentifier("sharedSaveRoutine")
                 }
                 ToolbarItem(placement: .bottomBar) { EditButton() }
             }
         }
         .onChange(of: model.generation) { _, _ in saving = false }
-        .onDisappear { model.unregisterCreationCompletion(owner: completionOwner) }
+        .onAppear { bindPendingCreation() }
+        .onDisappear { model.detachCreation(bindingID: bindingID) }
     }
 
     private func save() {
-        guard !model.hasUnconfirmedCreation(owner: completionOwner) else { return }
+        guard !model.hasPendingCreation(creationIntent) else { return }
         let epoch = model.generation
         let routine = Routine(id: request.routine?.id ?? request.id, title: title, items: items,
                               settings: settings,
                               definitionVersion: request.routine?.definitionVersion ?? 1)
         let commandID = UUID()
-        model.registerCreationCompletion(commandID: commandID, owner: completionOwner) { receipt in
+        let command: SharedCommand = request.oneOff
+            ? .startOneOff(title: routine.title, items: routine.items, settings: routine.settings)
+            : .saveRoutine(definition: routine,
+                           expectedDefinitionVersion: request.routine?.definitionVersion)
+        let draft = ConnectedAppModel.PendingEditorDraft(requestID: request.id,
+            routine: request.routine, oneOff: request.oneOff, title: title, items: items,
+            settings: settings)
+        guard model.beginCreation(creationIntent, commandID: commandID,
+                                  bindingID: bindingID, editorDraft: draft, completion: { receipt in
             saving = false
             dismiss()
             if let createdID = receipt.createdID { onStart(createdID) }
-        }
+        }) else { return }
         saving = true
-        model.enqueue {
-            let command: SharedCommand = request.oneOff
-                ? .startOneOff(title: routine.title, items: routine.items, settings: routine.settings)
-                : .saveRoutine(definition: routine,
-                               expectedDefinitionVersion: request.routine?.definitionVersion)
+        model.enqueueCreation(commandID: commandID) {
             let result = await model.execute(command, commandID: commandID)
             guard model.generation == epoch else { return }
             if result == nil { saving = false }
+        }
+    }
+
+    private func bindPendingCreation() {
+        model.bindCreation(creationIntent, bindingID: bindingID) { receipt in
+            saving = false
+            dismiss()
+            if let createdID = receipt.createdID { onStart(createdID) }
         }
     }
 }
@@ -675,7 +708,9 @@ private struct ConnectedChecklistView: View {
     @State private var preferences = false
     @State private var savedRoutine = false
     @State private var withdrawing: ConnectedWithdrawal?
-    @State private var completionOwner = UUID()
+    @State private var creationBindingID = UUID()
+
+    private var saveAsIntent: ConnectedAppModel.CreationIntent { .saveAs(runID) }
 
     var body: some View {
         Group {
@@ -730,19 +765,19 @@ private struct ConnectedChecklistView: View {
                                 Button("Checklist settings") { preferences = true }
                                 if run.routineID == nil {
                                     Button(savedRoutine ? "Saved as a routine" : "Save structure as a routine") {
-                                        guard !model.hasUnconfirmedCreation(owner: completionOwner) else { return }
+                                        guard !model.hasPendingCreation(saveAsIntent) else { return }
                                         let commandID = UUID()
-                                        model.registerCreationCompletion(commandID: commandID,
-                                                                         owner: completionOwner) { _ in
+                                        guard model.beginCreation(saveAsIntent, commandID: commandID,
+                                            bindingID: creationBindingID, completion: { _ in
                                             savedRoutine = true
-                                        }
-                                        model.enqueue {
+                                        }) else { return }
+                                        model.enqueueCreation(commandID: commandID) {
                                             _ = await model.execute(.saveRunAsRoutine(
                                                 runID: run.id, expectedRunRevision: run.revision,
                                                 title: nil), commandID: commandID)
                                         }
                                     }.disabled(savedRoutine || model.busy ||
-                                               model.hasUnconfirmedCreation(owner: completionOwner))
+                                               model.hasPendingCreation(saveAsIntent))
                                 }
                                 Button("Cancel checklist", role: .destructive) { cancelConfirmation = true }
                             }
@@ -776,7 +811,12 @@ private struct ConnectedChecklistView: View {
                 } else { ConnectedArchiveDetailView(archiveID: runID) }
             } else { ContentUnavailableView("Checklist unavailable", systemImage: "checklist") }
         }
-        .onDisappear { model.unregisterCreationCompletion(owner: completionOwner) }
+        .onAppear {
+            model.bindCreation(saveAsIntent, bindingID: creationBindingID) { _ in
+                savedRoutine = true
+            }
+        }
+        .onDisappear { model.detachCreation(bindingID: creationBindingID) }
     }
 }
 
@@ -971,7 +1011,13 @@ private struct ConnectedArchiveDetailView: View {
     let archiveID: UUID
     @State private var newRun: UUID?
     @State private var savedRoutine = false
-    @State private var completionOwner = UUID()
+    @State private var creationBindingID = UUID()
+
+    private var repeatIntent: ConnectedAppModel.CreationIntent { .repeatRun(archiveID) }
+    private var saveAsIntent: ConnectedAppModel.CreationIntent { .saveAs(archiveID) }
+    private var pendingCreation: Bool {
+        model.hasPendingCreation(repeatIntent) || model.hasPendingCreation(saveAsIntent)
+    }
 
     var body: some View {
         Group {
@@ -1009,46 +1055,54 @@ private struct ConnectedArchiveDetailView: View {
                     }
                     Section {
                         Button("Start new run") {
-                            guard !model.hasUnconfirmedCreation(owner: completionOwner) else { return }
+                            guard !pendingCreation else { return }
                             guard let source = model.state.runs.first(where: { $0.id == archive.id }) else {
                                 model.errorMessage = "The original run is unavailable. Refresh shared history."
                                 return
                             }
                             let commandID = UUID()
-                            model.registerCreationCompletion(commandID: commandID,
-                                                             owner: completionOwner) { receipt in
+                            guard model.beginCreation(repeatIntent, commandID: commandID,
+                                bindingID: creationBindingID, completion: { receipt in
                                 newRun = receipt.createdID
-                            }
-                            model.enqueue {
+                            }) else { return }
+                            model.enqueueCreation(commandID: commandID) {
                                 _ = await model.execute(.repeatRun(runID: archive.id,
                                                                    expectedRunRevision: source.revision),
                                                         commandID: commandID)
                             }
-                        }.disabled(model.busy || model.hasUnconfirmedCreation(owner: completionOwner))
+                        }.disabled(model.busy || pendingCreation)
                         Button(savedRoutine ? "Saved as a routine" : "Save structure as a routine") {
-                            guard !model.hasUnconfirmedCreation(owner: completionOwner) else { return }
+                            guard !pendingCreation else { return }
                             guard let source = model.state.runs.first(where: { $0.id == archive.id }) else {
                                 model.errorMessage = "The original run is unavailable. Refresh shared history."
                                 return
                             }
                             let commandID = UUID()
-                            model.registerCreationCompletion(commandID: commandID,
-                                                             owner: completionOwner) { _ in
+                            guard model.beginCreation(saveAsIntent, commandID: commandID,
+                                bindingID: creationBindingID, completion: { _ in
                                 savedRoutine = true
-                            }
-                            model.enqueue {
+                            }) else { return }
+                            model.enqueueCreation(commandID: commandID) {
                                 _ = await model.execute(.saveRunAsRoutine(
                                     runID: source.id, expectedRunRevision: source.revision,
                                     title: nil), commandID: commandID)
                             }
                         }.disabled(savedRoutine || model.busy ||
-                                   model.hasUnconfirmedCreation(owner: completionOwner))
+                                   pendingCreation)
                     }
                 }
                 .navigationTitle("History record")
                 .navigationDestination(item: $newRun) { ConnectedChecklistView(runID: $0) }
             } else { ContentUnavailableView("Record unavailable", systemImage: "clock") }
         }
-        .onDisappear { model.unregisterCreationCompletion(owner: completionOwner) }
+        .onAppear {
+            model.bindCreation(repeatIntent, bindingID: creationBindingID) { receipt in
+                newRun = receipt.createdID
+            }
+            model.bindCreation(saveAsIntent, bindingID: creationBindingID) { _ in
+                savedRoutine = true
+            }
+        }
+        .onDisappear { model.detachCreation(bindingID: creationBindingID) }
     }
 }

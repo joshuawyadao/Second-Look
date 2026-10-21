@@ -135,15 +135,21 @@ public struct SharedAuthClient: Sendable {
     }
 
     public func signIn(email: String, password: String) async throws -> SharedAuthSession {
-        try await endpoint.send(path: ["auth", "v1", "token"], method: "POST", token: nil,
-                                query: [URLQueryItem(name: "grant_type", value: "password")],
-                                body: Credentials(email: email, password: password))
+        let session: SharedAuthSession = try await endpoint.send(
+            path: ["auth", "v1", "token"], method: "POST", token: nil,
+            query: [URLQueryItem(name: "grant_type", value: "password")],
+            body: Credentials(email: email, password: password))
+        try session.validateCredentials()
+        return session
     }
 
     public func refresh(refreshToken: String) async throws -> SharedAuthSession {
-        try await endpoint.send(path: ["auth", "v1", "token"], method: "POST", token: nil,
-                                query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
-                                body: RefreshRequest(refresh_token: refreshToken))
+        let session: SharedAuthSession = try await endpoint.send(
+            path: ["auth", "v1", "token"], method: "POST", token: nil,
+            query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
+            body: RefreshRequest(refresh_token: refreshToken))
+        try session.validateCredentials()
+        return session
     }
 
     public func getUser(accessToken: String) async throws -> SharedAuthUser {
@@ -162,6 +168,18 @@ public struct SharedAuthSession: Codable, Equatable, Sendable {
     public let expires_at: Int?
     public let expires_in: Int?
     public let user: SharedAuthUser
+
+    /// Validate successful responses before a vault can install or persist them.
+    /// Credentials remain opaque; do not trim or rewrite their bytes.
+    func validateCredentials() throws {
+        for token in [access_token, refresh_token] {
+            guard !token.isEmpty, token.utf8.count <= 8_192,
+                  token.unicodeScalars.allSatisfy({
+                      !CharacterSet.controlCharacters.contains($0) &&
+                          !CharacterSet.whitespacesAndNewlines.contains($0)
+                  }) else { throw SharedStateFailure.invalidResponse }
+        }
+    }
 }
 
 private struct Credentials: Encodable, Sendable { let email: String; let password: String }

@@ -30,3 +30,13 @@ Closure implementation checkpoint: four meaningful undecided-cancellation red as
 P2 contract mismatch: successful Auth access tokens at exactly8192 UTF-8 bytes pass the phone but the command service rejects them. Align access-token acceptance with the existing exclusive8192 server limit; keep refresh-token bound independent. Add meaningful sign-in/refresh exact-boundary red assertions and valid8191-byte preservation, run focused/package tests and save the repair separately. No user decision is needed. Existing provenance/local/native checks retain their exact source.
 
 Auth exact-limit repair: two meaningful red sign-in/refresh assertions; three focused cases and139 full package cases pass. Existing server contract preserved; no DDL or credential mutation. Save/push as a distinct Brooks repair; current source native/hosted acceptance remains pending.
+
+## Further Codex follow-up
+
+Review5593423259 onb03d94d adds2 P2 findings (71total): equal-revision different membership/explicit snapshots can publish before coordinator has its first snapshot, and malformed Auth expiry metadata can postpone refresh indefinitely. All six focused localhost cases now pass on235ed53/b03d94d; preserve that source-specific evidence.
+
+- Reject an explicit refresh view at the same revision when it differs from the incoming membership view or the visible/held verified view. Keep the existing revision floor, exact scopes and immutable revisions; prove rejection, retained original view and later genuine recovery with behavior tests. Resolve implementation seam before editing.
+- Require a positive bounded successful Auth expires_in and derive the persisted local deadline from response receipt time and that duration, without trusting absolute expires_at. Document a reversible one-day admission bound, retain hour-long current provider sessions, preserve valid token bytes, and add sign-in/refresh malformed-duration and far-future-absolute regressions before repair. No provider/session/reset change.
+- Save/push/acknowledge each finding separately; run appropriate current-source package/native/hosted follow-up, fresh Brooks/Codex and final CI. Installed server235ed53 remains unchanged by phone-only repairs; no further SQL.
+
+No open user question: these are bounded validation repairs under the existing task.

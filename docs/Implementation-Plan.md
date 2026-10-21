@@ -21,3 +21,11 @@ The latest saved PR head must receive terminal Codex review classification, pass
 
 ## Open questions
 None. One-day successful Auth duration admission, text-only closure provenance with strict legacy normalization and trusted prepublication snapshot references are documented reversible choices. Physical/operational/real-media roadmap limits remain deferred.
+
+## New review queue
+
+Review5593602824 ond9658a5 adds3 P2 findings (74total) after the completed operational acceptance:4331882677 higher-revision membership regression;4331882683 pending routines Start ownership lost on disappearance;4331882687 local-mode switching while Auth refresh is busy. Existing hosted/schema/data preservation and current-source accepted checks remain source-specific; PR stays draft.
+
+Address one finding at a time with meaningful regressions, a separate save/push/acknowledgment and current affected validation. First, Core coordinator publication must preserve membership at increasing revisions, allowing only identical arrays or the legitimate one-owner to owner-plus-peer append; reject removal/replacement/reordering across trusted references and seeded refresh/command publication. Preserve genuine join and pending/confirmed receipt behavior. Next, map view-owner lifetime and explicit abandonment before retaining a pending Start across ordinary navigation; prove one run and original receipt after return. Finally, block local-mode transition during synchronization in both UI and model and verify later normal switching. No paid/provider/account/server reset or SQL changes.
+
+No open user questions. Keep exact external review/CI gates until these new repairs are saved and validated.

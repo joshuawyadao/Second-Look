@@ -204,6 +204,50 @@ final class SharedMutationRecoveryUITests: XCTestCase {
                        "Only the successful retry may create the target routine")
     }
 
+    func testInitialMembershipRejectsEqualRevisionContentMismatch() throws {
+        let fixture = try loadFixture(for: "revision-consistency")
+        let app = launch(fixture, scenario: "-shared-test-initial-revision-consistency")
+        connectOwnerAndCreateSpace(fixture.owner, in: app)
+        let original = "Consistent membership synthetic routine"
+        tap("sharedCreateRoutine", in: app)
+        enter("sharedRoutineTitle", text: original, in: app)
+        enter("sharedStepTitle-0", text: "Original synthetic step", in: app)
+        tap("sharedSaveRoutine", in: app)
+        XCTAssertTrue(revealRoutine(original, in: app))
+        tap("Account settings", in: app)
+        tap("sharedSignOut", in: app)
+        enter("sharedEmail", text: fixture.owner.email, in: app)
+        let password = app.secureTextFields["sharedPassword"]
+        XCTAssertTrue(password.waitForExistence(timeout: 8))
+        password.tap()
+        password.typeText(fixture.owner.password)
+        tap("sharedSignIn", in: app)
+        XCTAssertTrue(app.buttons["sharedCreateRoutine"].waitForExistence(timeout: 20))
+        XCTAssertTrue(revealRoutine(original, in: app))
+
+        // Membership A is genuine and the coordinator has no explicit snapshot yet.
+        // The next genuine explicit fetch injects one labeled decoded conflict B at N.
+        tap("Refresh", in: app)
+        waitUntilEnabled(app.buttons["Refresh"].firstMatch, context: "Conflicting explicit refresh completion")
+        XCTAssertFalse(app.staticTexts["sharedRoutine-Simulated inconsistent revision routine"]
+            .waitForExistence(timeout: 3), "Conflicting same-revision content must never become visible")
+        let rejection = app.alerts["Shared action not completed"]
+        XCTAssertTrue(rejection.waitForExistence(timeout: 8), "The inconsistent provider view must be rejected")
+        rejection.buttons["OK"].tap()
+        XCTAssertTrue(revealRoutine(original, in: app), "Keep the authenticated membership view")
+
+        tap("Refresh", in: app)
+        waitUntilEnabled(app.buttons["Refresh"].firstMatch, context: "Later genuine refresh")
+        XCTAssertFalse(rejection.exists, "A rejected snapshot must not poison later genuine recovery")
+        let recovered = "Recovered consistent synthetic routine"
+        tap("sharedCreateRoutine", in: app)
+        enter("sharedRoutineTitle", text: recovered, in: app)
+        enter("sharedStepTitle-0", text: "Recovered synthetic step", in: app)
+        tap("sharedSaveRoutine", in: app)
+        XCTAssertTrue(revealRoutine(recovered, in: app))
+        XCTAssertEqual(app.staticTexts.matching(identifier: "sharedRoutine-\(recovered)").count, 1)
+    }
+
     private func loadFixture(for scenario: String) throws -> Fixture {
         continueAfterFailure = false
         guard let path = ProcessInfo.processInfo.environment["SECONDLOOK_SHARED_UI_FIXTURE"] else {

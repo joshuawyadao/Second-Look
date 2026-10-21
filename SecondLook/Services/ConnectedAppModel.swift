@@ -471,7 +471,7 @@ final class ConnectedAppModel {
             // the existing coordinator so unknown command outcomes keep their
             // original envelopes and explicit retry IDs.
             let floor = max(snapshot?.revision ?? heldSnapshot?.revision ?? 0, incoming.revision)
-            try await coordinator.refresh()
+            try await coordinator.refresh(validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
             guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
             guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
                 throw SharedStateFailure.staleState
@@ -485,12 +485,12 @@ final class ConnectedAppModel {
             let restoringSameScope = suspendedScope == scope
             #if SECONDLOOK_DEMO
             let coordinatorClient: any SharedStateClient
-            if initialRevisionFloorChecksRequested && !restoringSameScope && incoming.revision > 0 {
-                // The membership lookup above is genuine. Only the first two explicit-space
-                // fetch responses are made to appear one revision behind for local acceptance.
+            if (initialRevisionFloorChecksRequested || initialRevisionConsistencyChecksRequested) && !restoringSameScope && incoming.revision > 0 {
+                // Membership/Auth are genuine. Explicit fetches can simulate two lagging
+                // revisions or one same-revision content conflict for localhost acceptance.
                 initialRevisionFloorForAcceptance = incoming.revision
                 coordinatorClient = SharedLaggingInitialSnapshotClient(base: client,
-                    initialRevision: incoming.revision)
+                    initialRevision: incoming.revision, simulateContentMismatch: initialRevisionConsistencyChecksRequested)
             } else {
                 coordinatorClient = client
             }
@@ -501,7 +501,7 @@ final class ConnectedAppModel {
             if restoringSameScope {
                 // Core retains only issued envelopes for this verified account/space.
                 // Do not expose retry metadata until its fetch also succeeds.
-                try await coordinator.refresh()
+                try await coordinator.refresh(validatingAgainst: [incoming, heldSnapshot].compactMap { $0 })
                 guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
                 guard let refreshed = coordinator.snapshot,
                       refreshed.revision >= max(heldSnapshot?.revision ?? 0, incoming.revision) else {
@@ -582,6 +582,10 @@ final class ConnectedAppModel {
 
     private var initialRevisionFloorChecksRequested: Bool {
         localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-initial-revision-floor")
+    }
+
+    private var initialRevisionConsistencyChecksRequested: Bool {
+        localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-initial-revision-consistency")
     }
 
     func runSharedCleanupProbe() async {
@@ -1004,7 +1008,7 @@ final class ConnectedAppModel {
                 guard currentForegroundSession(epoch) else { return false }
             } else {
                 let floor = max(snapshot?.revision ?? heldSnapshot?.revision ?? 0, incoming.revision)
-                try await coordinator.refresh()
+                try await coordinator.refresh(validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
                 guard currentForegroundSession(epoch) else { return false }
                 guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
                     throw SharedStateFailure.staleState
@@ -1255,7 +1259,7 @@ final class ConnectedAppModel {
         do {
             // Coordinator owns exact space revision, actor scope, and response publication.
             if coordinator.snapshot != snapshot {
-                try await coordinator.refresh()
+                try await coordinator.refresh(validatingAgainst: [snapshot].compactMap { $0 })
                 guard currentForegroundSession(epoch) else { return nil }
                 guard let refreshed = coordinator.snapshot, let visible = snapshot else {
                     throw SharedStateFailure.staleState
@@ -1596,19 +1600,29 @@ final class ConnectedAppModel {
 
 #if SECONDLOOK_DEMO
 /// Localhost UI acceptance only. Each fetch checks the real server first; the
-/// first two decoded explicit-space snapshots then report a simulated older revision.
+/// first two decoded responses can report an older revision, or one can contain
+/// a labeled same-revision content conflict. No server state is changed by either simulation.
 private actor SharedLaggingInitialSnapshotClient: SharedStateClient {
     let base: SharedHTTPClient
     let initialRevision: Int
     var laggingResponsesRemaining = 2
+    var contentMismatchRemaining: Bool
 
-    init(base: SharedHTTPClient, initialRevision: Int) {
+    init(base: SharedHTTPClient, initialRevision: Int, simulateContentMismatch: Bool = false) {
         self.base = base
         self.initialRevision = initialRevision
+        contentMismatchRemaining = simulateContentMismatch
+        if simulateContentMismatch { laggingResponsesRemaining = 0 }
     }
 
     func fetch(spaceID: UUID) async throws -> SharedSnapshot {
         var genuine = try await base.fetch(spaceID: spaceID)
+        if contentMismatchRemaining, var routine = genuine.state.routines.first {
+            contentMismatchRemaining = false
+            // Real Auth/fetch, then one decoded-content conflict at the same revision (simulated).
+            routine.title = "Simulated inconsistent revision routine"
+            try genuine.state.saveRoutine(routine)
+        }
         if laggingResponsesRemaining > 0 && genuine.revision >= initialRevision {
             laggingResponsesRemaining -= 1
             genuine.revision = initialRevision - 1

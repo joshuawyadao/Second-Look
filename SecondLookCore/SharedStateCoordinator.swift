@@ -85,13 +85,34 @@ public final class SharedStateCoordinator {
     }
 
     @discardableResult
-    public func refresh() async throws -> Bool {
+    /// Trusted membership/presentation views must agree before a fetched view is published.
+    /// Callers without references retain the existing refresh behavior.
+    public func refresh(validatingAgainst references: [SharedSnapshot] = []) async throws -> Bool {
         guard let scope, let client else { throw SharedStateFailure.unauthenticated }
         let capturedGeneration = generation
         do {
             let incoming = try await client.fetch(spaceID: scope.spaceID)
             try requireCurrent(scope: scope, generation: capturedGeneration)
             try validate(incoming, for: scope)
+            var trustedByRevision: [Int: SharedSnapshot] = [:]
+            for reference in references {
+                guard reference.spaceID == scope.spaceID else {
+                    throw SharedStateFailure.invalidResponse
+                }
+                try reference.validate(for: scope.accountID)
+                if let earlier = trustedByRevision[reference.revision], earlier != reference {
+                    throw SharedStateFailure.invalidResponse
+                }
+                trustedByRevision[reference.revision] = reference
+            }
+            for reference in references {
+                guard incoming.revision >= reference.revision else {
+                    throw SharedStateFailure.staleState
+                }
+                guard incoming.revision != reference.revision || incoming == reference else {
+                    throw SharedStateFailure.invalidResponse
+                }
+            }
             // A replica or stale response cannot establish a verified view older
             // than a receipt this session has already seen commit.
             guard snapshot != nil || incoming.revision >= revisionFloor else {

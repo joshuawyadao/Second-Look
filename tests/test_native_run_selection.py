@@ -91,6 +91,8 @@ class NativeRunSelectionTests(unittest.TestCase):
                           "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership"),
             "alert": ("SharedInvitationReceiptRecoveryUITests",
                       "testUnknownOutcomeAlertStaysPrivateUntilMembershipRevalidation"),
+            "revision-consistency": ("SharedMutationRecoveryUITests",
+                                     "testInitialMembershipRejectsEqualRevisionContentMismatch"),
             "revision-floor": ("SharedMutationRecoveryUITests",
                                "testInitialMembershipRevisionSurvivesLaggingExplicitFetch"),
         }

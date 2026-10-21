@@ -329,6 +329,7 @@ def main():
                     ("draft", "editor draft after a genuine one-off rejection"),
                     ("identity", "protected-state clearing after a refresh identity mismatch"),
                     ("revision-floor", "initial membership revision after a simulated lagging explicit fetch"),
+                    ("revision-consistency", "same-revision content rejection before coordinator publication"),
                     ("receipt", "original command receipt after invitation renewal"),
                     ("create", "membership discovery after an initial creation reply is lost"),
                     ("lifecycle", "original command receipt across foreground revalidation"),

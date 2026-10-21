@@ -91,7 +91,7 @@ def main():
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     selection.add_argument("--only-pairing-recovery", action="store_true",
                            help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
-    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "forbidden", "creation", "cleanup", "draft-lifecycle"),
+    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "revision-consistency", "forbidden", "creation", "cleanup", "draft-lifecycle"),
                         help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
     if args.only_pairing_recovery != (args.recovery_case is not None):
@@ -163,7 +163,7 @@ def main():
                          "SharedCreationReceiptRecoveryUITests" if args.recovery_case == "creation" else
                          "SharedForbiddenRestoreUITests" if args.recovery_case == "forbidden" else
                          "SharedInvitationReceiptRecoveryUITests" if args.recovery_case in ("receipt", "lifecycle", "alert") else
-                         "SharedMutationRecoveryUITests" if args.recovery_case in ("busy", "draft", "identity", "revision-floor")
+                         "SharedMutationRecoveryUITests" if args.recovery_case in ("busy", "draft", "identity", "revision-floor", "revision-consistency")
                          else "SharedPairingRecoveryUITests")
                 selected_tests = ["-only-testing:SecondLookUITests/" + suite + "/" + {
                     "invitation": "testRenewalReplyLossInvalidatesOldInvitation",
@@ -173,6 +173,7 @@ def main():
                     "draft": "testRejectedOneOffPreservesEditorDraft",
                     "identity": "testRefreshAccountMismatchClearsProtectedState",
                     "revision-floor": "testInitialMembershipRevisionSurvivesLaggingExplicitFetch",
+                    "revision-consistency": "testInitialMembershipRejectsEqualRevisionContentMismatch",
                     "receipt": "testRenewalPreservesOriginalCommandReceipt",
                     "create": "testInitialCreateReplyLossRequiresMembershipCheckBeforeRenewal",
                     "lifecycle": "testForegroundSuspensionRestoresOriginalReceiptAfterVerifiedMembership",

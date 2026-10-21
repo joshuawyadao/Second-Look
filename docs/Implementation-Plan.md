@@ -24,3 +24,7 @@ Finish PR #2 after review5593261083 on6b79926 adds two P2 findings (69total): re
 - None for the user. Keep successful Auth credentials bounded/nonempty and reject whitespace/control characters rather than trimming opaque tokens. Choose a reversible, explicit compatibility path for text-only closure provenance; a legacy record cannot reconstruct already discarded evidence, so document that limit instead of fabricating proof. No private record may be erased to satisfy a validation test.
 
 Closure implementation checkpoint: four meaningful undecided-cancellation red assertions; eight focused cases and138 full portable cases green. Text-only marker/version with strict new-shape validation and in-memory legacy inference; no SQL migration. Current-source local/native/hosted and external gates remain pending.
+
+## Focused Brooks follow-up
+
+P2 contract mismatch: successful Auth access tokens at exactly8192 UTF-8 bytes pass the phone but the command service rejects them. Align access-token acceptance with the existing exclusive8192 server limit; keep refresh-token bound independent. Add meaningful sign-in/refresh exact-boundary red assertions and valid8191-byte preservation, run focused/package tests and save the repair separately. No user decision is needed. Existing provenance/local/native checks retain their exact source.

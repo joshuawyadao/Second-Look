@@ -23,6 +23,9 @@ Open `SecondLook.xcodeproj` and Run the **SecondLook** scheme on a simulator. De
 
 ## Fresh review5595115613 —96 tracked
 
+The shared phone transport session-level follow-up independently reproduces the portability defect under official Swift6.2.1 Linux:2focused tests report24meaningful redirect assertion failures on the old source; direct200 controls pass. The exact new transport/test sources then pass both cases with0failures, covering307/308, sign-in/refresh, default/injected configuration, complete synthetic POST bodies and direct caller-session use after endpoint release. Mac full portable suites pass236Debug/229Release (205/198Core+31Transport), with every earlier transport case retained. The external-network-disabled Linux run is a focused transport subset, not hosted or native UI acceptance. The UI worker waits for production source freeze before its next build.
+
+
 The initial provider per-task repair31ff446 is **insufficient on Linux**. Actual05e2b59 PR CI39549472900 reports8issues across59server tests: FoundationNetworking follows the synthetic redirects, including Auth/RPC credential forwarding and a same-origin loop. The correction installs the deny delegate on a private derived session, preserving injected configuration and invalidating only that session. Focused3/3 Debug/Release and full59Debug/54Release Mac Backend boundaries pass with LocalIntegrationTests excluded. An isolated official `swift:6.2.1` container, with external networking disabled, executes the exact current Provider/Configuration/Core and redirect test sources: all3 cases pass, including continued usability of the caller-owned session. This is a Linux transport subset, not a full Vapor/SQL or hosted integration run. Final complete Linux CI and redeployment acceptance remain required; no actual hosted disclosure is claimed.
 
 

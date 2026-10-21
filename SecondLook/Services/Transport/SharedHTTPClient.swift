@@ -202,8 +202,20 @@ private struct CreateSpaceRequest: Encodable, Sendable { let expectedSpaceRevisi
 private struct RefreshRequest: Encodable, Sendable { let refresh_token: String }
 private enum HTTPFailureFormat { case commandService, supabaseAuth }
 
-/// Applies to each task, including tasks sent through a caller-supplied session.
-/// Auth POST bodies must never be resent to a redirect destination.
+/// Own only the derived session. A caller-supplied session remains usable.
+private final class TransportHTTPSession: @unchecked Sendable {
+    let session: URLSession
+
+    init(configuration: URLSessionConfiguration) {
+        session = URLSession(configuration: configuration,
+                             delegate: RejectTransportRedirect.shared, delegateQueue: nil)
+    }
+
+    deinit { session.invalidateAndCancel() }
+}
+
+/// FoundationNetworking can ignore per-task redirect delegates. Install this
+/// stateless policy when creating the session so Auth bodies never get resent.
 private final class RejectTransportRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     static let shared = RejectTransportRedirect()
 
@@ -219,9 +231,18 @@ private final class RejectTransportRedirect: NSObject, URLSessionTaskDelegate, @
 private struct PrivateHTTPEndpoint: @unchecked Sendable {
     let baseURL: URL
     let allowLocalHTTP: Bool
-    let session: URLSession
+    private let transport: TransportHTTPSession
     let apiKey: String?
     let failureFormat: HTTPFailureFormat
+
+    init(baseURL: URL, allowLocalHTTP: Bool, session: URLSession,
+         apiKey: String?, failureFormat: HTTPFailureFormat) {
+        self.baseURL = baseURL
+        self.allowLocalHTTP = allowLocalHTTP
+        self.transport = TransportHTTPSession(configuration: session.configuration)
+        self.apiKey = apiKey
+        self.failureFormat = failureFormat
+    }
 
     func send<Response: Decodable>(path: [String], method: String, token: String?,
                                    query: [URLQueryItem] = []) async throws -> Response {
@@ -264,8 +285,7 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
         }
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request,
-                                                      delegate: RejectTransportRedirect.shared) }
+        do { (data, response) = try await transport.session.data(for: request) }
         catch { throw SharedStateFailure.serviceUnavailable }
         guard let http = response as? HTTPURLResponse else { throw SharedStateFailure.invalidResponse }
         guard !(300..<400).contains(http.statusCode) else {

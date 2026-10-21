@@ -235,10 +235,13 @@ final class TransportRedirectBoundaryTests: XCTestCase {
                     let origin = try TransportLoopbackHTTPServer { _ in (200, [:], body) }
                     let injectedSession = injected ? URLSession(configuration: .ephemeral) : nil
                     defer { injectedSession?.invalidateAndCancel(); origin.stop() }
-                    let client = SharedAuthClient(authURL: origin.url,
-                        publishableKey: "invented-public-key", allowLocalHTTP: true,
-                        session: injectedSession ?? .shared)
-                    let result = try await authenticate(client, refreshing: refreshing)
+                    let result: SharedAuthSession
+                    do {
+                        let client = SharedAuthClient(authURL: origin.url,
+                            publishableKey: "invented-public-key", allowLocalHTTP: true,
+                            session: injectedSession ?? .shared)
+                        result = try await authenticate(client, refreshing: refreshing)
+                    }
                     let validResponse = result.user.id == userID && result.expires_in == 3_600 &&
                         result.access_token == "invented-access-result" &&
                         result.refresh_token == "invented-refresh-result"
@@ -250,6 +253,12 @@ final class TransportRedirectBoundaryTests: XCTestCase {
                         $0.hasPrefix("POST ") && $0.contains(marker)
                     }
                     XCTAssertTrue(receivedBody)
+                    if let injectedSession {
+                        let (_, response) = try await injectedSession.data(for: URLRequest(url: origin.url))
+                        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+                        XCTAssertEqual(origin.captured().count, 2,
+                                       "The caller-owned session remains usable after endpoint release")
+                    }
                 }()
             }
         }

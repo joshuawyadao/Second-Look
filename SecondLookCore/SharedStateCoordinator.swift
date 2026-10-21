@@ -360,6 +360,18 @@ public final class SharedStateCoordinator {
             }
         }
         let laterRuns = Dictionary(uniqueKeysWithValues: later.state.runs.map { ($0.id, $0) })
+        if later.revision > earlier.revision && later.revision - earlier.revision == 1 {
+            let knownIDs = Set(earlier.state.runs.map(\.id))
+            let newRuns = later.state.runs.filter { !knownIDs.contains($0.id) }
+            guard newRuns.count <= 1, newRuns.allSatisfy({ run in
+                run.revision == 1 && run.outcome == nil && run.closedAt == nil &&
+                run.cleanupStatus == nil && run.hadEvidenceAtClosure == nil &&
+                run.items.allSatisfy { item in
+                    item.checkedAt == nil && item.submission == nil && item.preview == nil &&
+                    item.lastVersion == 0 && item.priorDecisions.isEmpty
+                }
+            }) else { return false }
+        }
         let earlierArchives = Dictionary(uniqueKeysWithValues: earlier.state.archives.map { ($0.id, $0) })
         let laterArchives = Dictionary(uniqueKeysWithValues: later.state.archives.map { ($0.id, $0) })
         for run in earlier.state.runs {

@@ -46,3 +46,5 @@ Review5594692133 on703a9db adds two P2 transition guards; all84 earlier threads 
 3. Repeat affected portable/native/local and both preserved hosted-client acceptance on final client source, complete canonical evidence and fresh saved-head review/CI/mergeability gates. Keep the existing server968 deployment if the client-only changes do not affect server-used code.
 
 Routine item4332800593 complete:19meaningful red assertions/6cases; focused6bothconfigs; full192Debug/189Release (163/160Core29transport) pass. Adjacent-only equality/version guard preserves actual multirevision delete/recreation. Save/push/react/resolve this slice before adjacent-newrun implementation.
+
+Adjacentnewrun4332800597complete:19meaningful red assertions/6cases;focused6bothconfigs;full198Debug/195Release(169/166Core29transport)pass. Exactadjacentonlysinglefresh-run shape preserves actualcreationandmultirevisioncontrols/genuineretry. Save/push/react/resolve separately, then finalrequirednative+modernlocal+bothhostedclientsbefore/afteractual968restart, sourcequalifieddocs andfreshsavedheadreview/CI.

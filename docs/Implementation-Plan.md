@@ -42,3 +42,9 @@ Review5593423259 onb03d94d adds2 P2 findings (71total): equal-revision different
 No open user question: these are bounded validation repairs under the existing task.
 
 Auth expiry repair checkpoint:10 invalid-duration and6 far-future deadline red assertions;2focused+141package green. Both Auth paths normalize receipt-based expiry before vault installation, retain old credentials on failure and do not change provider configuration. Save/push/acknowledge4331720819 before the equal-revision implementation.
+
+## Resolved consistency interface
+
+Extend coordinator.refresh with default-empty validatingAgainst snapshots. Check each trusted reference's actor/exact space, fetched revision floor and equal-revision full equality BEFORE coordinator publication; rejection must leave coordinator snapshot, receipts and requests untouched. Model supplies authenticated membership plus visible/held verified view in production refresh/publication paths, and its visible view in first-command preflight. Keep existing command fetch/revision-floor semantics. A post-publication model-only check is insufficient because it poisons coordinator recovery and can leak through confirmed receipts.
+
+Native test-first seam: dedicated revision-consistency localhost fixture/runner selection; genuine membership/fetch with a single clearly labeled simulated altered routine title at unchanged revision. First manual refresh must keep original content, reject altered content and show bounded error; later genuine refresh and one accepted write prove recovery. Portable coordinator tests cover both references, wrong scopes, stale floor, unchanged/equal/newer acceptance and rejection without retained-state mutation. No provider/server-route/SQL change.

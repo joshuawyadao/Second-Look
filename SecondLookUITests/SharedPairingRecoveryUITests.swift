@@ -175,6 +175,69 @@ final class SharedPairingRecoveryUITests: XCTestCase {
         XCTAssertEqual(count.label, "1", "Concurrent restore entry points must admit one candidate")
     }
 
+    func testInvitationDisplayExpiresDuringPausedSameRevisionRefresh() throws {
+        let fixture = try loadFixture(for: "invitation-expiry")
+        let app = launch(fixture, arguments: ["-reset-demo", "-shared-test-invitation-expiry",
+                                              "-shared-test-delayed-refresh"])
+        connectAndSignIn(fixture.owner, in: app)
+        createPrivateSpace(in: app)
+        tap("Account settings", in: app)
+        let invitation = app.staticTexts["pairingInvitation"]
+        XCTAssertTrue(invitation.waitForExistence(timeout: 20))
+        guard invitation.exists else { return }
+        let oldCode = invitation.label
+        XCTAssertEqual(oldCode.utf8.count, 72, "The genuine localhost service must issue one opaque code")
+
+        // Only the display deadline is shortened after the real code is visible.
+        // The server's one-use invitation and its actual expiry are unchanged.
+        tap("testArmShortInvitationDisplayDeadline", in: app)
+        let marker = app.staticTexts["sharedSimulatedInvitationDisplayDeadline"]
+        XCTAssertTrue(marker.waitForExistence(timeout: 8))
+        XCTAssertEqual(marker.label, "Short invitation display deadline (simulated for acceptance)")
+        tap("testDelayInvitationRefresh", in: app)
+        XCTAssertTrue(app.staticTexts["sharedSimulatedInvitationRefreshDelay"].waitForExistence(timeout: 20),
+                      "Genuine membership fetch must finish before its publication is paused")
+        XCTAssertFalse(app.buttons["newPairingInvitation"].isEnabled,
+                       "The paused refresh keeps shared writes unavailable")
+
+        // Keep the invitation row in the visible Form viewport: offscreen SwiftUI
+        // rows are absent from accessibility even before the display expires.
+        for _ in 0..<8 where !invitation.exists { app.swipeDown() }
+        XCTAssertTrue(invitation.exists, "The original code must still be visible during the paused refresh")
+        XCTAssertTrue(invitation.label == oldCode,
+                      "The paused same-revision refresh must not rotate the genuine invitation")
+
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                               object: invitation)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 45), .completed,
+                       "The expired code must stop displaying while the same-revision refresh is paused")
+        XCTAssertTrue(app.buttons["sharedSignOut"].exists,
+                      "The account remains signed in after display expiry")
+        XCTAssertTrue(app.buttons["newPairingInvitation"].exists,
+                      "The same private space remains available after display expiry")
+
+        tap("testResumeInvitationRefresh", in: app)
+        let renewal = app.buttons["newPairingInvitation"]
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),
+                                             object: renewal)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 20), .completed,
+                       "Genuine same-revision revalidation must permit conditional renewal")
+        XCTAssertFalse(invitation.exists, "Refresh cannot restore the expired displayed code")
+        tap("newPairingInvitation", in: app)
+        XCTAssertTrue(invitation.waitForExistence(timeout: 20))
+        guard invitation.exists else { return }
+        let newCode = invitation.label
+        XCTAssertTrue(newCode != oldCode, "A genuine renewal must rotate the opaque code")
+
+        tap("testDeliverOldInvitationExpiry", in: app)
+        XCTAssertTrue(app.staticTexts["sharedSimulatedOldInvitationExpiryDelivered"].waitForExistence(timeout: 8),
+                      "The old scoped expiry callback must actually be replayed")
+        for _ in 0..<8 where !invitation.exists { app.swipeDown() }
+        XCTAssertTrue(invitation.exists)
+        XCTAssertTrue(invitation.label == newCode,
+                      "A delayed old-expiry callback cannot clear the newer genuine invitation")
+    }
+
     private func loadFixture(for scenario: String) throws -> Fixture {
         continueAfterFailure = false
         guard let path = ProcessInfo.processInfo.environment["SECONDLOOK_SHARED_UI_FIXTURE"] else {

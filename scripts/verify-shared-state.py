@@ -323,6 +323,7 @@ def main():
                      "--only-invitation-access-loss"], stdout=integration_log, stderr=subprocess.STDOUT)
                 recovery_cases = (
                     ("invitation", "committed invitation renewal with a lost reply"),
+                    ("invitation-expiry", "expired invitation display during paused same-revision refresh"),
                     ("join", "committed peer join with a lost reply"),
                     ("restore", "concurrent account restoration"),
                     ("busy", "mutation controls during a delayed refresh"),

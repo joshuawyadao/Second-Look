@@ -91,7 +91,7 @@ def main():
                            help="Run invitation access-loss checks against a fresh synthetic localhost fixture.")
     selection.add_argument("--only-pairing-recovery", action="store_true",
                            help="Run one pairing recovery check against a dedicated synthetic localhost fixture.")
-    parser.add_argument("--recovery-case", choices=("invitation", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "revision-consistency", "forbidden", "creation", "creation-navigation", "creation-editor-oneoff", "creation-editor-routine", "creation-open-saveas", "creation-archive-repeat", "creation-archive-saveas", "cleanup", "draft-lifecycle"),
+    parser.add_argument("--recovery-case", choices=("invitation", "invitation-expiry", "join", "restore", "busy", "draft", "identity", "receipt", "create", "lifecycle", "alert", "revision-floor", "revision-consistency", "forbidden", "creation", "creation-navigation", "creation-editor-oneoff", "creation-editor-routine", "creation-open-saveas", "creation-archive-repeat", "creation-archive-saveas", "cleanup", "draft-lifecycle"),
                         help="Select one pairing recovery case; requires --only-pairing-recovery.")
     args = parser.parse_args()
     if args.only_pairing_recovery != (args.recovery_case is not None):
@@ -167,6 +167,7 @@ def main():
                          else "SharedPairingRecoveryUITests")
                 selected_tests = ["-only-testing:SecondLookUITests/" + suite + "/" + {
                     "invitation": "testRenewalReplyLossInvalidatesOldInvitation",
+                    "invitation-expiry": "testInvitationDisplayExpiresDuringPausedSameRevisionRefresh",
                     "join": "testJoinReplyLossKeepsPairingDisabledUntilMembershipCheck",
                     "restore": "testRacingRestoreAttemptsOneCandidate",
                     "busy": "testBusyRefreshDisablesMutationUntilRefreshCompletes",

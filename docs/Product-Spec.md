@@ -12,6 +12,8 @@ A pending editor creation, save-as or repeat remains the same action when its sh
 
 Invitation renewal requires the owner's observed shared revision and advances it atomically. A stale or concurrent losing renewal cannot replace the winning token; the phone clears older invitation metadata as newer state arrives. The follow-up schema/server update is installed on October 20. Successful one-member renewal and its concurrency race are verified locally; the existing hosted singleton remains paired, so those flows are not re-created by resetting private data.
 
+The phone stops displaying and selecting an invitation at its deadline, including during synchronization and unchanged-revision polling. The owner can issue another code when synchronization finishes. A previous deadline cannot remove a newly issued invitation. The server independently enforces invitation validity.
+
 A routine is a reusable, ordered definition. A run is an independent attempt with its own identity, progress, timestamps, evidence, and decisions. Starting a run snapshots item text, priority, photo instructions, participants, and settings. Editing/deleting the routine cannot change it. A one-off run has no required routine reference; saving it as a routine copies only structure. Empty checklists cannot start. If a routine has an open run, offer Resume first and allow an explicit Start another run; never merge or replace work. Standard checks may be undone while open. Required items cannot be removed or downgraded mid-run to bypass review; cancel and start a corrected run. An all-standard run completes when its last item is checked.
 
 ## Evidence and review

@@ -312,7 +312,7 @@ private struct ConnectedPairingView: View {
                     if !model.confirmedNoSpace {
                         Text("Check private-space membership before creating or joining a space.")
                     }
-                    if let invitation = model.invitation {
+                    if let invitation = model.visibleInvitation {
                         Text("Invitation for the other account")
                         Text(invitation.inviteToken)
                             .textSelection(.enabled)
@@ -353,7 +353,7 @@ private struct ConnectedAccountSettingsView: View {
                         LabeledContent("Space", value: snapshot.spaceID.uuidString)
                         LabeledContent("Members", value: "\(snapshot.members.count) of 2")
                     }
-                    if let invitation = model.invitation {
+                    if let invitation = model.visibleInvitation {
                         Text("Invitation for the other account")
                         Text(invitation.inviteToken)
                             .textSelection(.enabled)
@@ -374,6 +374,40 @@ private struct ConnectedAccountSettingsView: View {
                         .accessibilityIdentifier("sharedSignOut")
                 }
                 #if SECONDLOOK_DEMO
+                if model.invitationExpiryChecksRequested {
+                    Section("Synthetic local acceptance") {
+                        Button("Arm short display deadline for test") {
+                            model.armShortInvitationDisplayDeadlineForAcceptance()
+                        }
+                        .accessibilityIdentifier("testArmShortInvitationDisplayDeadline")
+                        if model.simulatedInvitationDisplayDeadline {
+                            Text("Short invitation display deadline (simulated for acceptance)")
+                                .accessibilityIdentifier("sharedSimulatedInvitationDisplayDeadline")
+                        }
+                        Button("Pause next genuine refresh for test") {
+                            model.beginDelayedRefreshForAcceptance()
+                        }
+                        .disabled(model.busy)
+                        .accessibilityIdentifier("testDelayInvitationRefresh")
+                        if model.simulatedRefreshDelay {
+                            Text("Genuine refresh publication paused (simulated for acceptance)")
+                                .accessibilityIdentifier("sharedSimulatedInvitationRefreshDelay")
+                        }
+                        Button("Resume genuine refresh for test") {
+                            model.resumeRefreshForAcceptance()
+                        }
+                        .disabled(!model.simulatedRefreshDelay)
+                        .accessibilityIdentifier("testResumeInvitationRefresh")
+                        Button("Deliver old expiry callback for test") {
+                            model.deliverOldInvitationExpiryForAcceptance()
+                        }
+                        .accessibilityIdentifier("testDeliverOldInvitationExpiry")
+                        if model.simulatedOldInvitationExpiryDelivered {
+                            Text("Old invitation expiry callback delivered (simulated for acceptance)")
+                                .accessibilityIdentifier("sharedSimulatedOldInvitationExpiryDelivered")
+                        }
+                    }
+                }
                 if model.refreshMismatchChecksRequested, model.accountID != nil {
                     Section("Synthetic local acceptance") {
                         Button("Test refresh account mismatch") {

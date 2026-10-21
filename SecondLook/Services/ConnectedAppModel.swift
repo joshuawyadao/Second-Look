@@ -24,7 +24,83 @@ final class ConnectedAppModel {
             }
         }
     }
-    private(set) var invitation: PairingInvitation?
+    private(set) var invitation: PairingInvitation? {
+        didSet {
+            #if SECONDLOOK_DEMO
+            if invitation?.inviteToken != oldValue?.inviteToken {
+                simulatedInvitationDeadline = nil
+                simulatedInvitationToken = nil
+                simulatedInvitationDisplayDeadline = false
+            }
+            #endif
+            scheduleInvitationExpiry()
+        }
+    }
+    @ObservationIgnored private var invitationExpiryTask: Task<Void, Never>?
+    private struct InvitationExpiryContext {
+        let accountID: UUID
+        let backendID: String
+        let spaceID: UUID
+        let generation: UInt64
+        let invitation: PairingInvitation
+        let deadline: Date
+    }
+
+    /// A wall-clock check also protects the selectable code if a timer has not yet fired.
+    var visibleInvitation: PairingInvitation? {
+        guard let invitation, invitationExpiryDeadline(for: invitation) > Date() else { return nil }
+        return invitation
+    }
+
+    private func invitationExpiryDeadline(for invitation: PairingInvitation) -> Date {
+        #if SECONDLOOK_DEMO
+        if let simulatedInvitationDeadline,
+           simulatedInvitationToken == invitation.inviteToken {
+            return min(invitation.expiresAt, simulatedInvitationDeadline)
+        }
+        #endif
+        return invitation.expiresAt
+    }
+
+    private func currentInvitationExpiryContext() -> InvitationExpiryContext? {
+        guard let invitation, let accountID, let configuration,
+              snapshot?.spaceID == invitation.snapshot.spaceID else { return nil }
+        return InvitationExpiryContext(accountID: accountID, backendID: configuration.backendID,
+                                       spaceID: invitation.snapshot.spaceID, generation: generation,
+                                       invitation: invitation,
+                                       deadline: invitationExpiryDeadline(for: invitation))
+    }
+
+    private func scheduleInvitationExpiry() {
+        invitationExpiryTask?.cancel()
+        invitationExpiryTask = nil
+        guard let context = currentInvitationExpiryContext() else { return }
+        let seconds = context.deadline.timeIntervalSinceNow
+        let boundedSeconds = seconds.isFinite ? max(0, min(seconds, 3600)) : 0
+        invitationExpiryTask = Task { [weak self] in
+            if boundedSeconds > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(boundedSeconds * 1_000_000_000))
+            }
+            guard !Task.isCancelled else { return }
+            self?.expireInvitationIfCurrent(context)
+        }
+    }
+
+    private func expireInvitationIfCurrent(_ context: InvitationExpiryContext) {
+        guard generation == context.generation,
+              accountID == context.accountID,
+              configuration?.backendID == context.backendID,
+              snapshot?.spaceID == context.spaceID,
+              invitation == context.invitation else { return }
+        let deadline = invitationExpiryDeadline(for: context.invitation)
+        guard deadline == context.deadline else { return }
+        if Date() < deadline {
+            // Sleep is bounded, and the wall clock may move backwards while suspended.
+            scheduleInvitationExpiry()
+            return
+        }
+        invitation = nil
+    }
     private(set) var retryMembership = false
     private(set) var confirmedNoSpace = false
     private(set) var status = "Sign in to connect a private space."
@@ -109,6 +185,11 @@ final class ConnectedAppModel {
     @ObservationIgnored private var didDropJoinReply = false
     @ObservationIgnored private var didTriggerRestoreRace = false
     private(set) var simulatedRefreshDelay = false
+    private(set) var simulatedInvitationDisplayDeadline = false
+    private(set) var simulatedOldInvitationExpiryDelivered = false
+    @ObservationIgnored private var simulatedInvitationDeadline: Date?
+    @ObservationIgnored private var simulatedInvitationToken: String?
+    @ObservationIgnored private var simulatedOldInvitationExpiryContext: InvitationExpiryContext?
     private(set) var overlappingRefreshAcceptanceResult: Bool?
     @ObservationIgnored private var delayNextRefreshForAcceptance = false
     @ObservationIgnored private var refreshContinuationForAcceptance: CheckedContinuation<Void, Never>?
@@ -776,6 +857,27 @@ final class ConnectedAppModel {
         localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-delayed-refresh")
     }
 
+    var invitationExpiryChecksRequested: Bool {
+        localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-invitation-expiry")
+    }
+
+    func armShortInvitationDisplayDeadlineForAcceptance() {
+        guard invitationExpiryChecksRequested, invitation != nil else { return }
+        simulatedInvitationDeadline = Date().addingTimeInterval(30)
+        simulatedInvitationToken = invitation?.inviteToken
+        simulatedInvitationDisplayDeadline = true
+        simulatedOldInvitationExpiryDelivered = false
+        simulatedOldInvitationExpiryContext = currentInvitationExpiryContext()
+        scheduleInvitationExpiry()
+    }
+
+    func deliverOldInvitationExpiryForAcceptance() {
+        guard invitationExpiryChecksRequested,
+              let context = simulatedOldInvitationExpiryContext else { return }
+        expireInvitationIfCurrent(context)
+        simulatedOldInvitationExpiryDelivered = true
+    }
+
     var refreshMismatchChecksRequested: Bool {
         localRecoveryChecksRequested && ProcessInfo.processInfo.arguments.contains("-shared-test-refresh-account-mismatch")
     }
@@ -1105,6 +1207,11 @@ final class ConnectedAppModel {
         draftRevalidationContinuation = nil
         simulatedDraftRevalidationPause = false
         resumeRefreshForAcceptance()
+        simulatedOldInvitationExpiryContext = nil
+        simulatedInvitationDeadline = nil
+        simulatedInvitationToken = nil
+        simulatedInvitationDisplayDeadline = false
+        simulatedOldInvitationExpiryDelivered = false
         if lifecycleReceiptChecksRequested && lifecycleRevalidationContinuation != nil {
             pauseNextLifecycleRevalidation = true
         }
@@ -1634,6 +1741,11 @@ final class ConnectedAppModel {
         busy = false
         #if SECONDLOOK_DEMO
         cancelCommandAcceptance()
+        simulatedOldInvitationExpiryContext = nil
+        simulatedInvitationDeadline = nil
+        simulatedInvitationToken = nil
+        simulatedInvitationDisplayDeadline = false
+        simulatedOldInvitationExpiryDelivered = false
         invitationReceiptAcceptanceTask?.cancel()
         invitationReceiptAcceptanceTask = nil
         invitationReceiptAcceptanceStarted = false
@@ -1725,6 +1837,11 @@ final class ConnectedAppModel {
         pauseNextLifecycleRevalidation = false
         lifecycleRevalidationPauseCount = 0
         resumeRefreshForAcceptance()
+        simulatedOldInvitationExpiryContext = nil
+        simulatedInvitationDeadline = nil
+        simulatedInvitationToken = nil
+        simulatedInvitationDisplayDeadline = false
+        simulatedOldInvitationExpiryDelivered = false
         delayNextRefreshForAcceptance = false
         initialRevisionFloorForAcceptance = nil
         restoreCandidateCount = 0

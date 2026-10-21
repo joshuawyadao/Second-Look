@@ -185,12 +185,14 @@ private enum LoopbackFailure: Error { case socket }
             }
             let session = URLSession(configuration: .ephemeral)
             defer { session.invalidateAndCancel(); origin.stop(); target.stop() }
-            let provider = try provider(url: origin.url, serviceKey: key, session: session)
             do {
-                _ = try await provider.read(actor: owner, space: nil)
-                Issue.record("A redirected RPC was accepted")
-            } catch {
-                #expect(error as? SharedStateFailure == .serviceUnavailable)
+                let provider = try provider(url: origin.url, serviceKey: key, session: session)
+                do {
+                    _ = try await provider.read(actor: owner, space: nil)
+                    Issue.record("A redirected RPC was accepted")
+                } catch {
+                    #expect(error as? SharedStateFailure == .serviceUnavailable)
+                }
             }
             #expect(origin.captured().count == 1)
             #expect(target.captured().isEmpty)
@@ -201,6 +203,10 @@ private enum LoopbackFailure: Error { case socket }
             } else {
                 #expect(originalRequest.contains("authorization: bearer \(key.lowercased())"))
             }
+            // The provider may own and invalidate its derived session, never the injected one.
+            let (_, directResponse) = try await session.data(for: URLRequest(url: target.url))
+            #expect((directResponse as? HTTPURLResponse)?.statusCode == 200)
+            #expect(target.captured().count == 1)
         }
     }
 

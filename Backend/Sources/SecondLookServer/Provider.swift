@@ -21,11 +21,13 @@ protocol SpaceStore: Sendable {
 /// Verification contacts Auth with the bearer token. No JWT claim is trusted before this request.
 struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
     let configuration: ServerConfiguration
-    let session: URLSession
+    private let transport: ProviderHTTPSession
 
     init(configuration: ServerConfiguration, session: URLSession = .shared) {
         self.configuration = configuration
-        self.session = session
+        // FoundationNetworking ignores the per-task redirect delegate. Install
+        // the policy on a private session while preserving injected configuration.
+        self.transport = ProviderHTTPSession(configuration: session.configuration)
     }
 
     func account(for bearer: String) async throws -> UUID {
@@ -130,7 +132,7 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
         var request = request
         request.timeoutInterval = 15
         do {
-            let result = try await session.data(for: request, delegate: RejectProviderRedirect.shared)
+            let result = try await transport.session.data(for: request)
             guard let http = result.1 as? HTTPURLResponse,
                   !(300..<400).contains(http.statusCode) else {
                 throw SharedStateFailure.serviceUnavailable
@@ -141,8 +143,19 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
     }
 }
 
-/// A per-task delegate applies even when callers inject a URLSession. A provider
-/// redirect must never get a second request carrying Auth or RPC credentials.
+/// Own only the derived session; the caller's injected session remains usable.
+private final class ProviderHTTPSession: @unchecked Sendable {
+    let session: URLSession
+
+    init(configuration: URLSessionConfiguration) {
+        session = URLSession(configuration: configuration,
+                             delegate: RejectProviderRedirect.shared, delegateQueue: nil)
+    }
+
+    deinit { session.invalidateAndCancel() }
+}
+
+/// A provider redirect must never issue a second credential-bearing request.
 private final class RejectProviderRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     static let shared = RejectProviderRedirect()
 

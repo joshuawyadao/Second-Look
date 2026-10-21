@@ -347,6 +347,18 @@ public final class SharedStateCoordinator {
     /// progress or close, while a closed run and its text archive remain immutable.
     private func preservesConnectedHistory(from earlier: SharedSnapshot,
                                            to later: SharedSnapshot) -> Bool {
+        // Only adjacent space revisions prove the routine stayed present. Across a
+        // gap, it may have been deleted and recreated with the same ID at version 1.
+        if later.revision > earlier.revision && later.revision - earlier.revision == 1 {
+            let laterRoutines = Dictionary(uniqueKeysWithValues: later.state.routines.map { ($0.id, $0) })
+            for routine in earlier.state.routines {
+                guard let current = laterRoutines[routine.id] else { continue }
+                guard current.definitionVersion >= routine.definitionVersion,
+                      current.definitionVersion != routine.definitionVersion || current == routine else {
+                    return false
+                }
+            }
+        }
         let laterRuns = Dictionary(uniqueKeysWithValues: later.state.runs.map { ($0.id, $0) })
         let earlierArchives = Dictionary(uniqueKeysWithValues: earlier.state.archives.map { ($0.id, $0) })
         let laterArchives = Dictionary(uniqueKeysWithValues: later.state.archives.map { ($0.id, $0) })

@@ -78,7 +78,7 @@ import SecondLookCore
             } else {
                 #expect(body["p_expected_revision"] is NSNull)
             }
-            _ = try await provider.create(actor: owner, peer: peer,
+            let created = try await provider.create(actor: owner, peer: peer,
                                           inviteHash: String(repeating: "a", count: 64),
                                           expiresAt: Date().addingTimeInterval(600),
                                           expectedRevision: expectedRevision)
@@ -86,7 +86,37 @@ import SecondLookCore
             #expect(request.url?.path == "/rest/v1/rpc/sl_create")
             #expect(request.value(forHTTPHeaderField: "apikey") == "sb_secret_synthetic")
             #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+            let requestBody = try #require(request.httpBody)
+            let sent = try #require(JSONSerialization.jsonObject(with: requestBody) as? [String: Any])
+            let rawSpace = try #require(sent["p_space"] as? String)
+            let proposedSpace = try #require(UUID(uuidString: rawSpace))
+            if expectedRevision == nil {
+                #expect(created.spaceID == proposedSpace)
+            } else {
+                #expect(created.spaceID != proposedSpace,
+                        "Renewal keeps the existing space, not the unused proposed UUID")
+            }
         }
+    }
+
+    @Test func initialCreateRejectsCoherentResultWithWrongSpaceID() async throws {
+        let session = Self.session()
+        defer { session.invalidateAndCancel() }
+        let provider = try provider(serviceKey: "sb_secret_synthetic", session: session)
+        do {
+            _ = try await provider.create(actor: owner, peer: peer,
+                inviteHash: String(repeating: "b", count: 64),
+                expiresAt: Date().addingTimeInterval(600), expectedRevision: nil)
+            Issue.record("Initial creation accepted a different space UUID")
+        } catch {
+            #expect(error as? SharedStateFailure == .invalidResponse)
+        }
+        let request = try #require(ProviderRequestRecorder.shared.take().only)
+        let requestBody = try #require(request.httpBody)
+        let sent = try #require(JSONSerialization.jsonObject(with: requestBody) as? [String: Any])
+        #expect(sent["p_expected_revision"] is NSNull)
+        let rawSpace = try #require(sent["p_space"] as? String)
+        #expect(UUID(uuidString: rawSpace) != nil)
     }
 
     @Test func malformedAuthUserRepliesAreProviderFailures() async throws {
@@ -176,7 +206,15 @@ private final class ProviderRequestProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        ProviderRequestRecorder.shared.record(request)
+        let requestBody: Data
+        do { requestBody = try Self.bodyData(request) }
+        catch {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
+        var recorded = request
+        if !requestBody.isEmpty { recorded.httpBodyStream = nil; recorded.httpBody = requestBody }
+        ProviderRequestRecorder.shared.record(recorded)
         guard let url = request.url,
               let response = HTTPURLResponse(url: url, statusCode: 200,
                                              httpVersion: "HTTP/1.1", headerFields: nil) else {
@@ -200,8 +238,21 @@ private final class ProviderRequestProtocol: URLProtocol {
             let owner = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
             let peer = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
             do {
-                body = try SharedWireCodec.encode(SharedSnapshot(spaceID: UUID(), revision: 0,
-                                                                 members: [owner, peer], state: .init()))
+                if url.path == "/rest/v1/rpc/sl_create" {
+                    let parameters = try JSONSerialization.jsonObject(with: requestBody)
+                        as? [String: Any] ?? [:]
+                    let proposed = UUID(uuidString: parameters["p_space"] as? String ?? "") ?? UUID()
+                    let renewal = parameters["p_expected_revision"] is Int
+                    let wrongInitial = parameters["p_invite_hash"] as? String ==
+                        String(repeating: "b", count: 64)
+                    let returnedID = renewal || wrongInitial ?
+                        UUID(uuidString: "10000000-0000-0000-0000-000000000099")! : proposed
+                    body = try SharedWireCodec.encode(SharedSnapshot(spaceID: returnedID,
+                        revision: renewal ? 5 : 0, members: [owner], state: .init()))
+                } else {
+                    body = try SharedWireCodec.encode(SharedSnapshot(spaceID: UUID(), revision: 0,
+                                                                     members: [owner, peer], state: .init()))
+                }
             } catch {
                 client?.urlProtocol(self, didFailWithError: error)
                 return
@@ -210,6 +261,22 @@ private final class ProviderRequestProtocol: URLProtocol {
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
+    }
+
+    private static func bodyData(_ request: URLRequest) throws -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while body.count <= 64 * 1_024 {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count == 0 { return body }
+            guard count > 0 else { throw stream.streamError ?? URLError(.cannotDecodeRawData) }
+            body.append(contentsOf: buffer.prefix(count))
+        }
+        throw URLError(.dataLengthExceedsMaximum)
     }
 
     override func stopLoading() {}

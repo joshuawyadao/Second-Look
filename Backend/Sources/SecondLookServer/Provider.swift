@@ -51,16 +51,24 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
 
     func create(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
                 expectedRevision: Int?) async throws -> SharedSnapshot {
+        let proposedSpace = UUID()
         let data = try Self.createParameters(actor: actor, peer: peer, inviteHash: inviteHash,
-                                             expiresAt: expiresAt, expectedRevision: expectedRevision)
-        return try await rpc("sl_create", data: data)
+                                             expiresAt: expiresAt, expectedRevision: expectedRevision,
+                                             proposedSpace: proposedSpace)
+        let snapshot: SharedSnapshot = try await rpc("sl_create", data: data)
+        // Initial creation must return the exact singleton UUID we proposed.
+        // Renewal deliberately returns its existing space instead.
+        if expectedRevision == nil, snapshot.spaceID != proposedSpace {
+            throw SharedStateFailure.invalidResponse
+        }
+        return snapshot
     }
 
     static func createParameters(actor: UUID, peer: UUID, inviteHash: String, expiresAt: Date,
-                                 expectedRevision: Int?) throws -> Data {
+                                 expectedRevision: Int?, proposedSpace: UUID = UUID()) throws -> Data {
         let state = try JSONSerialization.jsonObject(with: SharedWireCodec.encode(SecondLookState()))
         let parameters: [String: Any] = ["p_actor": actor.uuidString, "p_peer": peer.uuidString,
-            "p_space": UUID().uuidString, "p_state": state, "p_invite_hash": inviteHash,
+            "p_space": proposedSpace.uuidString, "p_state": state, "p_invite_hash": inviteHash,
             "p_expires_at": ISO8601DateFormatter().string(from: expiresAt),
             "p_expected_revision": expectedRevision as Any? ?? NSNull()]
         return try JSONSerialization.data(withJSONObject: parameters)

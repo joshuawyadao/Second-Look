@@ -462,8 +462,12 @@ public final class SharedStateCoordinator {
     private func preservesJoinedMembers(from earlier: SharedSnapshot,
                                         to later: SharedSnapshot) -> Bool {
         if later.members == earlier.members { return true }
-        return earlier.members.count == 1 && later.members.count == 2 &&
-            later.members[0] == earlier.members[0]
+        guard earlier.members.count == 1, later.members.count == 2,
+              later.members[0] == earlier.members[0] else { return false }
+        // The SQL join changes membership only. A later view across multiple
+        // revisions may also include separate, unseen aggregate commands.
+        return later.revision <= earlier.revision ||
+            later.revision - earlier.revision != 1 || later.state == earlier.state
     }
 
     /// Connected M2 has no history deletion or cleanup acknowledgment. Open runs may

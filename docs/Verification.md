@@ -21,6 +21,27 @@ xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -showdestinations
 
 Open `SecondLook.xcodeproj` and Run the **SecondLook** scheme on a simulator. Debug uses `com.joshuawyadao.SecondLook.demo` and Application Support/SecondLookDemo/state-v1.json. Release uses `com.joshuawyadao.SecondLook.local` and SecondLookLocal/state-v1.json. UI tests use a separate SecondLookUITests document; only Debug test launches accept `-ui-testing -reset-demo`. A normal launch never resets existing data.
 
+## Final hosted upgrade and acceptance evidence — October 20, 2026
+
+The existing hosted database is upgraded and the Free Render service is live on **235ed53**; its server enforcement/state/RPC paths are unchanged by the later native-only transport/coordinator repairs. Final native executable source is **d9658a5**. Supabase's exact conditional-invitation migration remains **20261020230931**, installed atomically with complete prior-row equality assertions; the existing two-account space and157 receipts were preserved at installation. Final read-only checks confirm one paired space, at least all157 prior receipts, persisted provenance version1 and a marker on every closed run. No participant records, accounts, credentials or allowlist are reset or exported.
+
+The latest deployment is live **00:14:35 UTC October21** (**5m57s** build). Render records an actual **Service restarted** event at **17:42 Pacific October20**, followed by fresh server startup **00:43:02 UTC**. Both existing saved-session simulator clients pass before and after that restart on the final app source:
+
+| Preserved hosted client | Before restart | After actual restart |
+| --- | ---: | ---: |
+| iPhone17Pro / iOS26.5 peer |19.772s|19.426s|
+| iPhone18Pro / iOS27 owner |24.267s|22.380s|
+
+Each is one completed hosted XCTest, with genuine forced Auth refresh, accepted commands, request-bound retries/collisions, stale/concurrent writes, snapshot/terminal-history rules, prior-record preservation, process relaunch and ordinary foreground revalidation. They create invented text records without resetting the shared space or exporting Keychain credentials. Public health200, no/invalid bearer401 and Release synthetic-route404 pass. Readiness health takes12.187s before the sequence and0.094s after restart; these probes are not a new native Free-idle/cold-start certification.
+
+The final affected localhost pass exits0 with **four tests**: original revision floor **89.362s**, same-revision conflict/recovery **97.725s**, invitation receipt **39.395s**, and foreground receipt/lifecycle **48.951s**. Auth and server calls are genuine local requests; only the documented lost/altered replies or publication pauses are simulated. The earlier six focused selections and original25-case cumulative October16 evidence below retain their exact sources. No uninterrupted full26-case `--native` result is claimed. The task-owned local server, synthetic Supabase stack and simulator are stopped with volumes/data preserved; both original hosted simulators and sessions remain available.
+
+Portable final-source tests pass **146 cases** (117Core+29transport/session); tooling passes **53**. Current server-enforcement source235ed53 passes **29Debug/27Release** boundary/provider cases and both official local key-mode Auth/Postgres/HTTP/restart workflows; fixture-gated integration skips are not acceptance. The ordinary native checkpoint on235 passes10UI cases with27gated skips in201.833s plus Release exclusion; the added consistency case makes the final native suite38 total, including28gated skips without fixtures. Exact final-save native/Release and backend checks are required in [PR#2 CI](https://github.com/joshuawyadao/Second-Look/pull/2/checks), rather than inferred from older-head checks.
+
+All **71 known Codex findings** have tested, pushed fixes, thumbs-up acknowledgment and resolved threads under the operator's authorization. The final consistency repair also retains the verified model view when a rejected initial preflight leaves the coordinator empty; its genuine regression and recovery are documented below. Scoped Brooks review is100/100 after repairing the access-token boundary Warning; final privacy/session handoff review is clean. An automatic approval review temporarily blocked expiry-thread resolution by treating it as pending consistency work. No alternate mutation bypass was used: after all affected local/hosted tests passed and pushed-head/thread identities were reverified, both remaining direct resolutions succeeded. Fresh terminal review, exact saved-head CI and mergeability/readiness are recorded in [PR#2's complete review ledger](https://github.com/joshuawyadao/Second-Look/pull/2); runtime acceptance alone does not satisfy those gates. The PR remains unmerged.
+
+The existing Free safeguards and operational limits remain: no paid upgrade/environment change; two expected server-only RLS/no-policy notices and disabled leaked-password-protection warning. Fresh hosted one-member pairing/renewal races are not repeated on the preserved paired singleton. Hosted outsider/sign-out and observed Free idle/wake evidence retain October12 source. Real media/deletion workers, physical-device/VoiceOver, push/unpairing/distribution, backup/restore, monitoring/rate limits, incident/rotation and aggregate-size acceptance remain separate limits. Milestone2 stays in progress under its full roadmap gates; PR readiness concerns the bounded private shared-state implementation.
+
 ## Additional review repairs — October 20, 2026
 
 Review **5593423259** onb03d94d adds2 P2 findings (**71total**): equal-revision inconsistent model refresh and successful Auth expiry metadata. The six focused localhost selections on235ed53/b03d94d all exit0: freshPairing **72.7s**, creation recovery **75.8s**, invitation recovery **67.6s**, join recovery **92.0s**, receipt renewal **47.4s**, cleanup status **96.8s** (wrapper wall times). Six actual tests pass; the fresh selection also has4 expected gated skips. Owned server cleanup completes and port58080 is closed. These are six focused local selections, not a complete25-case `--native` exit0 or hosted/physical-device evidence.
@@ -43,7 +64,7 @@ Focused Brooks follow-up finds an exact-boundary mismatch: the phone accepts an8
 
 The focused local driver's first preflight stops before any server start, table reset or simulator operation. Bounded diagnostics show sandbox-only Docker socket permission denial; the same elevated read-only preflight passes in **0.95s**, including official modern CLI status, exact named containers and loopback bindings. This is setup evidence, not an Auth/provider/engine failure. No focused native cases are credited yet.
 
-## Final review repairs — October 20, 2026
+## First hosted-upgrade review repairs — October 20, 2026
 
 Fresh Codex review **5593113471** on **b79f437** adds three P2 findings (**67 total**): invitation response metadata, canceled final-evidence cleanup integrity, and hosted timeout descendant cleanup. These are actionable follow-ups to the completed upgrade below; earlier runtime/CI evidence retains its exact source.
 
@@ -55,7 +76,7 @@ The hosted timeout regression uses a real default-TERM leader, file-backed outpu
 
 Current executable source **6b79926** passes the ordinary native verifier on a newly created, task-owned **iPhone 18 Pro / iOS27**: **10 UI passes plus27 explicitly gated skips (37 total),216.405s**, followed by Release build and separate-identity/development-control exclusion verification. Both original hosted devices/sessions remain untouched by resettable tests. Server boundary/provider suites pass **29 Debug /27 Release**; Release uses the supported native build engine. Each suite's two integration skips are not acceptance. Both official localhost key-mode workflows exit0 after the Core repair; the modern actual HTTP case is **2.196s** and command-server restart durability **0.663s**. A separate private driver is prepared for six focused native cases against the named loopback synthetic stack; this is not a full25-case `--native` invocation. Current repaired-server hosted deployment/acceptance and final review/CI remain gates at this checkpoint.
 
-## Hosted upgrade and final readiness — October 20, 2026
+## Initial hosted upgrade checkpoint — October 20, 2026
 
 The operator explicitly authorized upgrading the existing hosted schema/server while preserving accounts and records. The reviewed remote deployment target is **0517e3354f0bb657c47b42d46373dacd201ef7f1**; executable application/server sources are unchanged since **4a488b2**. No new behavior tests are added for this operational/documentation work. Existing meaningful hosted wrappers are used, alongside final-head CI and the previously recorded same-source local acceptance.
 

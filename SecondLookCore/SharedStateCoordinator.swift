@@ -348,6 +348,7 @@ public final class SharedStateCoordinator {
     private func preservesConnectedHistory(from earlier: SharedSnapshot,
                                            to later: SharedSnapshot) -> Bool {
         let laterRuns = Dictionary(uniqueKeysWithValues: later.state.runs.map { ($0.id, $0) })
+        let earlierArchives = Dictionary(uniqueKeysWithValues: earlier.state.archives.map { ($0.id, $0) })
         let laterArchives = Dictionary(uniqueKeysWithValues: later.state.archives.map { ($0.id, $0) })
         for run in earlier.state.runs {
             guard let current = laterRuns[run.id],
@@ -361,15 +362,61 @@ public final class SharedStateCoordinator {
                   current.startedAt == run.startedAt,
                   current.items.count == run.items.count,
                   run.isOpen || current == run else { return false }
-            for (original, updated) in zip(run.items, current.items) {
+            for (index, pair) in zip(run.items, current.items).enumerated() {
+                let (original, updated) = pair
                 guard updated.id == original.id,
                       updated.title == original.title,
                       updated.priority == original.priority,
-                      updated.photoInstructions == original.photoInstructions else { return false }
+                      updated.photoInstructions == original.photoInstructions,
+                      preservesEvidenceHistory(original: original, updated: updated,
+                          earlierRun: run, laterRun: current, itemIndex: index,
+                          earlierArchive: earlierArchives[run.id],
+                          laterArchive: laterArchives[run.id]) else { return false }
             }
         }
         for archive in earlier.state.archives {
             guard laterArchives[archive.id] == archive else { return false }
+        }
+        return true
+    }
+
+    private func preservesEvidenceHistory(original: RunItem, updated: RunItem,
+                                          earlierRun: ChecklistRun, laterRun: ChecklistRun,
+                                          itemIndex: Int, earlierArchive: TextArchive?,
+                                          laterArchive: TextArchive?) -> Bool {
+        guard updated.lastVersion >= original.lastVersion else { return false }
+        if original.submission == nil, let current = updated.submission,
+           current.version <= original.lastVersion { return false }
+        if let prior = original.submission, let current = updated.submission,
+           prior.version == current.version {
+            guard prior.fixtureID == current.fixtureID,
+                  prior.source == current.source,
+                  prior.preparedAt == current.preparedAt,
+                  prior.acceptedAt == nil || prior.acceptedAt == current.acceptedAt else {
+                return false
+            }
+        }
+
+        let known: [ReviewDecision]
+        if earlierRun.isOpen {
+            known = original.priorDecisions + (original.submission?.decision.map { [$0] } ?? [])
+        } else {
+            guard let earlierArchive else { return false }
+            known = earlierArchive.items[itemIndex].decisions
+        }
+        let incoming: [ReviewDecision]
+        if laterRun.isOpen {
+            incoming = updated.priorDecisions + (updated.submission?.decision.map { [$0] } ?? [])
+        } else {
+            guard let laterArchive else { return false }
+            incoming = laterArchive.items[itemIndex].decisions
+        }
+        guard incoming.count >= known.count,
+              Array(incoming.prefix(known.count)) == known else { return false }
+        for decision in incoming.dropFirst(known.count) where decision.submissionVersion <= original.lastVersion {
+            guard let current = original.submission,
+                  current.version == decision.submissionVersion,
+                  current.decision == nil else { return false }
         }
         return true
     }

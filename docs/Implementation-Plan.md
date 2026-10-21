@@ -63,3 +63,7 @@ Review5594261694 on17b1bd9 adds two actionable P2 guards. All80 previous comment
 3. Re-run affected package/native/server/local checks as required by the changed source, deploy the combined final server once, verify both preserved hosted clients before/after actualrestart, update canonical docs and repeat current-head review/CI/mergeability gates. No new schema/account/reset/paid decision.
 
 Open questions: none. Both repairs enforce existing fixed-role and initial-create contracts without expanding milestone scope.
+
+Role item4332445607 complete:17meaningfulredassertions/6cases,6focusedbothconfigs and165portableperconfiguration (136Core+29transport)pass. Save/push/acknowledge beforeinitialcreate.
+
+Additional scoped Brooks concern: retained-open-run definitions can coherently remove/downgrade required items despite Product-Spec13 and absence of any connected definition-edit command. After the initial-create item is separately saved, add a bounded immutable-definition predicate: title,routineID/version,startedAt, ordereditemcount+id/title/priority/instructions. Preserve mutable settings/progress/evidence/decision/closure fields, legitimate routine edits/deletion and new independent runs. Add meaningful negative coordinator transition tests at all3 paths and positive controls/genuine receipt recovery. This discovered existing-contract repair needs no schema, wire or product decision. Save separately and rerun affected validation. Openquestions:none.

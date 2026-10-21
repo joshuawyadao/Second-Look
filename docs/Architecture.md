@@ -55,6 +55,8 @@ The native form permits Create/Join only after a successful lookup confirms no s
 
 Only a command-service response explicitly coded notPaired establishes absent membership. Auth user/refresh404 and uncoded or unknown command404 are service unavailability; they preserve unconfirmed membership and cannot enable pairing as if absence were verified. Command-service401/403 require their documented `unauthenticated`/`forbidden` codes before clearing an account and its credentials; uncoded, malformed or unknown responses remain service unavailability. Command-service409 likewise recognizes only `staleState` and `pairingUnavailable`, so an uncoded/unknown conflict cannot be mistaken for a definite revision rejection. Supabase Auth denial retains its separate provider semantics.
 
+Every retained run preserves its original performer and reviewer across newer shared revisions, including the transition to closure; structural membership alone cannot authorize a role reassignment.
+
 For invitation renewal at expected revision N, the server captures a validated current snapshot and publishes a token only when the authoritative create result retains that owner-only space, ordered members and aggregate at exactly N+1. Exhausted revisions fail before addition. Initial creation needs no prior snapshot; SQL remains authoritative for stale revisions, ineligible callers and concurrent renewal/join outcomes. Malformed successful replies receive bounded503/no-store without a token.
 
 A successful join additionally requires both distinct allowlisted accounts in its validated result; a caller-only reply receives bounded503/no-store rather than publishing a paired state. This does not constrain the actor to one member index, preserving idempotent SQL joins.

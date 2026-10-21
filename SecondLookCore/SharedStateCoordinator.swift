@@ -350,7 +350,10 @@ public final class SharedStateCoordinator {
         let laterRuns = Dictionary(uniqueKeysWithValues: later.state.runs.map { ($0.id, $0) })
         let laterArchives = Dictionary(uniqueKeysWithValues: later.state.archives.map { ($0.id, $0) })
         for run in earlier.state.runs {
-            guard let current = laterRuns[run.id], run.isOpen || current == run else { return false }
+            guard let current = laterRuns[run.id],
+                  current.performerID == run.performerID,
+                  current.reviewerID == run.reviewerID,
+                  run.isOpen || current == run else { return false }
         }
         for archive in earlier.state.archives {
             guard laterArchives[archive.id] == archive else { return false }

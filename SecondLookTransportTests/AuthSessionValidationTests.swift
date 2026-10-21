@@ -31,6 +31,20 @@ final class AuthSessionValidationTests: XCTestCase {
         }
     }
 
+    func testAccessTokenExactServerLimitRejectsAndBelowLimitSurvives() async throws {
+        for refreshing in [false, true] {
+            do {
+                _ = try await request("access-limit", refreshing: refreshing)
+                XCTFail("The command service rejects an access token at exactly8192 bytes")
+            } catch {
+                XCTAssertEqual(error as? SharedStateFailure, .invalidResponse)
+            }
+            let session = try await request("below-access-limit", refreshing: refreshing)
+            XCTAssertEqual(session.access_token, String(repeating: "a", count: 8_191))
+            XCTAssertEqual(session.refresh_token, String(repeating: "r", count: 8_192))
+        }
+    }
+
     private func request(_ name: String, refreshing: Bool) async throws -> SharedAuthSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AuthReplyProtocol.self]
@@ -63,6 +77,10 @@ private final class AuthReplyProtocol: URLProtocol {
             case "control-refresh": refresh = "token\u{0000}"
             case "large-access": access = String(repeating: "a", count: 8_193)
             case "large-refresh": refresh = String(repeating: "r", count: 8_193)
+            case "access-limit": access = String(repeating: "a", count: 8_192)
+            case "below-access-limit":
+                access = String(repeating: "a", count: 8_191)
+                refresh = String(repeating: "r", count: 8_192)
             default: break
             }
             let data = try JSONSerialization.data(withJSONObject: [

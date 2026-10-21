@@ -28,3 +28,5 @@ Closure implementation checkpoint: four meaningful undecided-cancellation red as
 ## Focused Brooks follow-up
 
 P2 contract mismatch: successful Auth access tokens at exactly8192 UTF-8 bytes pass the phone but the command service rejects them. Align access-token acceptance with the existing exclusive8192 server limit; keep refresh-token bound independent. Add meaningful sign-in/refresh exact-boundary red assertions and valid8191-byte preservation, run focused/package tests and save the repair separately. No user decision is needed. Existing provenance/local/native checks retain their exact source.
+
+Auth exact-limit repair: two meaningful red sign-in/refresh assertions; three focused cases and139 full package cases pass. Existing server contract preserved; no DDL or credential mutation. Save/push as a distinct Brooks repair; current source native/hosted acceptance remains pending.

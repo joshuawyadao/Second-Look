@@ -172,6 +172,8 @@ public struct SharedAuthSession: Codable, Equatable, Sendable {
     /// Validate successful responses before a vault can install or persist them.
     /// Credentials remain opaque; do not trim or rewrite their bytes.
     func validateCredentials() throws {
+        // Match the command service's exclusive bearer-token bound.
+        guard access_token.utf8.count < 8_192 else { throw SharedStateFailure.invalidResponse }
         for token in [access_token, refresh_token] {
             guard !token.isEmpty, token.utf8.count <= 8_192,
                   token.unicodeScalars.allSatisfy({

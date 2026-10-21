@@ -40,3 +40,5 @@ Review5593423259 onb03d94d adds2 P2 findings (71total): equal-revision different
 - Save/push/acknowledge each finding separately; run appropriate current-source package/native/hosted follow-up, fresh Brooks/Codex and final CI. Installed server235ed53 remains unchanged by phone-only repairs; no further SQL.
 
 No open user question: these are bounded validation repairs under the existing task.
+
+Auth expiry repair checkpoint:10 invalid-duration and6 far-future deadline red assertions;2focused+141package green. Both Auth paths normalize receipt-based expiry before vault installation, retain old credentials on failure and do not change provider configuration. Save/push/acknowledge4331720819 before the equal-revision implementation.

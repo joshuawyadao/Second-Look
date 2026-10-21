@@ -139,8 +139,7 @@ public struct SharedAuthClient: Sendable {
             path: ["auth", "v1", "token"], method: "POST", token: nil,
             query: [URLQueryItem(name: "grant_type", value: "password")],
             body: Credentials(email: email, password: password))
-        try session.validateCredentials()
-        return session
+        return try session.validatedAtReceipt(Date())
     }
 
     public func refresh(refreshToken: String) async throws -> SharedAuthSession {
@@ -148,8 +147,7 @@ public struct SharedAuthClient: Sendable {
             path: ["auth", "v1", "token"], method: "POST", token: nil,
             query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
             body: RefreshRequest(refresh_token: refreshToken))
-        try session.validateCredentials()
-        return session
+        return try session.validatedAtReceipt(Date())
     }
 
     public func getUser(accessToken: String) async throws -> SharedAuthUser {
@@ -181,6 +179,21 @@ public struct SharedAuthSession: Codable, Equatable, Sendable {
                           !CharacterSet.whitespacesAndNewlines.contains($0)
                   }) else { throw SharedStateFailure.invalidResponse }
         }
+    }
+
+    /// Admit only bounded durations and give the vault a locally measured deadline.
+    /// The provider's absolute expires_at is informational and cannot defer refresh.
+    func validatedAtReceipt(_ receivedAt: Date) throws -> SharedAuthSession {
+        try validateCredentials()
+        guard let expires_in, (1...86_400).contains(expires_in) else {
+            throw SharedStateFailure.invalidResponse
+        }
+        let localExpiry = receivedAt.addingTimeInterval(TimeInterval(expires_in)).timeIntervalSince1970
+        guard localExpiry.isFinite, localExpiry > 0, localExpiry < Double(Int.max) else {
+            throw SharedStateFailure.invalidResponse
+        }
+        return SharedAuthSession(access_token: access_token, refresh_token: refresh_token,
+                                 expires_at: Int(localExpiry), expires_in: expires_in, user: user)
     }
 }
 

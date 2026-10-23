@@ -8,12 +8,16 @@ Clear the three review findings posted after PR #2 was marked ready, verify the 
 
 ## Action items
 - [x] Recheck the exact PR head, all checks, main ruleset and the three new review threads; inspect Product-Brief, Product-Spec, Architecture, Core commands and provider tests.
-- [ ] Reject retained run revision growth that exceeds the intervening connected command budget, including Debug synthetic composition, terminal closure, references and retry publication; preserve overflow safety and legitimate skipped updates.
-- [ ] Classify Auth401/403 as session rejection only when a bounded structured Auth response identifies the bearer/account error; keep ambiguous API-key/provider failures unavailable without invalidating sessions. Verify actual REST error_code shapes against primary Supabase sources.
-- [ ] Bound connected UTF-8 text, collection sizes and encoded aggregate growth; use reversible engineering defaults (titles256B, instructions1024B, notes2048B, items64, routines128, runs/archives512, decisions64, state2MiB). Reserve capacity for existing open runs to close, never evict history, and leave local-demo persistence unchanged. Surface an explicit capacity failure through the service and phone.
-- [ ] Add meaningful old-code regressions and positive controls in Core/provider/service/transport tests; run targeted then full Debug/Release suites, repository/native verification and genuine both-key-mode local Auth/SQL/HTTP/restart checks. Inspect existing hosted size metadata without publishing participant content before any matching deployment.
-- [ ] Update Product-Spec, Architecture, Backend-Operations, Verification and the PR ledger with actual source-qualified results, limits, failures and remaining Milestone 2 gates. Save/push each validated feedback slice and acknowledge/resolve authorized threads only after validation and push.
-- [ ] Recheck final-head Codex/CI/threads/mergeability, merge the expected tested head through normal branch rules, verify main, delete only the merged feature branch remotely and locally, and leave the checkout clean on main.
+- [x] Reject retained run revision growth that exceeds the intervening connected command budget, including Debug synthetic composition, terminal closure, references and retry publication; preserve overflow safety and legitimate skipped updates.
+- [x] Classify Auth401/403 as session rejection only when a bounded structured Auth response identifies the bearer/account error; keep ambiguous API-key/provider failures unavailable without invalidating sessions. Verify actual REST error_code shapes against primary Supabase sources.
+- [x] Bound connected UTF-8 text, collection sizes and encoded aggregate growth; use reversible engineering defaults (titles256B, instructions1024B, notes2048B, items64, routines128, runs/archives512, decisions64, state2MiB). Reserve capacity for existing open runs to close, never evict history, and leave local-demo persistence unchanged. Surface an explicit capacity failure through the service and phone.
+- [x] Add meaningful old-code regressions and positive controls in Core/provider/service/transport tests; run targeted then full Debug/Release suites, repository/native verification and genuine both-key-mode local Auth/SQL/HTTP/restart checks. Inspect existing hosted size metadata without publishing participant content before any matching deployment.
+- [x] Update Product-Spec, Architecture, Backend-Operations, Verification and the PR ledger with actual source-qualified results, limits, failures and remaining Milestone 2 gates. Save/push each validated feedback slice and acknowledge/resolve authorized threads only after validation and push.
+- [x] Prepare the final protected merge/cleanup sequence and record its live outcome on PR #2 after this saved checkpoint: recheck final-head Codex/CI/threads, merge only the tested head through normal rules, verify the squash result before local branch deletion, deploy matching main through the existing Free service and leave a clean main checkout.
+
+## Final remote operations
+
+These actions occur after the final saved commit. Their live CI/review, merge commit, deployment and branch-deletion outcomes are tracked on PR #2; this source checkpoint does not preclaim those remote results. Render already points to main with automatic deployment Off. No protection bypass, forced push, state reset or paid setting change is part of the sequence.
 
 ## Open questions
 

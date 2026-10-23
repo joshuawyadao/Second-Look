@@ -42,3 +42,5 @@ Shortcuts and automatic starts, broader release, more users, and other platforms
 | 20 | Denied camera/import, low storage, larger text, VoiceOver recover clearly. | Local UI accessibility/storage paths where possible | M3, M6 device checks |
 
 The immediate task plan lives in [Implementation-Plan.md](Implementation-Plan.md). This roadmap remains the durable milestone and acceptance reference as that task plan changes.
+
+October22 post-readiness hardening adds a shared command-budget check across skipped snapshots, explicit Auth bearer-error classification, and finite connected field/collection/2MiB aggregate limits with closure reservation. Current-source portable/native/server and genuine both-key-mode localhost checks pass; four focused native connected cases pass. The requested protected-main merge/branch cleanup and matching manual deployment are tracked on PR #2. Finite history may eventually refuse new creations; archival architecture, operational recovery/rate limits, real media and physical-device acceptance remain later gates.

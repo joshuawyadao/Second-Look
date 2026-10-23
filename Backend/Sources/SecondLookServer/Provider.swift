@@ -37,7 +37,10 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
         let (data, response) = try await send(request)
         guard let http = response as? HTTPURLResponse else { throw SharedStateFailure.serviceUnavailable }
         guard http.statusCode == 200 else {
-            if [401, 403].contains(http.statusCode) { throw SharedStateFailure.unauthenticated }
+            if [401, 403].contains(http.statusCode),
+               Self.isExplicitAuthDenial(data, status: http.statusCode) {
+                throw SharedStateFailure.unauthenticated
+            }
             throw SharedStateFailure.serviceUnavailable
         }
         guard let user = try? JSONDecoder().decode(VerifiedUser.self, from: data) else {
@@ -45,6 +48,17 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
         }
         guard configuration.allowedAccounts.contains(user.id) else { throw SharedStateFailure.forbidden }
         return user.id
+    }
+
+    private static func isExplicitAuthDenial(_ data: Data, status: Int) -> Bool {
+        // The gateway can reject an invalid project apikey with the same HTTP
+        // status as Auth rejects a bearer. Only Auth's bounded, structured
+        // error_code proves that the user's credential was rejected.
+        guard data.count <= 16 * 1_024,
+              let failure = try? JSONDecoder().decode(AuthFailure.self, from: data),
+              failure.code == nil || failure.code == status else { return false }
+        return ["bad_jwt", "unexpected_audience", "session_expired", "session_not_found",
+                "user_not_found", "user_banned"].contains(failure.errorCode)
     }
 
     func read(actor: UUID, space: UUID?) async throws -> SharedSnapshot {
@@ -140,6 +154,16 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
             return result
         }
         catch { throw SharedStateFailure.serviceUnavailable }
+    }
+}
+
+private struct AuthFailure: Decodable {
+    let code: Int?
+    let errorCode: String
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case errorCode = "error_code"
     }
 }
 

@@ -2,6 +2,8 @@
 
 ## October22 post-readiness merge repair — in progress
 
+The scoped Brooks pass catches an incomplete first budget repair: new runs and known non-run writes also need to consume the shared gap. The follow-up charges creation/progress, join, routine versions/deletion/recreation and final routine order before retained mutations. Six real-domain sequence tests pair an underreported-gap rejection with the genuine-gap positive. All18 focused Debug cases pass in0.022s; the current full portable verifier passes259Debug/250Release including all17 Release revision controls. A test-only missing reviewer argument was corrected before those runs. The final twelve-source static addendum is clean; native/server/connected gates are separate.
+
 The provider Auth repair reproduces10 meaningful old-code issues across3 focused tests (ambiguous API-key denial wrongly reported as session loss). The corrected provider family passes12/12 Debug in0.141s and12/12 Release in0.039s, preserving valid200, allowlist and redirect controls. This proves bounded service classification with synthetic HTTP replies; genuine local integration and final hosted-source qualification remain separate.
 
 A later automatic review on the previously green head80cea16 adds three merge blockers (99 total threads): skipped run-counter growth, provider API-key/session-error distinction and cumulative aggregate size. Earlier merge-ready statements are historical. The October22 merge request remains pending until the repaired head passes review/CI; no merge or branch deletion has occurred at this checkpoint.

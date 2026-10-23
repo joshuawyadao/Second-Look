@@ -584,6 +584,34 @@ public final class SharedStateCoordinator {
         // Each shared command consumes one space revision and targets at most one
         // retained run. Spend the gap once across all runs, not once per run.
         var remainingRunCommands = max(0, later.revision - earlier.revision)
+        if later.members != earlier.members {
+            guard remainingRunCommands > 0 else { return false }
+            remainingRunCommands -= 1
+        }
+        guard let routineCommands = minimumRoutineCommands(from: earlier.state.routines,
+            to: later.state.routines, budget: remainingRunCommands) else { return false }
+        remainingRunCommands -= routineCommands
+        let earlierRunIDs = Set(earlier.state.runs.map(\.id))
+        for run in later.state.runs where !earlierRunIDs.contains(run.id) {
+            guard remainingRunCommands > 0 else { return false }
+            remainingRunCommands -= 1 // Creation itself, before any unseen progress.
+            var initial = run
+            initial.revision = 1
+            initial.outcome = nil
+            initial.closedAt = nil
+            initial.cleanupStatus = nil
+            initial.hadEvidenceAtClosure = nil
+            for index in initial.items.indices {
+                initial.items[index].checkedAt = nil
+                initial.items[index].submission = nil
+                initial.items[index].preview = nil
+                initial.items[index].lastVersion = 0
+                initial.items[index].priorDecisions = []
+            }
+            guard let commands = minimumRunCommands(from: initial, to: run),
+                  commands <= remainingRunCommands else { return false }
+            remainingRunCommands -= commands
+        }
         for run in earlier.state.runs {
             guard let current = laterRuns[run.id],
                   current.revision >= run.revision,
@@ -655,6 +683,7 @@ public final class SharedStateCoordinator {
     private func minimumRunCommands(from earlier: ChecklistRun, to later: ChecklistRun) -> Int? {
         guard later.revision >= earlier.revision else { return nil }
         let delta = later.revision - earlier.revision
+        guard delta != 0 || later == earlier else { return nil }
         let completed = earlier.isOpen && later.outcome == .completed
         guard !completed || delta >= 2 else { return nil }
         var mutations = delta - (completed ? 1 : 0)
@@ -668,6 +697,44 @@ public final class SharedStateCoordinator {
         }
         guard delta == 0 || commands > 0 else { return nil }
         return commands
+    }
+
+    /// Saves update in place; a new/recreated definition is appended. A retained
+    /// prefix can stay in earlier order. Every definition after the first forced
+    /// append must itself be created/recreated to reach the observed final order.
+    private func minimumRoutineCommands(from earlier: [Routine], to later: [Routine],
+                                        budget: Int) -> Int? {
+        let prior = Dictionary(uniqueKeysWithValues: earlier.enumerated().map {
+            ($0.element.id, (index: $0.offset, routine: $0.element))
+        })
+        let laterIDs = Set(later.map(\.id))
+        var remaining = budget
+        for routine in earlier where !laterIDs.contains(routine.id) {
+            guard remaining > 0 else { return nil }
+            remaining -= 1
+        }
+        var canRetainPrefix = true
+        var lastRetainedIndex = -1
+        for routine in later {
+            let cost: Int
+            if let old = prior[routine.id] {
+                let keepsVersion = routine.definitionVersion >= old.routine.definitionVersion &&
+                    (routine.definitionVersion != old.routine.definitionVersion || routine == old.routine)
+                if canRetainPrefix, old.index > lastRetainedIndex, keepsVersion {
+                    cost = routine.definitionVersion - old.routine.definitionVersion
+                    lastRetainedIndex = old.index
+                } else {
+                    canRetainPrefix = false
+                    cost = routine.definitionVersion + 1 // Delete, create at 1, then saves.
+                }
+            } else {
+                canRetainPrefix = false
+                cost = routine.definitionVersion
+            }
+            guard cost <= remaining else { return nil }
+            remaining -= cost
+        }
+        return budget - remaining
     }
 
     private func matchesSingleRunEffect(earlier: SharedSnapshot,

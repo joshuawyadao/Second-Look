@@ -354,4 +354,99 @@ final class RunRevisionTransitionTests: XCTestCase {
         XCTAssertTrue(published)
         XCTAssertEqual(coordinator.snapshot, incoming)
     }
+
+    private func assertGapCost(_ first: SharedSnapshot, state: SecondLookState,
+                               members: [UUID]? = nil, commands: Int,
+                               file: StaticString = #filePath, line: UInt = #line) async throws {
+        for (gap, accepted) in [(commands - 1, false), (commands, true)] {
+            let client = RunRevisionClient(current: first, actorID: owner, now: now)
+            let coordinator = SharedStateCoordinator()
+            coordinator.beginSession(scope: scope, client: client)
+            _ = try await coordinator.refresh()
+            let incoming = SharedSnapshot(spaceID: space, revision: first.revision + gap,
+                members: members ?? first.members, state: state)
+            try incoming.validate(for: owner)
+            await client.setCurrent(incoming)
+            if accepted {
+                let published = try await coordinator.refresh()
+                XCTAssertTrue(published, file: file, line: line)
+                XCTAssertEqual(coordinator.snapshot, incoming, file: file, line: line)
+            } else {
+                await expectInvalid(coordinator, file: file, line: line)
+                XCTAssertEqual(coordinator.snapshot, first, file: file, line: line)
+            }
+        }
+    }
+
+    func testSkippedBudgetIncludesNewRunAndRetainedRunMutations() async throws {
+        var (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        for enabled in [true, false] {
+            try state.updateRunSettings(runID: runID, actorID: owner,
+                settings: RunSettings(reminders: .init(remindPerformer: enabled)))
+        }
+        _ = try state.startOneOff(title: "New invented list", items: [RoutineItem(title: "Coat")],
+            performerID: owner, reviewerID: peer, now: now)
+        try await assertGapCost(first, state: state, commands: 3)
+    }
+
+    func testSkippedBudgetIncludesEachNewRunAndItsAutomaticCompletion() async throws {
+        let first = view(.init(), revision: 0)
+        var state = SecondLookState()
+        for index in 0..<3 {
+            let runID = try state.startOneOff(title: "Invented list \(index)",
+                items: [RoutineItem(title: "Keys")], performerID: owner, reviewerID: peer, now: now)
+            if index == 0 {
+                let itemID = try XCTUnwrap(state.runs.first?.items.first?.id)
+                try state.setStandardChecked(runID: runID, itemID: itemID,
+                    checked: true, actorID: owner, now: now)
+            }
+        }
+        try await assertGapCost(first, state: state, commands: 4)
+    }
+
+    func testSkippedBudgetIncludesRoutineDeleteRecreateAndRetainedRunMutation() async throws {
+        var (state, runID, routineID) = try fixture()
+        let first = view(state, revision: 1)
+        try state.updateRunSettings(runID: runID, actorID: owner,
+            settings: RunSettings(reminders: .init(remindPerformer: true)))
+        try state.deleteRoutine(id: routineID)
+        try state.saveRoutine(Routine(id: routineID, title: "Changed invented definition",
+            items: [RoutineItem(title: "Hat")]))
+        try await assertGapCost(first, state: state, commands: 3)
+    }
+
+    func testSkippedBudgetIncludesNewRoutineVersions() async throws {
+        let (initial, _, _) = try fixture()
+        let first = view(initial, revision: 1)
+        var state = initial
+        let routine = Routine(title: "New invented definition", items: [RoutineItem(title: "Hat")])
+        for _ in 0..<3 { try state.saveRoutine(routine) }
+        try await assertGapCost(first, state: state, commands: 3)
+    }
+
+    func testSkippedBudgetIncludesRoutineReordering() async throws {
+        var (state, runID, routineID) = try fixture()
+        try state.saveRoutine(Routine(title: "Second invented definition",
+            items: [RoutineItem(title: "Coat")]))
+        let first = view(state, revision: 1)
+        let original = try XCTUnwrap(state.routines.first)
+        try state.deleteRoutine(id: routineID)
+        try state.saveRoutine(original)
+        try state.updateRunSettings(runID: runID, actorID: owner,
+            settings: RunSettings(reminders: .init(remindPerformer: true)))
+        try await assertGapCost(first, state: state, commands: 3)
+    }
+
+    func testSkippedBudgetIncludesJoiningAndRunMutations() async throws {
+        var state = SecondLookState()
+        let runID = try state.startOneOff(title: "Invented solo list",
+            items: [RoutineItem(title: "Keys")], performerID: owner, reviewerID: nil, now: now)
+        let first = SharedSnapshot(spaceID: space, revision: 1, members: [owner], state: state)
+        for enabled in [true, false] {
+            try state.updateRunSettings(runID: runID, actorID: owner,
+                settings: RunSettings(reminders: .init(remindPerformer: enabled)))
+        }
+        try await assertGapCost(first, state: state, members: [owner, peer], commands: 3)
+    }
 }

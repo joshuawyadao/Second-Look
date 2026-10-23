@@ -1,31 +1,20 @@
 # Plan
 
-Complete the authorized hosted schema/server upgrade and prepare PR #2 for merge while preserving the existing paired accounts, data and sessions. Use the existing feature branch, keep main protected and leave the PR unmerged.
+Clear the three review findings posted after PR #2 was marked ready, verify the repaired branch, then perform the explicitly requested protected-main merge and feature-branch deletion.
 
 ## Scope
-
-- In: reviewed schema rollout, existing Free service deployment, focused review repairs, native/local/hosted acceptance, canonical evidence and final GitHub readiness gates.
-- Out: hosted reset/unpairing, new accounts or allowlist entries, paid settings, real photos/uploads/deletion, push and distribution. Milestone2 retains its wider roadmap gates.
+- In: achievable retained-run revision gaps, explicit Auth token rejection, connected aggregate capacity limits, focused regressions, canonical evidence, final CI/review and requested merge/branch cleanup.
+- Out: hosted reset/unpairing, account/key/allowlist or paid-setting changes, real media, notifications, distribution and wider Milestone 2 acceptance. Preserve existing paired data and both simulator sessions.
 
 ## Action items
-
-- [x] Inspect canonical product/architecture/operations docs, tests, applicable instructions, deployed catalog and branch state; checkpoint resolved plans before implementation.
-- [x] Apply the conditional-invitation migration atomically with exact prior row preservation; retain initial manual history and existing accounts.
-- [x] Deploy the reviewed API, correct observed Linux redirect behavior, preserve configuration and Free settings, and verify public boundaries.
-- [x] Address all96 review threads individually or as duplicate clusters; retain one validated authoritative receipt clarification. Test/push each fix, acknowledge and resolve authorized threads.
-- [x] Verify per-kind/source creation ownership and invitation display deadlines with genuine local operations and explicitly labeled simulated faults/timing; preserve assertions, deadlines and Release exclusions.
-- [x] Complete the final native/Release verifier, remaining navigation/draft controls and both original hosted clients before/after an actual service restart. Record exact source-qualified evidence in Verification.
-- [x] Update Architecture, Product-Spec, Backend-Operations, Supabase-Free-Setup, Roadmap and ADR002; retain earlier checks as historical evidence.
-- [x] Finish task-owned cleanup, repository checks and a documentation-only save. Evaluate final remote Codex/CI/mergeability gates on PR #2 after saving; mark ready only when those gates pass, without merging.
-
-## Verification and remaining gates
-
-App executable source: `d781958`; deployed API: `0a0d8ff`. Verification contains actual case results, expected skips, failed setup attempts, Linux portability evidence and hosted preservation. The complete earlier27-case run remains app177/API968-equivalent evidence. Final saved-head remote review and CI are recorded on PR #2 rather than creating a new source commit merely to record their result.
-
-## Risks and limits
-
-Fresh hosted pairing/renewal is not recreated by resetting the paired singleton. Earlier hosted outsider/sign-out/idle tests keep their original source qualification. Physical-device/VoiceOver, backup/restore, incident/rate-limit/aggregate-size acceptance and later media/distribution work remain open in the roadmap. No current simulated control establishes real-media functionality.
+- [x] Recheck the exact PR head, all checks, main ruleset and the three new review threads; inspect Product-Brief, Product-Spec, Architecture, Core commands and provider tests.
+- [ ] Reject retained run revision growth that exceeds the intervening connected command budget, including Debug synthetic composition, terminal closure, references and retry publication; preserve overflow safety and legitimate skipped updates.
+- [ ] Classify Auth401/403 as session rejection only when a bounded structured Auth response identifies the bearer/account error; keep ambiguous API-key/provider failures unavailable without invalidating sessions. Verify actual REST error_code shapes against primary Supabase sources.
+- [ ] Bound connected UTF-8 text, collection sizes and encoded aggregate growth; use reversible engineering defaults (titles256B, instructions1024B, notes2048B, items64, routines128, runs/archives512, decisions64, state2MiB). Reserve capacity for existing open runs to close, never evict history, and leave local-demo persistence unchanged. Surface an explicit capacity failure through the service and phone.
+- [ ] Add meaningful old-code regressions and positive controls in Core/provider/service/transport tests; run targeted then full Debug/Release suites, repository/native verification and genuine both-key-mode local Auth/SQL/HTTP/restart checks. Inspect existing hosted size metadata without publishing participant content before any matching deployment.
+- [ ] Update Product-Spec, Architecture, Backend-Operations, Verification and the PR ledger with actual source-qualified results, limits, failures and remaining Milestone 2 gates. Save/push each validated feedback slice and acknowledge/resolve authorized threads only after validation and push.
+- [ ] Recheck final-head Codex/CI/threads/mergeability, merge the expected tested head through normal branch rules, verify main, delete only the merged feature branch remotely and locally, and leave the checkout clean on main.
 
 ## Open questions
 
-None for the authorized upgrade and PR-readiness work.
+None. These limits are reversible engineering safeguards, not retention/deletion policy. Existing history is retained; reaching capacity rejects growth until later archival/operational work is designed. The user's explicit merge/deletion request governs the final Git action after review gates pass.

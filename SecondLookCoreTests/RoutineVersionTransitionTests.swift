@@ -185,7 +185,11 @@ final class RoutineVersionTransitionTests: XCTestCase {
         edited.items[1].priority = .standard
         edited.settings = RunSettings(reminders: ReminderPreferences(remindPerformer: true))
         try state.saveRoutine(edited)
-        let editedView = view(state, revision: 3) // Independent space writes may span revisions.
+        // Model the independent command behind the skipped revision, rather than
+        // claiming an invisible paired write with no resulting version/object.
+        _ = try state.startOneOff(title: "Independent invented run",
+            items: [RoutineItem(title: "Coat")], performerID: owner, reviewerID: peer, now: now)
+        let editedView = view(state, revision: 3)
         try editedView.validate(for: owner)
         await client.setCurrent(editedView)
         let publishedEdit = try await coordinator.refresh(validatingAgainst: [first])

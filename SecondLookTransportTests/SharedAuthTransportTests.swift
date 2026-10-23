@@ -300,7 +300,16 @@ final class SharedAuthTransportTests: XCTestCase {
 }
 
 /// Immutable host fixtures keep concurrently running URLSession tests independent.
-private final class SyntheticTransportProtocol: URLProtocol {
+final class SyntheticTransportProtocol: URLProtocol {
+    private let fixtureLock = NSLock()
+    private var fixtureWasStopped = false
+
+    var fixtureStopped: Bool {
+        fixtureLock.lock()
+        defer { fixtureLock.unlock() }
+        return fixtureWasStopped
+    }
+
     override class func canInit(with request: URLRequest) -> Bool {
         request.url?.host?.hasSuffix(".test") == true
     }
@@ -308,6 +317,7 @@ private final class SyntheticTransportProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if BoundedResponseFixture.start(self) { return }
         guard let url = request.url else { return }
         let host = url.host ?? ""
         let result: (status: Int, body: String)
@@ -387,5 +397,12 @@ private final class SyntheticTransportProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        fixtureLock.lock()
+        fixtureWasStopped = true
+        fixtureLock.unlock()
+        if BoundedResponseFixture.didStop(self) {
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
 }

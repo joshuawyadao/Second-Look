@@ -205,19 +205,152 @@ private enum HTTPFailureFormat { case commandService, supabaseAuth }
 /// Own only the derived session. A caller-supplied session remains usable.
 private final class TransportHTTPSession: @unchecked Sendable {
     let session: URLSession
+    private let delegate: BoundedTransportDelegate
 
     init(configuration: URLSessionConfiguration) {
+        delegate = BoundedTransportDelegate()
         session = URLSession(configuration: configuration,
-                             delegate: RejectTransportRedirect.shared, delegateQueue: nil)
+                             delegate: delegate, delegateQueue: nil)
+    }
+
+    func receive(_ request: URLRequest, successLimit: Int) async throws -> (Data, URLResponse) {
+        try await delegate.receive(request, in: session, successLimit: successLimit)
     }
 
     deinit { session.invalidateAndCancel() }
 }
 
-/// FoundationNetworking can ignore per-task redirect delegates. Install this
-/// stateless policy when creating the session so Auth bodies never get resent.
-private final class RejectTransportRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    static let shared = RejectTransportRedirect()
+/// The canonical shared state is limited to 2 MiB, but its JSON HTTP envelope can
+/// escape each byte and carry receipt metadata. 16 MiB bounds that wire form.
+/// Auth success is only credentials and one user, so it has a smaller allowance.
+/// Error bodies are never trusted for identity or command classification past 16 KiB.
+private enum TransportResponseLimit {
+    static let authSuccess = 256 * 1_024
+    static let commandSuccess = 16 * 1_024 * 1_024
+    static let error = 16 * 1_024
+}
+
+private enum BoundedTransportError: Error {
+    case oversizedSuccess
+    case oversizedFailure
+    case unexpectedResponse
+}
+
+/// Installed at session level because FoundationNetworking can ignore per-task
+/// redirect delegates. Data is rejected before append, including unannounced or
+/// chunked responses. Each in-flight task has its own buffer and completion.
+private final class BoundedTransportDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private final class Pending {
+        let completion: CheckedContinuation<(Data, URLResponse), Error>
+        let successLimit: Int
+        var limit = TransportResponseLimit.error
+        var response: URLResponse?
+        var data = Data()
+        var oversized: BoundedTransportError?
+
+        init(completion: CheckedContinuation<(Data, URLResponse), Error>, successLimit: Int) {
+            self.completion = completion
+            self.successLimit = successLimit
+        }
+    }
+
+    private final class Cancellation: @unchecked Sendable {
+        private let lock = NSLock()
+        private var task: URLSessionTask?
+        private var cancelled = false
+
+        func install(_ task: URLSessionTask) {
+            lock.lock()
+            self.task = task
+            let shouldCancel = cancelled
+            lock.unlock()
+            if shouldCancel { task.cancel() }
+        }
+
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            let task = self.task
+            lock.unlock()
+            task?.cancel()
+        }
+    }
+
+    private let lock = NSLock()
+    private var pending: [Int: Pending] = [:]
+
+    func receive(_ request: URLRequest, in session: URLSession, successLimit: Int) async throws
+        -> (Data, URLResponse) {
+        let cancellation = Cancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = session.dataTask(with: request)
+                lock.lock()
+                pending[task.taskIdentifier] = Pending(completion: continuation,
+                                                        successLimit: successLimit)
+                lock.unlock()
+                cancellation.install(task)
+                task.resume()
+            }
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
+
+    private func registered(_ task: URLSessionTask) -> Pending? {
+        lock.lock()
+        defer { lock.unlock() }
+        return pending[task.taskIdentifier]
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        guard let current = registered(dataTask) else {
+            completionHandler(.cancel)
+            return
+        }
+        guard let http = response as? HTTPURLResponse else {
+            current.oversized = .unexpectedResponse
+            completionHandler(.cancel)
+            return
+        }
+        current.response = response
+        current.limit = (200..<300).contains(http.statusCode)
+            ? current.successLimit : TransportResponseLimit.error
+        if response.expectedContentLength > Int64(current.limit) {
+            current.oversized = (200..<300).contains(http.statusCode)
+                ? .oversizedSuccess : .oversizedFailure
+            completionHandler(.cancel)
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+                    didReceive data: Data) {
+        guard let current = registered(dataTask) else { dataTask.cancel(); return }
+        guard data.count <= current.limit - current.data.count else {
+            current.oversized = current.limit == current.successLimit
+                ? .oversizedSuccess : .oversizedFailure
+            dataTask.cancel()
+            return
+        }
+        current.data.append(data)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didCompleteWithError error: Error?) {
+        lock.lock()
+        let current = pending.removeValue(forKey: task.taskIdentifier)
+        lock.unlock()
+        guard let current else { return }
+        if let oversized = current.oversized { current.completion.resume(throwing: oversized) }
+        else if let error { current.completion.resume(throwing: error) }
+        else if let response = current.response {
+            current.completion.resume(returning: (current.data, response))
+        } else { current.completion.resume(throwing: SharedStateFailure.invalidResponse) }
+    }
 
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
@@ -285,7 +418,12 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
         }
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await transport.session.data(for: request) }
+        let successLimit = failureFormat == .supabaseAuth
+            ? TransportResponseLimit.authSuccess : TransportResponseLimit.commandSuccess
+        do { (data, response) = try await transport.receive(request, successLimit: successLimit) }
+        catch BoundedTransportError.oversizedSuccess { throw SharedStateFailure.invalidResponse }
+        catch BoundedTransportError.oversizedFailure { throw SharedStateFailure.serviceUnavailable }
+        catch BoundedTransportError.unexpectedResponse { throw SharedStateFailure.invalidResponse }
         catch { throw SharedStateFailure.serviceUnavailable }
         guard let http = response as? HTTPURLResponse else { throw SharedStateFailure.invalidResponse }
         guard !(300..<400).contains(http.statusCode) else {

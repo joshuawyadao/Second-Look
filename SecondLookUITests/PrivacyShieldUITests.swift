@@ -81,6 +81,13 @@ final class PrivacyShieldUITests: XCTestCase {
         verifyCoverAndRestore(over: done)
         XCTAssertTrue(summary.exists)
         done.tap()
-        XCTAssertTrue(app.buttons["createRoutine"].isHittable)
+        let root = app.buttons["createRoutine"]
+        let usableRoot = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"), object: root
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [usableRoot], timeout: 5), .completed,
+                       "Dismissal must restore the tappable root within the bounded transition")
+        XCTAssertFalse(done.exists, "Local settings must be dismissed")
+        XCTAssertTrue(root.isHittable)
     }
 }

@@ -146,6 +146,8 @@ public struct ChecklistRun: Identifiable, Codable, Equatable, Sendable {
     public var closedAt: Date?
     public var revision: Int
     public var cleanupStatus: CleanupStatus?
+    /// Text-only closure fact retained after current synthetic evidence is stripped.
+    public var hadEvidenceAtClosure: Bool?
     public var isOpen: Bool { outcome == nil }
     public var isSatisfied: Bool { !items.isEmpty && items.allSatisfy(\.isSatisfied) }
 }

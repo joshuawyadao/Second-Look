@@ -5,10 +5,57 @@ public struct SecondLookState: Codable, Equatable, Sendable {
     public private(set) var runs: [ChecklistRun]
     public private(set) var archives: [TextArchive]
 
+    private enum CodingKeys: String, CodingKey {
+        case routines, runs, archives, closureProvenanceVersion
+    }
+
+    private enum RunProvenanceKey: String, CodingKey {
+        case hadEvidenceAtClosure
+    }
+
     public init(routines: [Routine] = [], runs: [ChecklistRun] = [], archives: [TextArchive] = []) {
         self.routines = routines
         self.runs = runs
         self.archives = archives
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        routines = try container.decode([Routine].self, forKey: .routines)
+        runs = try container.decode([ChecklistRun].self, forKey: .runs)
+        archives = try container.decode([TextArchive].self, forKey: .archives)
+
+        if container.contains(.closureProvenanceVersion) {
+            let version = try container.decode(Int.self, forKey: .closureProvenanceVersion)
+            guard version == 1 else {
+                throw DecodingError.dataCorruptedError(forKey: .closureProvenanceVersion,
+                                                       in: container, debugDescription: "Unsupported closure provenance version")
+            }
+        } else {
+            // An unversioned state is legacy only if no run claims a new marker,
+            // including an explicit null marker omitted by decodeIfPresent.
+            var encodedRuns = try container.nestedUnkeyedContainer(forKey: .runs)
+            while !encodedRuns.isAtEnd {
+                let encodedRun = try encodedRuns.nestedContainer(keyedBy: RunProvenanceKey.self)
+                guard !encodedRun.contains(.hadEvidenceAtClosure) else {
+                    throw DecodingError.dataCorruptedError(forKey: .runs, in: container,
+                                                           debugDescription: "Unversioned closure marker")
+                }
+            }
+            for index in runs.indices where !runs[index].isOpen {
+                guard let archive = archives.first(where: { $0.id == runs[index].id }),
+                      archive.cleanupStatus == runs[index].cleanupStatus else { continue }
+                runs[index].hadEvidenceAtClosure = archive.cleanupStatus != .notNeeded
+            }
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(routines, forKey: .routines)
+        try container.encode(runs, forKey: .runs)
+        try container.encode(archives, forKey: .archives)
+        try container.encode(1, forKey: .closureProvenanceVersion)
     }
 
     public mutating func saveRoutine(_ routine: Routine) throws {
@@ -192,15 +239,20 @@ public struct SecondLookState: Codable, Equatable, Sendable {
     private mutating func start(title: String, items: [RoutineItem], settings: RunSettings,
                                 routineID: UUID?, routineVersion: Int?, performerID: UUID,
                                 reviewerID: UUID?, now: Date) throws -> UUID {
+        guard Self.validRunProvenance(routineID: routineID, routineVersion: routineVersion) else {
+            throw SecondLookError.invalidDefinition
+        }
         try Self.validate(title: title, items: items)
         try Self.validate(settings: settings)
         if items.contains(where: { $0.priority == .high }) {
             guard let reviewerID, reviewerID != performerID else { throw SecondLookError.reviewerRequired }
         }
+        guard reviewerID != performerID else { throw SecondLookError.invalidDefinition }
         let run = ChecklistRun(id: UUID(), routineID: routineID, routineVersion: routineVersion,
                                title: title, items: items.map(RunItem.init(definition:)), settings: settings,
                                performerID: performerID, reviewerID: reviewerID, startedAt: now,
-                               outcome: nil, closedAt: nil, revision: 1, cleanupStatus: nil)
+                               outcome: nil, closedAt: nil, revision: 1, cleanupStatus: nil,
+                               hadEvidenceAtClosure: nil)
         runs.append(run)
         return run.id
     }
@@ -228,7 +280,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
     }
 
     /// Rejects structurally inconsistent local documents before they become editable state.
-    func validateForLoad() throws {
+    public func validateForLoad() throws {
         guard Set(routines.map(\.id)).count == routines.count,
               Set(runs.map(\.id)).count == runs.count,
               Set(archives.map(\.id)).count == archives.count else {
@@ -243,29 +295,39 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         for run in runs {
             guard !run.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !run.items.isEmpty,
+                  Self.validRunProvenance(routineID: run.routineID, routineVersion: run.routineVersion),
                   Set(run.items.map(\.id)).count == run.items.count,
                   run.items.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
                 throw SecondLookError.corruptDocument
             }
             do { try Self.validate(settings: run.settings) }
             catch { throw SecondLookError.corruptDocument }
+            guard run.reviewerID != run.performerID else { throw SecondLookError.corruptDocument }
             if run.items.contains(where: { $0.priority == .high }) {
-                guard let reviewerID = run.reviewerID, reviewerID != run.performerID else {
-                    throw SecondLookError.corruptDocument
-                }
+                guard run.reviewerID != nil else { throw SecondLookError.corruptDocument }
             }
             for item in run.items {
                 try Self.validateRestoredEvidence(item, reviewerID: run.reviewerID)
             }
             let archive = archives.first(where: { $0.id == run.id })
             if run.isOpen {
-                guard run.closedAt == nil, run.cleanupStatus == nil, archive == nil else {
+                guard !run.isSatisfied,
+                      run.closedAt == nil, run.cleanupStatus == nil,
+                      run.hadEvidenceAtClosure == nil, archive == nil else {
                     throw SecondLookError.corruptDocument
                 }
             } else {
                 guard let archive, let outcome = run.outcome, let closedAt = run.closedAt,
+                      let hadEvidenceAtClosure = run.hadEvidenceAtClosure,
                       archive.outcome == outcome, archive.closedAt == closedAt,
                       archive.cleanupStatus == run.cleanupStatus,
+                      (hadEvidenceAtClosure ? run.cleanupStatus != .notNeeded : run.cleanupStatus == .notNeeded),
+                      Self.archiveMatchesClosedRun(archive, run: run),
+                      outcome != .canceled || !Self.closedRunIsSatisfied(archive, run: run),
+                      run.items.contains(where: { $0.priority == .high }) ||
+                          run.cleanupStatus == .notNeeded,
+                      outcome != .completed || !run.items.contains(where: { $0.priority == .high }) ||
+                          run.cleanupStatus != .notNeeded,
                       run.items.allSatisfy({ $0.submission == nil && $0.preview == nil }) else {
                     throw SecondLookError.corruptDocument
                 }
@@ -276,11 +338,95 @@ public struct SecondLookState: Codable, Equatable, Sendable {
         }
     }
 
+    private static func validRunProvenance(routineID: UUID?, routineVersion: Int?) -> Bool {
+        switch (routineID, routineVersion) {
+        case (nil, nil): return true
+        case (.some, .some(let version)): return version > 0
+        default: return false
+        }
+    }
+
+    /// Call after archiveMatchesClosedRun has established the final-decision boundary.
+    /// Closed runs have no current submission, so RunItem.isSatisfied cannot recover approval.
+    private static func closedRunIsSatisfied(_ archive: TextArchive, run: ChecklistRun) -> Bool {
+        !run.items.isEmpty && zip(run.items, archive.items).allSatisfy { item, archived in
+            switch item.priority {
+            case .standard: return item.checkedAt != nil
+            case .high:
+                return archived.decisions.dropFirst(item.priorDecisions.count).first?.verdict == .approved
+            }
+        }
+    }
+
+    /// Closure retains the run's text and decision history while discarding current media.
+    /// The only decision absent from a closed RunItem is its final current submission's decision.
+    private static func archiveMatchesClosedRun(_ archive: TextArchive, run: ChecklistRun) -> Bool {
+        guard archive.title == run.title,
+              archive.routineID == run.routineID,
+              archive.performerID == run.performerID,
+              archive.reviewerID == run.reviewerID,
+              archive.startedAt == run.startedAt,
+              archive.items.count == run.items.count else { return false }
+
+        for (item, archived) in zip(run.items, archive.items) {
+            guard archived.title == item.title,
+                  archived.priority == item.priority,
+                  archived.checkedAt == item.checkedAt,
+                  archived.decisions.count >= item.priorDecisions.count,
+                  archived.decisions.count <= item.priorDecisions.count + 1,
+                  Array(archived.decisions.prefix(item.priorDecisions.count)) == item.priorDecisions,
+                  archived.decisions.allSatisfy({ $0.actorID == run.reviewerID }) else {
+                return false
+            }
+
+            let currentDecision = archived.decisions.dropFirst(item.priorDecisions.count).first
+            if item.priority == .standard {
+                guard archived.decisions.isEmpty,
+                      run.outcome != .completed || item.checkedAt != nil else { return false }
+            } else if let currentDecision {
+                // This suffix came from the submission stripped at closure,
+                // unlike the withdrawn decisions retained in priorDecisions.
+                guard run.hadEvidenceAtClosure == true,
+                      validHistoricalDecision(currentDecision),
+                      currentDecision.submissionVersion == item.lastVersion,
+                      currentDecision.submissionVersion > (item.priorDecisions.last?.submissionVersion ?? 0)
+                else { return false }
+            }
+            if run.outcome == .completed, item.priority == .high {
+                guard currentDecision?.verdict == .approved else { return false }
+            }
+        }
+        return true
+    }
+
+    private static func validHistoricalDecision(_ decision: ReviewDecision) -> Bool {
+        guard decision.submissionVersion > 0 else { return false }
+        switch decision.verdict {
+        case .approved:
+            return decision.note == nil
+        case .requestedAnother:
+            return decision.note.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        }
+    }
+
     private static func validateRestoredEvidence(_ item: RunItem, reviewerID: UUID?) throws {
         guard item.lastVersion >= 0 else { throw SecondLookError.corruptDocument }
         if item.priority == .standard {
-            guard item.submission == nil, item.preview == nil else { throw SecondLookError.corruptDocument }
+            guard item.submission == nil, item.preview == nil,
+                  item.priorDecisions.isEmpty else { throw SecondLookError.corruptDocument }
             return
+        }
+        guard item.checkedAt == nil else { throw SecondLookError.corruptDocument }
+        var precedingVersion = 0
+        for decision in item.priorDecisions {
+            guard let reviewerID, decision.actorID == reviewerID,
+                  validHistoricalDecision(decision),
+                  decision.submissionVersion > precedingVersion,
+                  decision.submissionVersion <= item.lastVersion,
+                  item.submission == nil || decision.submissionVersion < item.lastVersion else {
+                throw SecondLookError.corruptDocument
+            }
+            precedingVersion = decision.submissionVersion
         }
         if let submission = item.submission {
             guard submission.version > 0, submission.version == item.lastVersion else {
@@ -302,15 +448,14 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 guard submission.acceptedAt != nil, let reviewerID,
                       let decision = submission.decision,
                       decision.actorID == reviewerID,
-                      decision.submissionVersion == submission.version else {
+                      decision.submissionVersion == submission.version,
+                      validHistoricalDecision(decision) else {
                     throw SecondLookError.corruptDocument
                 }
                 if submission.status == .approved {
                     guard decision.verdict == .approved else { throw SecondLookError.corruptDocument }
                 } else {
-                    guard decision.verdict == .requestedAnother,
-                          let note = decision.note,
-                          !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    guard decision.verdict == .requestedAnother else {
                         throw SecondLookError.corruptDocument
                     }
                 }
@@ -353,10 +498,12 @@ public struct SecondLookState: Codable, Equatable, Sendable {
 
     private mutating func close(index: Int, outcome: RunOutcome, now: Date) {
         var run = runs[index]
-        let cleanupStatus: CleanupStatus = run.items.contains { $0.submission != nil || $0.preview != nil } ? .pending : .notNeeded
+        let hadEvidenceAtClosure = run.items.contains { $0.submission != nil || $0.preview != nil }
+        let cleanupStatus: CleanupStatus = hadEvidenceAtClosure ? .pending : .notNeeded
         run.outcome = outcome
         run.closedAt = now
         run.cleanupStatus = cleanupStatus
+        run.hadEvidenceAtClosure = hadEvidenceAtClosure
         run.revision += 1
         let historyItems = run.items.map { item in
             ArchiveItem(title: item.title, priority: item.priority, checkedAt: item.checkedAt,

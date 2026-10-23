@@ -25,6 +25,7 @@ PY
 SECONDLOOK_DERIVED_DATA=${SECONDLOOK_DERIVED_DATA:-"$REPO_ROOT/DerivedData"}
 
 swift test
+swift test --configuration release --build-system native
 xcodebuild -project SecondLook.xcodeproj -scheme SecondLook -configuration Debug \
     -destination "platform=iOS Simulator,id=$SECONDLOOK_SIMULATOR_ID" \
     -derivedDataPath "$SECONDLOOK_DERIVED_DATA" -parallel-testing-enabled NO \

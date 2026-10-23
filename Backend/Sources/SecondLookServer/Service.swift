@@ -241,6 +241,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                         expectedRunRevision: body.expectedRunRevision))
                 let result = SharedCommandResult(snapshot: .init(spaceID: snapshot.spaceID,
                     revision: snapshot.revision + 1, members: snapshot.members, state: state))
+                try result.snapshot.validateProspectiveCapacity(at: now)
                 try service.validateSnapshot(result.snapshot, actor: actor, expectedSpaceID: body.spaceID)
                 let digest = PrivateSpaceService.digest(try SharedWireCodec.encode(body))
                 let committed = try await service.store.commit(actor: actor, envelope: envelope,
@@ -302,6 +303,7 @@ private func respond(_ operation: () async throws -> Response) async -> Response
         case SharedStateFailure.invalidInvite: status = .badRequest; code = "invalidInvite"
         case SharedStateFailure.pairingUnavailable: status = .conflict; code = "pairingUnavailable"
         case SharedStateFailure.staleState: status = .conflict; code = "staleState"
+        case SharedStateFailure.capacityExceeded: status = .conflict; code = "capacityExceeded"
         case let SharedStateFailure.domain(domain): status = .badRequest; code = String(describing: domain)
         case let domain as SecondLookError: status = .badRequest; code = String(describing: domain)
         case SharedStateFailure.scopeMismatch: status = .badRequest; code = "scopeMismatch"

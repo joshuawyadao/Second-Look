@@ -1892,10 +1892,12 @@ final class ConnectedAppModel {
         case .invalidInvite: return "This invitation is invalid or has expired."
         case .pairingUnavailable: return "This private space cannot accept another account."
         case .staleState: return "The shared list changed. It has been refreshed; review it before trying again."
+        case .capacityExceeded: return "This change exceeds the private space's current limits. Your existing lists are still available."
         case .scopeMismatch, .sessionChanged: return "The account changed. Reopen the current space."
         case .invalidResponse: return "The service returned an unexpected response. No local change was saved."
         case .serviceUnavailable: return "The service is unavailable. Try again when connected."
         case .domain(.reviewerRequired): return "Invite the other account before starting a high-priority run."
+        case .domain(.invalidDefinition): return "Check the title and items. Shorten long text or reduce the number of items, then try again."
         case .domain(let error): return AppModel.message(error)
         }
     }

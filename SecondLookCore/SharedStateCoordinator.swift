@@ -945,7 +945,7 @@ public final class SharedStateCoordinator {
         case .serviceUnavailable, .invalidResponse, .scopeMismatch:
             return false
         case .unauthenticated, .forbidden, .notPaired, .invalidInvite, .pairingUnavailable,
-             .staleState, .sessionChanged, .domain:
+             .staleState, .sessionChanged, .capacityExceeded, .domain:
             return true
         }
     }

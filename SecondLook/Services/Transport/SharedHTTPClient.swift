@@ -326,6 +326,7 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
             switch code {
             case "pairingUnavailable": return .pairingUnavailable
             case "staleState": return .staleState
+            case "capacityExceeded": return .capacityExceeded
             default: return .serviceUnavailable
             }
         case 400:

@@ -66,6 +66,13 @@ public struct SharedSnapshot: Codable, Equatable, Sendable {
                 throw SharedStateFailure.invalidResponse
             }
         }
+        try SharedStateLimits.validateStored(state)
+    }
+
+    /// Check a newly composed connected snapshot before a server writes it. The Debug
+    /// localhost evidence route also uses this because it bypasses SharedCommandProcessor.
+    public func validateProspectiveCapacity(at now: Date) throws {
+        try SharedStateLimits.validateProposed(state, now: now)
     }
 }
 
@@ -124,7 +131,7 @@ public struct SharedCommandResult: Codable, Equatable, Sendable {
 
 public enum SharedStateFailure: Error, Equatable, Sendable {
     case unauthenticated, forbidden, notPaired, invalidInvite, pairingUnavailable
-    case staleState, scopeMismatch, sessionChanged, invalidResponse, serviceUnavailable
+    case staleState, scopeMismatch, sessionChanged, invalidResponse, serviceUnavailable, capacityExceeded
     case domain(SecondLookError)
 }
 
@@ -160,6 +167,7 @@ public enum SharedCommandProcessor {
         try snapshot.validate(for: actorID)
         guard envelope.expectedSpaceRevision == snapshot.revision else { throw SharedStateFailure.staleState }
         guard snapshot.revision < Int.max else { throw SharedStateFailure.invalidResponse }
+        try SharedStateLimits.validateInput(envelope.command)
         var state = snapshot.state
         var createdID: UUID?
         let reviewerID = snapshot.members.first { $0 != actorID }
@@ -219,6 +227,7 @@ public enum SharedCommandProcessor {
         }
         let next = SharedSnapshot(spaceID: snapshot.spaceID, revision: snapshot.revision + 1,
                                   members: snapshot.members, state: state)
+        try next.validateProspectiveCapacity(at: now)
         try next.validate(for: actorID)
         return SharedCommandResult(snapshot: next, createdID: createdID)
     }

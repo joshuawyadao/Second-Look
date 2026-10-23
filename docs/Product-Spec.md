@@ -65,3 +65,7 @@ Primary navigation: **Routines**, **Review**, **History**. Routine cards offer S
 Synthetic example: **Packages brought inside** — Bring packages inside (standard); Lock the front door (high priority, instruction “Show the inside deadbolt locked”); Put keys away (standard). It is example content, never a hard-coded restriction or real household record.
 
 Connected history displays each archive’s actual cleanup status. Milestone2 statuses describe synthetic metadata only; no real photo is stored or deleted and no connected cleanup worker exists.
+
+## Connected capacity safeguards
+
+The private shared aggregate has reversible engineering limits: titles256UTF-8 bytes, photo instructions1024bytes, review notes2048bytes,64items per list,128routines,512retained runs and512text archives,64total decisions per item, and2MiB of canonical encoded state. These ceilings apply only to connected state; they do not alter local-demo documents or establish retention/deletion policy. A proposed write reserves space for every existing open run's text archive and its final completion metadata/decision. At capacity, growth is refused with a clear error; existing lists stay available and normal terminal work can finish. No history is silently removed. Reaching the finite run/history limit stops new creations until a later archival architecture is designed; there is no automatic age-based expiry.

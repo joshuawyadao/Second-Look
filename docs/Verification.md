@@ -1,5 +1,12 @@
 # Verification
 
+## October22 post-readiness merge repair — in progress
+
+A later automatic review on the previously green head80cea16 adds three merge blockers (99 total threads): skipped run-counter growth, provider API-key/session-error distinction and cumulative aggregate size. Earlier merge-ready statements are historical. The October22 merge request remains pending until the repaired head passes review/CI; no merge or branch deletion has occurred at this checkpoint.
+
+The skipped-revision regression adds seven cases to the existing five controls. Old production code fails10 assertions across4 actual negative cases; the three new positive controls and existing five pass. The repair accounts once for the skipped command budget across retained runs, automatic completion and each genuine Debug synthetic composition. All12 focused Debug cases pass in0.041s, including unseeded references, preserved original receipt retry and an Int.max shared gap. Focused Release also passes all11 cases in0.031s (the synthetic composition case is Debug-only). Broader checks and the other two repairs are recorded below when complete; this is not current hosted acceptance.
+
+
 ## Commands and requirements
 
 Repository checks require Git, Python 3.10+, and a POSIX shell. The core package requires Swift 6; the pinned server dependencies require Swift 6.2+ (CI uses 6.2.1). Native checks require macOS, Xcode 16+, and an installed iOS Simulator runtime. The app provisionally targets iOS 17; no device signing or service credentials are needed for a simulator.

@@ -216,4 +216,142 @@ final class RunRevisionTransitionTests: XCTestCase {
         XCTAssertEqual(coordinator.snapshot, closed)
         XCTAssertGreaterThan(closed.state.runs[0].revision, independent.state.runs[0].revision)
     }
+
+    func testSkippedSpaceRevisionsRejectUnreachableRunRevision() async throws {
+        let (state, _, _) = try fixture()
+        let first = view(state, revision: 1)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        let incoming = view(changedRun(state) { $0.revision = 100 }, revision: 3)
+        try incoming.validate(for: owner)
+        await client.setCurrent(incoming)
+        await expectInvalid(coordinator)
+        XCTAssertEqual(coordinator.snapshot, first)
+    }
+
+    func testUnseededReferencesRejectUnreachableSkippedRunRevision() async throws {
+        let (state, _, _) = try fixture()
+        let first = view(state, revision: 1)
+        let incoming = view(changedRun(state) { $0.revision = 100 }, revision: 3)
+        try incoming.validate(for: owner)
+        let client = RunRevisionClient(current: incoming, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        await expectInvalid(coordinator, references: [first])
+        XCTAssertNil(coordinator.snapshot)
+    }
+
+    func testSkippedRevisionBudgetCannotBeSpentByTwoRuns() async throws {
+        var (state, firstRun, _) = try fixture()
+        let secondRun = try state.startOneOff(title: "Invented second list",
+            items: [RoutineItem(title: "Coat")], performerID: owner, reviewerID: peer, now: now)
+        let first = view(state, revision: 1)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        for runID in [firstRun, secondRun] {
+            for enabled in [true, false] {
+                try state.updateRunSettings(runID: runID, actorID: owner,
+                    settings: RunSettings(reminders: .init(remindPerformer: enabled)))
+            }
+        }
+        let incoming = view(state, revision: 3)
+        try incoming.validate(for: owner)
+        await client.setCurrent(incoming)
+        await expectInvalid(coordinator)
+        XCTAssertEqual(coordinator.snapshot, first)
+    }
+
+    func testSkippedMalformedCommandViewRetainsOriginalReceiptRetry() async throws {
+        let (state, _, _) = try fixture()
+        let first = view(state, revision: 0)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        let command: SharedCommand = .saveRoutine(definition: Routine(title: "Invented extra",
+            items: [RoutineItem(title: "Scarf")]), expectedDefinitionVersion: nil)
+        let commandID = UUID()
+        let envelope = SharedCommandEnvelope(spaceID: space, commandID: commandID,
+                                             expectedSpaceRevision: 0, command: command)
+        let genuine = try SharedCommandProcessor.apply(envelope, to: first,
+                                                       actorID: owner, now: now)
+        let incoming = view(changedRun(genuine.snapshot.state) { $0.revision = 100 }, revision: 3)
+        try incoming.validate(for: owner)
+        await client.overrideNextCommand(with: incoming)
+        do {
+            _ = try await coordinator.execute(command, commandID: commandID)
+            XCTFail("An unreachable run revision was accepted from a newer receipt view")
+        } catch {
+            XCTAssertEqual(error as? SharedStateFailure, .invalidResponse)
+        }
+        XCTAssertEqual(coordinator.snapshot, first)
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(commandID: commandID))
+        _ = try await coordinator.execute(command, commandID: commandID)
+        XCTAssertEqual(coordinator.snapshot, genuine.snapshot)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(commandID: commandID))
+    }
+
+    func testSkippedRealStandardCompletionAccountsForAutomaticClosureIncrement() async throws {
+        var (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        for item in state.runs[0].items {
+            try state.setStandardChecked(runID: runID, itemID: item.id,
+                                          checked: true, actorID: owner, now: now)
+        }
+        XCTAssertEqual(state.runs[0].revision, first.state.runs[0].revision + 3)
+        await client.setCurrent(view(state, revision: 3))
+        let published = try await coordinator.refresh()
+        XCTAssertTrue(published)
+        XCTAssertEqual(coordinator.snapshot?.state, state)
+    }
+
+    #if DEBUG
+    func testSkippedSyntheticSendAndApprovalFitTwoSpaceCommands() async throws {
+        var state = SecondLookState()
+        let runID = try state.startOneOff(title: "Invented review",
+            items: [RoutineItem(title: "Door", priority: .high)],
+            performerID: owner, reviewerID: peer, now: now)
+        let first = view(state, revision: 1)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        let itemID = state.runs[0].items[0].id
+        try state.prepareDraft(runID: runID, itemID: itemID, actorID: owner,
+            fixtureID: "M2-SYNTHETIC-NO-REAL-PHOTO", source: .simulatedCamera, now: now)
+        let version = try state.beginSend(runID: runID, itemID: itemID, actorID: owner, now: now)
+        try state.acceptSend(runID: runID, itemID: itemID, actorID: owner,
+                             expectedVersion: version, now: now)
+        try state.approve(runID: runID, itemID: itemID, actorID: peer,
+                           expectedVersion: version, now: now)
+        XCTAssertEqual(state.runs[0].revision, first.state.runs[0].revision + 5)
+        await client.setCurrent(view(state, revision: 3))
+        let published = try await coordinator.refresh()
+        XCTAssertTrue(published)
+        XCTAssertEqual(coordinator.snapshot?.state, state)
+    }
+    #endif
+
+    func testLargeSkippedRevisionBudgetDoesNotMultiplyOrOverflow() async throws {
+        let (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        var updated = state
+        try updated.updateRunSettings(runID: runID, actorID: owner,
+            settings: RunSettings(reminders: .init(remindPerformer: true)))
+        let incoming = view(updated, revision: Int.max)
+        let client = RunRevisionClient(current: incoming, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        let published = try await coordinator.refresh(validatingAgainst: [first])
+        XCTAssertTrue(published)
+        XCTAssertEqual(coordinator.snapshot, incoming)
+    }
 }

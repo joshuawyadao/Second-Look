@@ -581,6 +581,9 @@ public final class SharedStateCoordinator {
         }
         let earlierArchives = Dictionary(uniqueKeysWithValues: earlier.state.archives.map { ($0.id, $0) })
         let laterArchives = Dictionary(uniqueKeysWithValues: later.state.archives.map { ($0.id, $0) })
+        // Each shared command consumes one space revision and targets at most one
+        // retained run. Spend the gap once across all runs, not once per run.
+        var remainingRunCommands = max(0, later.revision - earlier.revision)
         for run in earlier.state.runs {
             guard let current = laterRuns[run.id],
                   current.revision >= run.revision,
@@ -593,6 +596,9 @@ public final class SharedStateCoordinator {
                   current.startedAt == run.startedAt,
                   current.items.count == run.items.count,
                   run.isOpen || current == run else { return false }
+            guard let commands = minimumRunCommands(from: run, to: current),
+                  commands <= remainingRunCommands else { return false }
+            remainingRunCommands -= commands
             if later.revision > earlier.revision,
                later.revision - earlier.revision == 1,
                run.isOpen, current.outcome == .canceled {
@@ -640,6 +646,28 @@ public final class SharedStateCoordinator {
                                          runIndex: changed[0]) else { return false }
         }
         return true
+    }
+
+    /// A normal mutation advances a run once; automatic completion adds one more.
+    /// The localhost synthetic send composes three Core mutations into one shared
+    /// command, proven by a new submission version. Account for that composition
+    /// without multiplying a possibly Int.max-sized space-revision gap.
+    private func minimumRunCommands(from earlier: ChecklistRun, to later: ChecklistRun) -> Int? {
+        guard later.revision >= earlier.revision else { return nil }
+        let delta = later.revision - earlier.revision
+        let completed = earlier.isOpen && later.outcome == .completed
+        guard !completed || delta >= 2 else { return nil }
+        var mutations = delta - (completed ? 1 : 0)
+        var commands = mutations
+        for (original, updated) in zip(earlier.items, later.items) {
+            guard updated.lastVersion >= original.lastVersion else { return nil }
+            let versions = updated.lastVersion - original.lastVersion
+            guard versions <= mutations / 3 else { return nil }
+            mutations -= versions * 3
+            commands -= versions * 2
+        }
+        guard delta == 0 || commands > 0 else { return nil }
+        return commands
     }
 
     private func matchesSingleRunEffect(earlier: SharedSnapshot,

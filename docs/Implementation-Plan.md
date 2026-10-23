@@ -15,10 +15,20 @@ Clear the three review findings posted after PR #2 was marked ready, verify the 
 - [x] Update Product-Spec, Architecture, Backend-Operations, Verification and the PR ledger with actual source-qualified results, limits, failures and remaining Milestone 2 gates. Save/push each validated feedback slice and acknowledge/resolve authorized threads only after validation and push.
 - [x] Prepare the final protected merge/cleanup sequence and record its live outcome on PR #2 after this saved checkpoint: recheck final-head Codex/CI/threads, merge only the tested head through normal rules, verify the squash result before local branch deletion, deploy matching main through the existing Free service and leave a clean main checkout.
 
+## Final-head review follow-up
+
+The final-head review on `7ea1936` adds three findings (4355797768, 4355797778, 4355797785). Address these before the authorized merge. The prior three repairs and their source-qualified validation above remain complete.
+
+- [ ] Validate skipped-revision slack against reachable commands, add an impossible two-revision regression and legitimate skipped-update controls, and reject any unaccounted one-command remainder only when the paired protocol cannot hide that command.
+- [ ] Add an append-only SQL migration that bounds durable command receipts under the existing space lock, preserves all old receipts and exact retries, and returns an explicit capacity refusal for new commands. Keep a safe closure path and test concurrent admission, cap rejection, unchanged state, and replay at capacity with genuine local Postgres.
+- [ ] Bound native Auth/error/snapshot HTTP bodies while receiving bytes, preserving redirect denial, caller-session ownership, cancellation, and existing error semantics. Add exact transport regressions for declared and chunked/unknown-length oversized bodies plus valid responses on macOS and Linux.
+- [ ] Integrate the independent SQL/provider and transport slices; update Product-Spec, Architecture, Backend-Operations and Verification with chosen finite defaults, actual evidence and operational limits. Run focused then relevant broad Core/Transport/Backend, repository/native and both-key-mode local connected checks; preserve meaningful assertions.
+- [ ] Save/push each validated feedback slice, acknowledge and resolve authorized threads, inspect paginated final review state and terminal CI, then perform the explicitly requested protected squash merge and branch deletion. Apply the matching receipt migration and deploy the existing Free main service with exact data-preservation checks before hosted session acceptance. Keep all accounts, allowlists, sessions, data and paid settings unchanged.
+
 ## Final remote operations
 
 These actions occur after the final saved commit. Their live CI/review, merge commit, deployment and branch-deletion outcomes are tracked on PR #2; this source checkpoint does not preclaim those remote results. Render already points to main with automatic deployment Off. No protection bypass, forced push, state reset or paid setting change is part of the sequence.
 
 ## Open questions
 
-None. These limits are reversible engineering safeguards, not retention/deletion policy. Existing history is retained; reaching capacity rejects growth until later archival/operational work is designed. The user's explicit merge/deletion request governs the final Git action after review gates pass.
+None. These limits are reversible engineering safeguards, not retention/deletion policy. Existing history and request-bound receipts are retained; reaching capacity rejects growth until later archival/operational work is designed. The user's explicit merge/deletion request governs the final Git action after review gates pass.

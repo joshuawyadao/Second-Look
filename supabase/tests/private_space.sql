@@ -176,4 +176,124 @@ begin
     end if;
 end;
 $$;
+
+-- The receipt cap is checked after the original receipt lookup and before the
+-- aggregate update. These are synthetic metadata rows inside this transaction;
+-- the final ROLLBACK keeps all other local integration fixtures untouched.
+truncate secondlook_private.command_receipts, secondlook_private.spaces;
+do $$
+declare
+    owner uuid := '30000000-0000-0000-0000-000000000001';
+    peer uuid := '30000000-0000-0000-0000-000000000002';
+    outsider uuid := '30000000-0000-0000-0000-000000000003';
+    space uuid := '30000000-0000-0000-0000-000000000004';
+    admitted uuid := '30000000-0000-0000-0000-000000000005';
+    rejected uuid := '30000000-0000-0000-0000-000000000006';
+    closure uuid := '30000000-0000-0000-0000-000000000007';
+    final_closure uuid := '30000000-0000-0000-0000-000000000009';
+    digest text := repeat('d',64);
+    -- Codable omits a nil outcome on an open run and includes a string on a
+    -- closed one. Other run fields are immaterial to this SQL admission check.
+    open_state jsonb := '{"routines":[],"runs":[{"id":"30000000-0000-0000-0000-000000000008"},{"id":"30000000-0000-0000-0000-00000000000a"}],"archives":[]}';
+    one_closed_state jsonb := '{"routines":[],"runs":[{"id":"30000000-0000-0000-0000-000000000008","outcome":"canceled"},{"id":"30000000-0000-0000-0000-00000000000a"}],"archives":[]}';
+    closed_state jsonb := '{"routines":[],"runs":[{"id":"30000000-0000-0000-0000-000000000008","outcome":"canceled"},{"id":"30000000-0000-0000-0000-00000000000a","outcome":"completed"}],"archives":[]}';
+    first_result jsonb;
+    close_result jsonb;
+begin
+    if not has_function_privilege('service_role',
+        'public.sl_commit(uuid,uuid,bigint,uuid,text,jsonb,uuid)','execute')
+       or has_function_privilege('authenticated',
+        'public.sl_commit(uuid,uuid,bigint,uuid,text,jsonb,uuid)','execute') then
+        raise exception 'receipt-cap migration changed RPC privileges';
+    end if;
+    insert into secondlook_private.spaces
+        (space_id,owner_id,members,revision,state)
+        values (space,owner,array[owner,peer],8189,open_state);
+    insert into secondlook_private.command_receipts
+        (space_id,command_id,actor_id,request_digest,committed_revision)
+        select space,
+               ('00000000-0000-0000-0000-' || lpad(to_hex(n),12,'0'))::uuid,
+               owner,digest,n
+          from generate_series(1,8189) as n;
+
+    first_result := public.sl_commit(owner,space,8189,admitted,digest,open_state,admitted);
+    if (first_result->'snapshot'->>'revision')::bigint <> 8190
+       or first_result->>'createdID' is distinct from admitted::text
+       or (select count(*) from secondlook_private.command_receipts) <> 8190 then
+        raise exception 'final nonterminal receipt admission failed';
+    end if;
+
+    begin
+        perform public.sl_commit(owner,space,8190,rejected,digest,open_state,null);
+        raise exception 'nonterminal write consumed closure reserve';
+    exception when raise_exception then
+        if sqlerrm <> 'capacityExceeded' then raise; end if;
+    end;
+    if (select revision from secondlook_private.spaces) <> 8190
+       or (select state from secondlook_private.spaces) <> open_state
+       or (select count(*) from secondlook_private.command_receipts) <> 8190 then
+        raise exception 'capacity refusal changed state, revision or receipts';
+    end if;
+    if public.sl_commit(owner,space,0,admitted,digest,'{"forged":true}'::jsonb,outsider)
+       <> first_result
+       or public.sl_receipt(owner,space,admitted,digest) <> first_result then
+        raise exception 'original actor-bound receipt did not replay at capacity';
+    end if;
+    begin
+        perform public.sl_commit(peer,space,8190,admitted,digest,open_state,null);
+        raise exception 'other member borrowed a receipt at capacity';
+    exception when raise_exception then
+        if sqlerrm <> 'staleState' then raise; end if;
+    end;
+    begin
+        perform public.sl_commit(outsider,space,8190,rejected,digest,open_state,null);
+        raise exception 'outsider bypassed membership at capacity';
+    exception when raise_exception then
+        if sqlerrm <> 'forbidden' then raise; end if;
+    end;
+    begin
+        perform public.sl_commit(owner,space,8190,rejected,'short',open_state,null);
+        raise exception 'malformed digest was treated as capacity';
+    exception when raise_exception then
+        if sqlerrm <> 'invalidResponse' then raise; end if;
+    end;
+    begin
+        perform public.sl_commit(owner,space,8190,rejected,digest,'{"runs":{}}'::jsonb,null);
+        raise exception 'malformed run collection bypassed reservation';
+    exception when raise_exception then
+        if sqlerrm <> 'invalidResponse' then raise; end if;
+    end;
+
+    close_result := public.sl_commit(peer,space,8190,closure,digest,one_closed_state,null);
+    if (close_result->'snapshot'->>'revision')::bigint <> 8191
+       or (select count(*) from secondlook_private.command_receipts) <> 8191
+       or (select state from secondlook_private.spaces) <> one_closed_state then
+        raise exception 'first terminal closure failed to use its reserved receipt';
+    end if;
+    if public.sl_commit(peer,space,1,closure,digest,'{"forged":true}'::jsonb,outsider)
+       <> close_result then
+        raise exception 'first terminal receipt was not replayable with reserve full';
+    end if;
+    close_result := public.sl_commit(owner,space,8191,final_closure,digest,closed_state,null);
+    if (close_result->'snapshot'->>'revision')::bigint <> 8192
+       or (select count(*) from secondlook_private.command_receipts) <> 8192
+       or (select state from secondlook_private.spaces) <> closed_state then
+        raise exception 'second terminal closure failed to use its reserved receipt';
+    end if;
+    if public.sl_commit(owner,space,1,final_closure,digest,'{"forged":true}'::jsonb,outsider)
+       <> close_result then
+        raise exception 'terminal receipt was not replayable at the hard cap';
+    end if;
+    begin
+        perform public.sl_commit(owner,space,8192,rejected,digest,closed_state,null);
+        raise exception 'receipt table exceeded hard cap';
+    exception when raise_exception then
+        if sqlerrm <> 'capacityExceeded' then raise; end if;
+    end;
+    if (select revision from secondlook_private.spaces) <> 8192
+       or (select count(*) from secondlook_private.command_receipts) <> 8192 then
+        raise exception 'hard-cap rejection changed aggregate or receipts';
+    end if;
+end;
+$$;
 rollback;

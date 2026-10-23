@@ -133,6 +133,7 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
             case "invalidInvite": throw SharedStateFailure.invalidInvite
             case "pairingUnavailable": throw SharedStateFailure.pairingUnavailable
             case "staleState": throw SharedStateFailure.staleState
+            case "capacityExceeded": throw SharedStateFailure.capacityExceeded
             default: throw SharedStateFailure.serviceUnavailable
             }
         }

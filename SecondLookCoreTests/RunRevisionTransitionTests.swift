@@ -449,4 +449,128 @@ final class RunRevisionTransitionTests: XCTestCase {
         }
         try await assertGapCost(first, state: state, members: [owner, peer], commands: 3)
     }
+
+    func testPairedSingleUnaccountedRevisionRejectsCombinedRunEffect() async throws {
+        let (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        var mutated = state
+        try mutated.setStandardChecked(runID: runID, itemID: state.runs[0].items[0].id,
+            checked: true, actorID: owner, now: now)
+        try mutated.updateRunSettings(runID: runID, actorID: owner,
+            settings: RunSettings(reminders: .init(remindPerformer: true)))
+        // Two distinct effects require two run increments. An extra space
+        // revision cannot justify compressing both effects into one run write.
+        let impossible = view(changedRun(mutated) { $0.revision -= 1 }, revision: 3)
+        try impossible.validate(for: owner)
+        for seeded in [false, true] {
+            let client = RunRevisionClient(current: seeded ? first : impossible,
+                                           actorID: owner, now: now)
+            let coordinator = SharedStateCoordinator()
+            coordinator.beginSession(scope: scope, client: client)
+            if seeded { _ = try await coordinator.refresh() }
+            await client.setCurrent(impossible)
+            await expectInvalid(coordinator, references: seeded ? [] : [first])
+            XCTAssertEqual(coordinator.snapshot, seeded ? first : nil)
+        }
+    }
+
+    func testUnaccountedRevisionKeepsOriginalCommandRetry() async throws {
+        let (state, runID, _) = try fixture()
+        let first = view(state, revision: 1)
+        let client = RunRevisionClient(current: first, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        _ = try await coordinator.refresh()
+        let command: SharedCommand = .updateRunSettings(runID: runID,
+            settings: RunSettings(reminders: .init(remindPerformer: true)),
+            expectedRunRevision: state.runs[0].revision)
+        let commandID = UUID()
+        let envelope = SharedCommandEnvelope(spaceID: space, commandID: commandID,
+            expectedSpaceRevision: first.revision, command: command)
+        let genuine = try SharedCommandProcessor.apply(envelope, to: first,
+                                                       actorID: owner, now: now)
+        let impossible = view(genuine.snapshot.state, revision: first.revision + 2)
+        await client.overrideNextCommand(with: impossible)
+        do {
+            _ = try await coordinator.execute(command, commandID: commandID)
+            XCTFail("A paired receipt view cannot hide a single unchanged command")
+        } catch { XCTAssertEqual(error as? SharedStateFailure, .invalidResponse) }
+        XCTAssertEqual(coordinator.snapshot, first)
+        XCTAssertTrue(coordinator.hasUnconfirmedCommand(commandID: commandID))
+        _ = try await coordinator.execute(command, commandID: commandID)
+        XCTAssertEqual(coordinator.snapshot, genuine.snapshot)
+        XCTAssertFalse(coordinator.hasUnconfirmedCommand(commandID: commandID))
+    }
+
+    func testSingleHiddenSaveBeforeRoutineDeletionRemainsReachable() async throws {
+        var (state, _, routineID) = try fixture()
+        let first = view(state, revision: 1)
+        let definition = try XCTUnwrap(state.routines.first)
+        try state.saveRoutine(definition)
+        try state.deleteRoutine(id: routineID)
+        let incoming = view(state, revision: 3)
+        let client = RunRevisionClient(current: incoming, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        let published = try await coordinator.refresh(validatingAgainst: [first])
+        XCTAssertTrue(published)
+        XCTAssertEqual(coordinator.snapshot, incoming)
+    }
+
+    func testSingleHiddenSaveBeforeForcedRoutineRecreationRemainsReachable() async throws {
+        var (state, _, routineID) = try fixture()
+        let first = view(state, revision: 1)
+        let definition = try XCTUnwrap(state.routines.first)
+        try state.saveRoutine(definition)
+        try state.deleteRoutine(id: routineID)
+        try state.saveRoutine(Routine(id: routineID, title: "Recreated invented definition",
+            items: [RoutineItem(title: "Hat")]))
+        let incoming = view(state, revision: 4)
+        let client = RunRevisionClient(current: incoming, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        let published = try await coordinator.refresh(validatingAgainst: [first])
+        XCTAssertTrue(published)
+        XCTAssertEqual(coordinator.snapshot, incoming)
+    }
+
+    func testSingleHiddenInvitationRenewalBeforeJoinRemainsReachable() async throws {
+        let first = SharedSnapshot(spaceID: space, revision: 1, members: [owner], state: .init())
+        let incoming = view(.init(), revision: 3)
+        let client = RunRevisionClient(current: incoming, actorID: owner, now: now)
+        let coordinator = SharedStateCoordinator()
+        coordinator.beginSession(scope: scope, client: client)
+        let published = try await coordinator.refresh(validatingAgainst: [first])
+        XCTAssertTrue(published)
+        XCTAssertEqual(coordinator.snapshot, incoming)
+    }
+
+    func testRoutineVersionRejectsSingleSlackButTemporaryRoutineCyclesRemainValid() async throws {
+        let (state, _, _) = try fixture()
+        let first = view(state, revision: 1)
+        var saved = state
+        try saved.saveRoutine(try XCTUnwrap(state.routines.first))
+        let impossible = view(saved, revision: 3)
+        let invalidClient = RunRevisionClient(current: impossible, actorID: owner, now: now)
+        let invalidCoordinator = SharedStateCoordinator()
+        invalidCoordinator.beginSession(scope: scope, client: invalidClient)
+        await expectInvalid(invalidCoordinator, references: [first])
+        XCTAssertNil(invalidCoordinator.snapshot)
+        for extraSave in [false, true] {
+            var transient = state
+            let temporary = Routine(title: "Temporary invented definition",
+                items: [RoutineItem(title: "Hat")])
+            try transient.saveRoutine(temporary)
+            if extraSave { try transient.saveRoutine(temporary) }
+            try transient.deleteRoutine(id: temporary.id)
+            XCTAssertEqual(transient, state)
+            let incoming = view(transient, revision: first.revision + (extraSave ? 3 : 2))
+            let client = RunRevisionClient(current: incoming, actorID: owner, now: now)
+            let coordinator = SharedStateCoordinator()
+            coordinator.beginSession(scope: scope, client: client)
+            let published = try await coordinator.refresh(validatingAgainst: [first])
+            XCTAssertTrue(published)
+            XCTAssertEqual(coordinator.snapshot, incoming)
+        }
+    }
 }

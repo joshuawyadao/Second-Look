@@ -590,7 +590,7 @@ public final class SharedStateCoordinator {
         }
         guard let routineCommands = minimumRoutineCommands(from: earlier.state.routines,
             to: later.state.routines, budget: remainingRunCommands) else { return false }
-        remainingRunCommands -= routineCommands
+        remainingRunCommands -= routineCommands.cost
         let earlierRunIDs = Set(earlier.state.runs.map(\.id))
         for run in later.state.runs where !earlierRunIDs.contains(run.id) {
             guard remainingRunCommands > 0 else { return false }
@@ -651,6 +651,12 @@ public final class SharedStateCoordinator {
                           laterArchive: laterArchives[run.id]) else { return false }
             }
         }
+        // In a paired space every run write leaves its revision behind. A lone
+        // unexplained command cannot be hidden by creating/deleting a temporary
+        // routine (at least two writes). A required deletion/recreation CAN erase
+        // an earlier save; before pairing, invitation renewal can also consume one.
+        guard remainingRunCommands != 1 || earlier.members.count == 1 ||
+              routineCommands.erasesEarlierDefinition else { return false }
         for archive in earlier.state.archives {
             guard laterArchives[archive.id] == archive else { return false }
         }
@@ -703,15 +709,17 @@ public final class SharedStateCoordinator {
     /// prefix can stay in earlier order. Every definition after the first forced
     /// append must itself be created/recreated to reach the observed final order.
     private func minimumRoutineCommands(from earlier: [Routine], to later: [Routine],
-                                        budget: Int) -> Int? {
+                                        budget: Int) -> (cost: Int, erasesEarlierDefinition: Bool)? {
         let prior = Dictionary(uniqueKeysWithValues: earlier.enumerated().map {
             ($0.element.id, (index: $0.offset, routine: $0.element))
         })
         let laterIDs = Set(later.map(\.id))
         var remaining = budget
+        var erasesEarlierDefinition = false
         for routine in earlier where !laterIDs.contains(routine.id) {
             guard remaining > 0 else { return nil }
             remaining -= 1
+            erasesEarlierDefinition = true
         }
         var canRetainPrefix = true
         var lastRetainedIndex = -1
@@ -725,6 +733,7 @@ public final class SharedStateCoordinator {
                     lastRetainedIndex = old.index
                 } else {
                     canRetainPrefix = false
+                    erasesEarlierDefinition = true
                     cost = routine.definitionVersion + 1 // Delete, create at 1, then saves.
                 }
             } else {
@@ -734,7 +743,7 @@ public final class SharedStateCoordinator {
             guard cost <= remaining else { return nil }
             remaining -= cost
         }
-        return budget - remaining
+        return (budget - remaining, erasesEarlierDefinition)
     }
 
     private func matchesSingleRunEffect(earlier: SharedSnapshot,

@@ -1,5 +1,11 @@
 # Verification
 
+## October22 final-head review follow-up — validation in progress
+
+Codex review of saved head7ea1936 adds three findings (102 total threads): exactly one unaccounted skipped revision, unbounded durable receipt growth, and buffering an arbitrary native HTTP response. The prior checkpoint's push/PR CI both ultimately pass all four jobs. Push39893614407 attempt1 fails the existing Snooze switch five-second predicate at UI line148; matching PR39893619229 and local native checks pass unchanged. Rerunning only failed jobs without code/test/assertion/deadline changes passes native12m39s and CI Verify3s on attempt2. The exact cause of the first UI failure remains unconfirmed. This does not close the three new findings.
+
+The skipped-slack regression reproduces8 meaningful assertions across two old-code cases, covering seeded/reference publication and original receipt retry. The corrected coordinator rejects exactly one unexplained command in an already paired space, except a required earlier-routine deletion/recreation can erase a prior save. Pre-join renewal also remains valid. Six new tests preserve those cases, routine-version rejection, and genuine two-/three-command temporary definition cycles. All24 focused Debug revision cases pass in0.027s; all23 Release cases pass in0.027s after source freeze. The first Release build collides with a parallel test-file edit and sandbox execution limits before completing; it is not credited as runtime evidence. Final broad/connected/Linux, current-head review/CI, hosted migration/deployment, merge and cleanup remain pending.
+
 ## October22 post-readiness repairs — local verification complete
 
 Task cleanup stops only named secondlook-m2-local services with their database volume retained and shuts down only the task-owned acceptance simulator. Both original signed-in hosted simulators remain Booted; no reset, prune, account change or credential export is performed. Repository verification after the final documentation changes passes all54 tooling cases.

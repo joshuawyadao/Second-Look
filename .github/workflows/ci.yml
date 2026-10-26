@@ -2,7 +2,7 @@ name: CI Verify
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -53,6 +53,15 @@ jobs:
         uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
         with:
           swift-version: '6.2.1'
+      # Cache only pinned public package sources. Never persist compiled output,
+      # local databases, private fixtures, or logs from the shared-state tests.
+      - name: Cache resolved Swift server dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ${{ runner.temp }}/secondlook-backend/checkouts
+            ${{ runner.temp }}/secondlook-backend/repositories
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-6.2.1-${{ hashFiles('Backend/Package.resolved', 'Backend/Package.swift', 'Package.swift') }}
       - name: Verify server boundaries
         env:
           SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend

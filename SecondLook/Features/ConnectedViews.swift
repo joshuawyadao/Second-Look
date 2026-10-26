@@ -199,6 +199,7 @@ struct ConnectedRootView: View {
         .task(id: ConnectedPollingTaskID(phase: scenePhase, scheduleEpoch: model.pollingScheduleEpoch)) {
             // Lifecycle callbacks above own full revalidation. This task owns only
             // periodic polling, so resetting its sleep cannot cancel revalidation.
+            guard scenePhase == .active else { return }
             #if SECONDLOOK_DEMO
             let arguments = ProcessInfo.processInfo.arguments
             if arguments.contains("-ui-testing") && arguments.contains("-shared-testing") &&

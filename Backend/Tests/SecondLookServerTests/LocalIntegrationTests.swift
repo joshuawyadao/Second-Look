@@ -82,7 +82,8 @@ final class LocalIntegrationTests: XCTestCase {
 
     private func raw(_ url: URL, method: String = "GET", token: String? = nil,
                      apiKey: String? = nil, body: Data? = nil,
-                     profile: String? = nil) async throws -> (Int, Data) {
+                     profile: String? = nil,
+                     headers: [String: String] = [:]) async throws -> (Int, Data) {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 15
@@ -94,6 +95,7 @@ final class LocalIntegrationTests: XCTestCase {
             request.httpBody = body
         }
         if let profile { request.setValue(profile, forHTTPHeaderField: "Accept-Profile") }
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SharedStateFailure.invalidResponse }
         return (http.statusCode, data)
@@ -139,6 +141,26 @@ final class LocalIntegrationTests: XCTestCase {
         var shared = initial.snapshot
         XCTAssertEqual(shared.members, [f.owner.id])
         try shared.validate(for: f.owner.id)
+        let firstValidator: SharedSnapshotValidator
+        switch try await owner.refreshCurrentSpace() {
+        case .snapshot(let fetched, let validator):
+            XCTAssertEqual(fetched, shared)
+            firstValidator = try XCTUnwrap(validator)
+        case .unchanged:
+            XCTFail("Initial refresh must return the complete snapshot")
+            throw SharedStateFailure.invalidResponse
+        }
+        switch try await owner.refreshCurrentSpace(known: firstValidator) {
+        case .unchanged(let validator): XCTAssertEqual(validator, firstValidator)
+        case .snapshot:
+            XCTFail("Exact content validator should receive a compact unchanged reply")
+            throw SharedStateFailure.invalidResponse
+        }
+        let malformedURL = try XCTUnwrap(URL(string: "\(f.serverURL.absoluteString)/v1/space?knownSpaceID=\(shared.spaceID)&knownRevision=\(shared.revision)"))
+        let malformed = try await raw(malformedURL, token: refreshedOwner.access_token,
+            headers: ["If-None-Match": "\"INVALID\""])
+        XCTAssertEqual(malformed.0, 400)
+        XCTAssertEqual(String(decoding: malformed.1, as: UTF8.self), "{\"code\":\"invalidResponse\"}")
         await assertFailure(.notPaired) { try await peer.currentSpace() }
         await assertFailure(.forbidden) { try await peer.fetch(spaceID: shared.spaceID) }
         await assertFailure(.forbidden) { try await outsider.fetch(spaceID: shared.spaceID) }
@@ -164,6 +186,15 @@ final class LocalIntegrationTests: XCTestCase {
         shared = try await owner.execute(command(.saveRoutine(definition: standard,
                                                               expectedDefinitionVersion: nil),
                                                  snapshot: shared)).snapshot
+        switch try await owner.refreshCurrentSpace(known: firstValidator) {
+        case .snapshot(let fetched, let validator):
+            XCTAssertEqual(fetched, shared)
+            XCTAssertEqual(validator?.revision, shared.revision)
+            XCTAssertNotEqual(validator?.token, firstValidator.token)
+        case .unchanged:
+            XCTFail("A committed mutation must return the newer complete snapshot")
+            throw SharedStateFailure.invalidResponse
+        }
         let standardStart = try await owner.execute(command(.startRun(routineID: standard.id,
                                                                      expectedDefinitionVersion: 1),
                                                         snapshot: shared))

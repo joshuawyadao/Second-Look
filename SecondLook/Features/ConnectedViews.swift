@@ -2,6 +2,11 @@ import SwiftUI
 import UIKit
 import SecondLookCore
 
+private struct ConnectedPollingTaskID: Equatable {
+    let phase: ScenePhase
+    let scheduleEpoch: UInt64
+}
+
 struct ConnectedRootView: View {
     @Environment(ConnectedAppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
@@ -191,8 +196,9 @@ struct ConnectedRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
             model.holdForValidation()
         }
-        .task(id: scenePhase) {
-            if scenePhase == .active { await model.revalidateAfterActivation() }
+        .task(id: ConnectedPollingTaskID(phase: scenePhase, scheduleEpoch: model.pollingScheduleEpoch)) {
+            // Lifecycle callbacks above own full revalidation. This task owns only
+            // periodic polling, so resetting its sleep cannot cancel revalidation.
             #if SECONDLOOK_DEMO
             let arguments = ProcessInfo.processInfo.arguments
             if arguments.contains("-ui-testing") && arguments.contains("-shared-testing") &&
@@ -201,7 +207,7 @@ struct ConnectedRootView: View {
             // Poll only a known, authenticated space while the scene is active. The root's
             // generation identity cancels this task when the account or environment changes.
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(model.nextPollDelay * 1_000_000_000))
                 guard !Task.isCancelled else { break }
                 if scenePhase == .active && model.selected && model.accountID != nil &&
                     (model.snapshot != nil || model.retryMembership) && !model.busy {

@@ -130,9 +130,26 @@ public final class SharedStateCoordinator {
     public func refresh(validatingAgainst references: [SharedSnapshot] = []) async throws -> Bool {
         guard let scope, let client else { throw SharedStateFailure.unauthenticated }
         let capturedGeneration = generation
+        let incoming: SharedSnapshot
         do {
-            let incoming = try await client.fetch(spaceID: scope.spaceID)
-            try requireCurrent(scope: scope, generation: capturedGeneration)
+            incoming = try await client.fetch(spaceID: scope.spaceID)
+        } catch {
+            try handle(error, scope: scope, generation: capturedGeneration)
+            throw error
+        }
+        return try acceptFetchedSnapshot(incoming, expectedGeneration: capturedGeneration,
+                                         validatingAgainst: references)
+    }
+
+    /// Admit a fully fetched view from a caller that already performed the network request.
+    /// This applies the same session and history checks as refresh without another fetch.
+    @discardableResult
+    public func acceptFetchedSnapshot(_ incoming: SharedSnapshot, expectedGeneration: UInt64,
+                                      validatingAgainst references: [SharedSnapshot] = []) throws -> Bool {
+        guard generation == expectedGeneration else { throw SharedStateFailure.sessionChanged }
+        guard let scope, client != nil else { throw SharedStateFailure.unauthenticated }
+        do {
+            try requireCurrent(scope: scope, generation: expectedGeneration)
             try validate(incoming, for: scope)
             var trustedByRevision: [Int: SharedSnapshot] = [:]
             for reference in references {
@@ -172,7 +189,36 @@ public final class SharedStateCoordinator {
             }
             return try publish(incoming)
         } catch {
-            try handle(error, scope: scope, generation: capturedGeneration)
+            try handle(error, scope: scope, generation: expectedGeneration)
+            throw error
+        }
+    }
+
+    /// Accept a server-confirmed unchanged response only for the active, already
+    /// published view. A validator cannot establish or restore protected state.
+    @discardableResult
+    public func acceptUnchanged(_ incoming: SharedSnapshotValidator,
+                                expectedValidator: SharedSnapshotValidator,
+                                expectedGeneration: UInt64,
+                                validatingAgainst references: [SharedSnapshot] = []) throws -> Bool {
+        guard generation == expectedGeneration else { throw SharedStateFailure.sessionChanged }
+        guard let scope, client != nil else { throw SharedStateFailure.unauthenticated }
+        do {
+            try requireCurrent(scope: scope, generation: expectedGeneration)
+            guard let snapshot else { throw SharedStateFailure.invalidResponse }
+            guard expectedValidator.isValid, incoming.isValid,
+                  expectedValidator == incoming,
+                  incoming.spaceID == scope.spaceID,
+                  incoming.revision == snapshot.revision,
+                  incoming.revision >= revisionFloor else {
+                throw SharedStateFailure.invalidResponse
+            }
+            for reference in references {
+                guard reference == snapshot else { throw SharedStateFailure.invalidResponse }
+            }
+            return false
+        } catch {
+            try handle(error, scope: scope, generation: expectedGeneration)
             throw error
         }
     }
@@ -227,12 +273,20 @@ public final class SharedStateCoordinator {
             envelope = SharedCommandEnvelope(spaceID: scope.spaceID, commandID: commandID,
                                              expectedSpaceRevision: snapshot.revision, command: command)
             // Register before awaiting the client so an explicit overlapping retry shares this ID.
+            let expectation = creationExpectation(for: command, in: snapshot,
+                actorID: scope.accountID)
+            let originalObjectIDs: Set<UUID>
+            switch command {
+            case .startRun, .startOneOff, .repeatRun, .saveRunAsRoutine:
+                originalObjectIDs = Set(snapshot.state.runs.map(\.id))
+                    .union(snapshot.state.routines.map(\.id))
+            default:
+                originalObjectIDs = []
+            }
             originalContextsByCommand[commandID] = OriginalCommandContext(
                 baseline: snapshot, actorID: scope.accountID,
-                objectIDs: Set(snapshot.state.runs.map(\.id))
-                    .union(snapshot.state.routines.map(\.id)),
-                creationExpectation: creationExpectation(for: command, in: snapshot,
-                    actorID: scope.accountID))
+                objectIDs: originalObjectIDs,
+                creationExpectation: expectation)
             unconfirmedCommands.append(envelope)
         }
         guard let original = originalContextsByCommand[commandID] else {
@@ -951,7 +1005,7 @@ public final class SharedStateCoordinator {
     private func isDefiniteRejection(_ error: Error) -> Bool {
         guard let failure = error as? SharedStateFailure else { return false }
         switch failure {
-        case .serviceUnavailable, .invalidResponse, .scopeMismatch:
+        case .serviceUnavailable, .invalidResponse, .scopeMismatch, .rateLimited:
             return false
         case .unauthenticated, .forbidden, .notPaired, .invalidInvite, .pairingUnavailable,
              .staleState, .sessionChanged, .capacityExceeded, .domain:

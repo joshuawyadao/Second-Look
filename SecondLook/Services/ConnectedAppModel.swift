@@ -16,6 +16,11 @@ final class ConnectedAppModel {
     private(set) var accountID: UUID?
     private(set) var snapshot: SharedSnapshot? {
         didSet {
+            if snapshot != oldValue {
+                pollingBaseline = nil
+                pollingPolicy.reset()
+                if activeRefreshEpoch == nil { pollingScheduleEpoch &+= 1 }
+            }
             if snapshot != nil { heldSnapshot = nil }
             if let invitation,
                snapshot?.spaceID != invitation.snapshot.spaceID ||
@@ -195,6 +200,15 @@ final class ConnectedAppModel {
     @ObservationIgnored private var refreshContinuationForAcceptance: CheckedContinuation<Void, Never>?
     @ObservationIgnored private var initialRevisionFloorForAcceptance: Int?
     #endif
+
+    private struct PollingBaseline {
+        let snapshot: SharedSnapshot
+        let validator: SharedSnapshotValidator
+    }
+    @ObservationIgnored private var pollingBaseline: PollingBaseline?
+    @ObservationIgnored private var pollingPolicy = SharedPollingPolicy()
+    var nextPollDelay: TimeInterval { pollingPolicy.nextDelay }
+    private(set) var pollingScheduleEpoch: UInt64 = 0
 
     @ObservationIgnored private let coordinator = SharedStateCoordinator()
     @ObservationIgnored private var vault: AuthSessionVault?
@@ -554,11 +568,11 @@ final class ConnectedAppModel {
         let scope = SharedAccountScope(backend: configuration.backendID,
                                        accountID: accountID, spaceID: incoming.spaceID)
         if coordinator.scope == scope {
-            // Renewing an invitation is a write to the same space. Fetch through
-            // the existing coordinator so unknown command outcomes keep their
-            // original envelopes and explicit retry IDs.
+            // Admit the already authenticated membership response without a second GET.
+            // Keeping the coordinator preserves original unknown-outcome envelopes/receipts.
             let floor = max(snapshot?.revision ?? heldSnapshot?.revision ?? 0, incoming.revision)
-            try await coordinator.refresh(validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
+            try coordinator.acceptFetchedSnapshot(incoming, expectedGeneration: coordinator.generation,
+                validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
             guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
             guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
                 throw SharedStateFailure.staleState
@@ -586,9 +600,10 @@ final class ConnectedAppModel {
             #endif
             coordinator.beginSession(scope: scope, client: coordinatorClient)
             if restoringSameScope {
-                // Core retains only issued envelopes for this verified account/space.
-                // Do not expose retry metadata until its fetch also succeeds.
-                try await coordinator.refresh(validatingAgainst: [incoming, heldSnapshot].compactMap { $0 })
+                // A full fresh membership snapshot revalidates this same scope.
+                // Conditional replies never enter this held-presentation path.
+                try coordinator.acceptFetchedSnapshot(incoming, expectedGeneration: coordinator.generation,
+                    validatingAgainst: [incoming, heldSnapshot].compactMap { $0 })
                 guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
                 guard let refreshed = coordinator.snapshot,
                       refreshed.revision >= max(heldSnapshot?.revision ?? 0, incoming.revision) else {
@@ -605,8 +620,28 @@ final class ConnectedAppModel {
                 creationCompletions = [:]
                 unconfirmedActions = []
                 suspendedSharedAlert = nil
-                // The first authenticated space lookup is already validated and held only in memory.
-                snapshot = incoming
+                #if SECONDLOOK_DEMO
+                if (initialRevisionFloorChecksRequested || initialRevisionConsistencyChecksRequested) && incoming.revision > 0 {
+                    // Retain the explicit localhost probe's original initial membership
+                    // floor; its next refresh exercises a deliberately lagging/conflicting
+                    // second fetch. Ordinary launches seed the coordinator below.
+                    snapshot = incoming
+                } else {
+                    try coordinator.acceptFetchedSnapshot(incoming, expectedGeneration: coordinator.generation,
+                        validatingAgainst: [incoming])
+                }
+                #else
+                try coordinator.acceptFetchedSnapshot(incoming, expectedGeneration: coordinator.generation,
+                    validatingAgainst: [incoming])
+                #endif
+                guard currentForegroundSession(epoch) else { throw SharedStateFailure.sessionChanged }
+                #if SECONDLOOK_DEMO
+                if !(initialRevisionFloorChecksRequested || initialRevisionConsistencyChecksRequested) || incoming.revision == 0 {
+                    snapshot = coordinator.snapshot
+                }
+                #else
+                snapshot = coordinator.snapshot
+                #endif
             }
         }
         suspendedScope = nil
@@ -1109,15 +1144,33 @@ final class ConnectedAppModel {
         guard activeRefreshEpoch != epoch else { return false }
         activeRefreshEpoch = epoch
         defer { if activeRefreshEpoch == epoch { activeRefreshEpoch = nil } }
+        if !quietly {
+            pollingPolicy.reset()
+            pollingScheduleEpoch &+= 1
+        }
+        let previous = snapshot
+        let coordinatorEpoch = coordinator.generation
+        // A validator belongs to the exact visible and coordinator-admitted content.
+        // Suspension clears it; foreground/manual discovery always requests a full body.
+        let baseline = quietly ? pollingBaseline.flatMap {
+            $0.snapshot == snapshot && $0.snapshot == coordinator.snapshot ? $0 : nil
+        } : nil
         confirmedNoSpace = false
         busy = true
         var membershipLookupReturnedSpace = false
         do {
-            // A fresh membership lookup also catches a revoked or changed space.
-            let incoming = try await client.currentSpace()
+            let response = try await client.refreshCurrentSpace(known: baseline?.validator)
             membershipLookupReturnedSpace = true
             guard currentForegroundSession(epoch) else { return false }
-            try incoming.validate(for: accountID)
+            switch response {
+            case let .unchanged(validator):
+                guard let baseline, snapshot == baseline.snapshot else {
+                    throw SharedStateFailure.invalidResponse
+                }
+                try coordinator.acceptUnchanged(validator, expectedValidator: baseline.validator,
+                    expectedGeneration: coordinatorEpoch, validatingAgainst: [baseline.snapshot])
+            case let .snapshot(incoming, validator):
+                try incoming.validate(for: accountID)
             #if SECONDLOOK_DEMO
             if draftLifecycleChecksRequested && pauseNextDraftRevalidation {
                 pauseNextDraftRevalidation = false
@@ -1146,20 +1199,33 @@ final class ConnectedAppModel {
                 guard currentForegroundSession(epoch) else { return false }
             }
             #endif
-            if snapshot?.spaceID != incoming.spaceID {
-                try await publishSpace(incoming, accountID: accountID,
-                                       configuration: configuration, client: client, epoch: epoch)
                 guard currentForegroundSession(epoch) else { return false }
-            } else {
-                let floor = max(snapshot?.revision ?? heldSnapshot?.revision ?? 0, incoming.revision)
-                try await coordinator.refresh(validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
-                guard currentForegroundSession(epoch) else { return false }
-                guard let refreshed = coordinator.snapshot, refreshed.revision >= floor else {
-                    throw SharedStateFailure.staleState
+                if snapshot?.spaceID != incoming.spaceID || coordinator.scope == nil {
+                    try await publishSpace(incoming, accountID: accountID,
+                                           configuration: configuration, client: client, epoch: epoch)
+                    guard currentForegroundSession(epoch) else { return false }
+                } else {
+                    #if SECONDLOOK_DEMO
+                    if initialRevisionFloorForAcceptance != nil {
+                        // A guarded synthetic acceptance adapter needs this explicit
+                        // second fetch; ordinary Debug/Release synchronization does not.
+                        try await coordinator.refresh(validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
+                    } else {
+                        try coordinator.acceptFetchedSnapshot(incoming, expectedGeneration: coordinatorEpoch,
+                            validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
+                    }
+                    #else
+                    try coordinator.acceptFetchedSnapshot(incoming, expectedGeneration: coordinatorEpoch,
+                        validatingAgainst: [incoming, snapshot ?? heldSnapshot].compactMap { $0 })
+                    #endif
+                    snapshot = coordinator.snapshot
+                    publishIssuedActionsAfterVerification()
                 }
-                snapshot = coordinator.snapshot
-                publishIssuedActionsAfterVerification()
+                if let validator, let admitted = snapshot, admitted == incoming {
+                    pollingBaseline = PollingBaseline(snapshot: admitted, validator: validator)
+                } else { pollingBaseline = nil }
             }
+            if quietly { pollingPolicy.record(snapshot == previous ? .unchanged : .changed) }
             if snapshot?.members.count == 2 { invitation = nil }
             status = snapshot?.members.count == 2 ? "Private space connected." : "Waiting for your invited reviewer."
             retryMembership = false
@@ -1174,11 +1240,10 @@ final class ConnectedAppModel {
                 let message = Self.safeMessage(error)
                 if handleSessionOrScopeLoss(error) { return false }
                 if quietly {
+                    pollingPolicy.record(.transientFailure)
                     status = "Could not synchronize. Retrying when connected."
-                    retryMembership = snapshot == nil
-                } else {
-                    retryMembership = snapshot == nil
                 }
+                retryMembership = snapshot == nil
                 #if SECONDLOOK_DEMO
                 let awaitingFloorDiagnostic = initialRevisionFloorForAcceptance != nil &&
                     error as? SharedStateFailure == .staleState
@@ -1196,6 +1261,8 @@ final class ConnectedAppModel {
     /// sign-in before an account is installed and discovery before a snapshot is available.
     /// Installed credentials remain bound to this account for foreground revalidation.
     func holdForValidation() {
+        pollingBaseline = nil
+        pollingPolicy.reset()
         #if SECONDLOOK_DEMO
         confirmedCreationConsumptionContinuation?.resume()
         confirmedCreationConsumptionContinuation = nil
@@ -1717,6 +1784,8 @@ final class ConnectedAppModel {
     }
 
     private func purgeConnectedScope(confirmedAbsentFromLookup: Bool) {
+        pollingBaseline = nil
+        pollingPolicy.reset()
         // Invalidate every in-flight model continuation before changing any
         // presentation. The Auth vault/client remain installed for revalidation.
         generation &+= 1
@@ -1792,6 +1861,8 @@ final class ConnectedAppModel {
     }
 
     private func resetSession() {
+        pollingBaseline = nil
+        pollingPolicy.reset()
         discardPresentation()
         #if SECONDLOOK_DEMO
         sharedCleanupProbeStatus = nil
@@ -1892,6 +1963,7 @@ final class ConnectedAppModel {
         case .invalidInvite: return "This invitation is invalid or has expired."
         case .pairingUnavailable: return "This private space cannot accept another account."
         case .staleState: return "The shared list changed. It has been refreshed; review it before trying again."
+        case .rateLimited: return "The service is busy. Wait a moment, then try again."
         case .capacityExceeded: return "This change exceeds the private space's current limits. Your existing lists are still available."
         case .scopeMismatch, .sessionChanged: return "The account changed. Reopen the current space."
         case .invalidResponse: return "The service returned an unexpected response. No local change was saved."

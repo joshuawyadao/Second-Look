@@ -91,6 +91,39 @@ public struct SharedHTTPClient: SharedStateClient {
         try await endpoint.send(path: ["v1", "space"], method: "GET", token: bearerToken())
     }
 
+    /// Only active polling may supply a validator tied to its exact admitted snapshot.
+    /// Full legacy responses remain valid when an older server ignores the query.
+    public func refreshCurrentSpace(known: SharedSnapshotValidator? = nil) async throws -> SharedSnapshotRefresh {
+        if let known, !known.isValid { throw SharedStateFailure.invalidResponse }
+        let query = known.map { [URLQueryItem(name: "knownSpaceID", value: $0.spaceID.uuidString),
+                                 URLQueryItem(name: "knownRevision", value: String($0.revision))] } ?? []
+        let headers = known.map { ["If-None-Match": "\"\($0.token)\""] } ?? [:]
+        let response = try await endpoint.receive(path: ["v1", "space"], method: "GET",
+            token: bearerToken(), query: query, headers: headers, body: Optional<EmptyRequest>.none)
+        let body: SharedRefreshBody
+        do { body = try SharedWireCodec.decode(SharedRefreshBody.self, from: response.data) }
+        catch { throw SharedStateFailure.invalidResponse }
+        switch body {
+        case let .snapshot(snapshot):
+            let validator = Self.validator(entityTag: response.entityTag, snapshot: snapshot)
+            return .snapshot(snapshot, validator: validator)
+        case let .unchanged(validator):
+            guard let known, validator.isValid, validator == known,
+                  response.entityTag == "\"\(validator.token)\"" else {
+                throw SharedStateFailure.invalidResponse
+            }
+            return .unchanged(validator)
+        }
+    }
+
+    private static func validator(entityTag: String?, snapshot: SharedSnapshot) -> SharedSnapshotValidator? {
+        guard let entityTag, entityTag.count == 66,
+              entityTag.first == "\"", entityTag.last == "\"" else { return nil }
+        let validator = SharedSnapshotValidator(spaceID: snapshot.spaceID, revision: snapshot.revision,
+                                                token: String(entityTag.dropFirst().dropLast()))
+        return validator.isValid ? validator : nil
+    }
+
     public func createSpace(expectedSpaceRevision: Int? = nil) async throws -> PairingInvitation {
         if let expectedSpaceRevision, expectedSpaceRevision < 0 { throw SharedStateFailure.invalidResponse }
         let invitation: PairingInvitation = try await endpoint.send(
@@ -114,6 +147,29 @@ public struct SharedHTTPClient: SharedStateClient {
         try await endpoint.send(path: ["v1", "spaces", envelope.spaceID.uuidString, "commands"],
                                 method: "POST", token: bearerToken(), body: envelope)
     }
+}
+
+/// A full response with a malformed state must never be reinterpreted as unchanged.
+private enum SharedRefreshBody: Decodable {
+    case snapshot(SharedSnapshot)
+    case unchanged(SharedSnapshotValidator)
+
+    private enum Keys: String, CodingKey { case state, unchanged }
+
+    init(from decoder: any Decoder) throws {
+        let fields = try decoder.container(keyedBy: Keys.self)
+        if fields.contains(.unchanged) {
+            guard !fields.contains(.state) else { throw SharedStateFailure.invalidResponse }
+            self = .unchanged(try fields.decode(SharedSnapshotValidator.self, forKey: .unchanged))
+        } else {
+            self = .snapshot(try SharedSnapshot(from: decoder))
+        }
+    }
+}
+
+private struct PrivateHTTPResponse {
+    let data: Data
+    let entityTag: String?
 }
 
 private struct EmptyRequest: Encodable, Sendable {}
@@ -386,6 +442,14 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
     func send<Request: Encodable, Response: Decodable>(path: [String], method: String,
                                                        token: String?, query: [URLQueryItem] = [],
                                                        body: Request?) async throws -> Response {
+        let response = try await receive(path: path, method: method, token: token, query: query, body: body)
+        do { return try SharedWireCodec.decode(Response.self, from: response.data) }
+        catch { throw SharedStateFailure.invalidResponse }
+    }
+
+    func receive<Request: Encodable>(path: [String], method: String,
+                                     token: String?, query: [URLQueryItem] = [],
+                                     headers: [String: String] = [:], body: Request?) async throws -> PrivateHTTPResponse {
         try SharedEndpointValidation.validate(baseURL, allowLocalHTTP: allowLocalHTTP)
         guard !path.contains(where: { $0 == ".." || $0.contains("/") }) else {
             throw SharedStateFailure.invalidResponse
@@ -405,6 +469,7 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
         if let apiKey { request.setValue(apiKey, forHTTPHeaderField: "apikey") }
         if let token {
             guard !token.isEmpty, !token.contains("\n"), !token.contains("\r") else {
@@ -432,8 +497,7 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
         guard (200..<300).contains(http.statusCode) else {
             throw failure(status: http.statusCode, data: data)
         }
-        do { return try SharedWireCodec.decode(Response.self, from: data) }
-        catch { throw SharedStateFailure.invalidResponse }
+        return PrivateHTTPResponse(data: data, entityTag: http.value(forHTTPHeaderField: "ETag"))
     }
 
     private func failure(status: Int, data: Data) -> any Error {
@@ -459,6 +523,8 @@ private struct PrivateHTTPEndpoint: @unchecked Sendable {
             return format == .supabaseAuth || code == "forbidden" ? .forbidden : .serviceUnavailable
         case 404:
             return format == .commandService && code == "notPaired" ? .notPaired : .serviceUnavailable
+        case 429:
+            return format == .commandService && code == "rateLimited" ? .rateLimited : .serviceUnavailable
         case 409:
             guard format == .commandService else { return .serviceUnavailable }
             switch code {

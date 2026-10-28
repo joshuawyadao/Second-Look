@@ -1,34 +1,32 @@
 # Plan
 
-Clear the three review findings posted after PR #2 was marked ready, verify the repaired branch, then perform the explicitly requested protected-main merge and feature-branch deletion.
+Implement the current-milestone efficiency recommendations on `codex/resource-efficiency` from main `416d70a` (PR #2 merged), preserving shared-state, privacy and retry guarantees, then prepare an unmerged PR through review and CI.
 
 ## Scope
-- In: achievable retained-run revision gaps, explicit Auth token rejection, connected aggregate capacity limits, focused regressions, canonical evidence, final CI/review and requested merge/branch cleanup.
-- Out: hosted reset/unpairing, account/key/allowlist or paid-setting changes, real media, notifications, distribution and wider Milestone 2 acceptance. Preserve existing paired data and both simulator sessions.
+- In: single-response snapshot admission; strong content-bound unchanged responses for active polls; tested adaptive polling; indexed history validation; one command-prepare RPC; bounded global request concurrency; content-free capacity observations; CI/build reuse; canonical docs and review evidence.
+- Out: provider migration, paid resources/settings, hosted deployment/schema application, history or receipt expiry, real photos/uploads/deletion/schedulers, broad native-model rewrite, and merging any PR.
 
 ## Action items
-- [x] Recheck the exact PR head, all checks, main ruleset and the three new review threads; inspect Product-Brief, Product-Spec, Architecture, Core commands and provider tests.
-- [x] Reject retained run revision growth that exceeds the intervening connected command budget, including Debug synthetic composition, terminal closure, references and retry publication; preserve overflow safety and legitimate skipped updates.
-- [x] Classify Auth401/403 as session rejection only when a bounded structured Auth response identifies the bearer/account error; keep ambiguous API-key/provider failures unavailable without invalidating sessions. Verify actual REST error_code shapes against primary Supabase sources.
-- [x] Bound connected UTF-8 text, collection sizes and encoded aggregate growth; use reversible engineering defaults (titles256B, instructions1024B, notes2048B, items64, routines128, runs/archives512, decisions64, state2MiB). Reserve capacity for existing open runs to close, never evict history, and leave local-demo persistence unchanged. Surface an explicit capacity failure through the service and phone.
-- [x] Add meaningful old-code regressions and positive controls in Core/provider/service/transport tests; run targeted then full Debug/Release suites, repository/native verification and genuine both-key-mode local Auth/SQL/HTTP/restart checks. Inspect existing hosted size metadata without publishing participant content before any matching deployment.
-- [x] Update Product-Spec, Architecture, Backend-Operations, Verification and the PR ledger with actual source-qualified results, limits, failures and remaining Milestone 2 gates. Save/push each validated feedback slice and acknowledge/resolve authorized threads only after validation and push.
-- [x] Prepare the final protected merge/cleanup sequence and record its live outcome on PR #2 after this saved checkpoint: recheck final-head Codex/CI/threads, merge only the tested head through normal rules, verify the squash result before local branch deletion, deploy matching main through the existing Free service and leave a clean main checkout.
-
-## Final-head review follow-up
-
-The final-head review on `7ea1936` adds three findings (4355797768, 4355797778, 4355797785). Address these before the authorized merge. The prior three repairs and their source-qualified validation above remain complete.
-
-- [x] Validate skipped-revision slack against reachable commands, add an impossible two-revision regression and legitimate skipped-update controls, and reject any unaccounted one-command remainder only when the paired protocol cannot hide that command. The six new cases include original retry retention, hidden saves before deletion/recreation, pre-join renewal, and temporary routine cycles. Focused Debug24 pass; Release and broader validation follow after the parallel transport source freezes.
-- [x] Add an append-only SQL migration that bounds durable command receipts under the existing space lock, preserves all old receipts and exact retries, and returns an explicit capacity refusal for new commands. The8,192 receipt ceiling reserves one closure per open run and transactionally refuses an unsafe legacy upgrade. Genuine local SQL cap/two-closure/replay/denial, old-code red, exact rollback preservation and concurrent admission checks pass; both API-key-mode Auth/HTTP/restart workflows pass.
-- [x] Bound native Auth/error/snapshot HTTP bodies while receiving bytes, preserving redirect denial, caller-session ownership, cancellation, and existing error semantics. Limits are256KiB Auth success,16MiB command success and16KiB errors. Four new cases reproduce5 old-code assertions; final Mac Debug/Release26 focused cases and combined Linux Swift6.2.1 bounded/Auth/capacity24 cases pass. Full final portable269Debug/260Release passes.
-- [x] Integrate the independent SQL/provider and transport slices; update Product-Spec, Architecture, Backend-Operations and Verification with chosen finite defaults, actual evidence and operational limits. Final269Debug/260Release portable,67Debug/62Release server,54 repository, required native/Release, both-key local integrations and four actual connected native cases pass with all meaningful assertions preserved.
-- [x] Save/push each validated feedback slice and acknowledge/resolve all102 authorized threads through both paginated review pages. Prepare the protected squash merge/deletion and matching Free main deployment sequence; final saved-head terminal CI, actual merge, exact hosted receipt migration/preservation and both existing-session outcomes are recorded live on PR #2 after this source checkpoint. Keep all accounts, allowlists, sessions, data and paid settings unchanged.
-
-## Final remote operations
-
-These actions occur after the final saved commit. Their live CI/review, merge commit, deployment and branch-deletion outcomes are tracked on PR #2; this source checkpoint does not preclaim those remote results. Render already points to main with automatic deployment Off. No protection bypass, forced push, state reset or paid setting change is part of the sequence.
+- [x] Confirm PR #2 merged, fetch main416d70a and create codex/resource-efficiency; checkpoint this resolved plan before implementation.
+- [x] Preserve current chronology/history/equal-revision/receipt guards while admitting a fetched membership snapshot directly; index run/archive correlation without changing public semantics.
+- [x] Add opt-in HTTP200 unchanged replies bound to space, revision and a strong server content validator. Keep full stored-state validation and redirect denial; foreground/held-state restoration stays unconditional and legacy servers remain usable.
+- [x] Add deterministic 5–30s active-idle polling and capped transient-error backoff in the portable core, with native lifecycle/session eligibility and explicit command retry unchanged.
+- [x] Add service-only `sl_prepare` with one authorized consistent receipt-or-snapshot result, retaining locked commit/CAS and authoritative post-commit receipt checks. Generate an append-only migration using the pinned CLI; validate only against named local synthetic storage.
+- [x] Add a bounded global in-flight gate with typed 429/Retry-After and fixed-label content-free counters; observe aggregate/receipt capacity without extra per-poll database queries or expiry. Preserve main’s existing Core/SQL capacity reservations and streamed bounded phone reception; those audit gaps were already repaired before this branch.
+- [x] Deduplicate branch/PR CI work while preserving required CI Verify and pre-PR dispatch, cache pinned dependencies, and improve Docker dependency-cache locality without including private data or build secrets.
+- [x] Add focused request-count, unchanged-content, corruption, scope/epoch/revision, replay/concurrency, admission and polling tests; run package Debug/Release, repository, native/Release, backend and both local key-mode checks relevant to changed paths.
+- [x] Update Product-Spec, Architecture, ADR002, Backend-Operations, Verification and cost/capacity guidance with actual results and deployment prerequisites; retain future-media budgeting as later milestone work.
+- [ ] Save/push coherent checkpoints, open a PR to main, attach it, request Codex review, run Brooks review, address actionable feedback and CI failures, and stop unmerged at merge-ready or a concrete blocker.
 
 ## Open questions
 
-None. These limits are reversible engineering safeguards, not retention/deletion policy. Existing history and request-bound receipts are retained; reaching capacity rejects growth until later archival/operational work is designed. The user's explicit merge/deletion request governs the final Git action after review gates pass.
+None. PR #2 is merged; the user authorized implementation on a new branch and a PR to main. Hosted rollout, paid resources and future-media implementation remain outside scope.
+
+## Review and validation ledger
+
+- Baseline main `416d70a`: 269 portable Debug cases (232 Core + 37 Transport) and 54 tooling cases pass. New main capacity/receipt/streaming limits are preserved.
+- Checkpoints: `3ace567` resolved plan; `a89d33a` CI/cache reuse; `22c3bd5` shared refresh/index/polling and retry handling; `9dd1663` Backend/SQL; `758e51c` foreground-only periodic task.
+- Local review fixed two concrete issues: periodic scheduling could cancel its own foreground refresh (lifecycle callbacks now own revalidation); a pre-Auth 429 on an exact retry could erase a previously committed unknown action (all 429s retain the original envelope for explicit same-ID retry).
+- Current portable suites pass 287 Debug (241 Core + 46 Transport), 278 Release. Nine new transport and 14 focused retry/creation cases pass. Repository tooling: 58 pass. Ordinary native: 10 passes/35 expected skips (45 total), Release build and exclusion pass; the later 429-only Core change also has both portable configurations green.
+- Backend: 70 Debug and 65 Release cases pass; optimized Release build and actual modern/legacy local Auth/Postgres/HTTP/SQL/restart workflows pass. Local Docker build and nonroot Release smoke pass. No hosted deployment is credited.
+- Independent sampled Brooks reviews of Backend/SQL/DTO/transport and native/CI/docs find no additional actionable issue. Admission limits route processing, not slow-client transmission. Seven distinct current-source connected native cases pass. The combined draft group first times out at its existing 420s limit during repeated XCTest animation-notification waits; its last reviewer-note case then passes standalone in 126.281s after restarting only the task simulator, without source/assertion/deadline changes. The timed-out group is not credited as passing. Final PR review/CI gates remain pending and are tracked on the PR.

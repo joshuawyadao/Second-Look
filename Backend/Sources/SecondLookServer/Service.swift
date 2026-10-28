@@ -1,6 +1,7 @@
 import Foundation
 import Vapor
 import Crypto
+import Logging
 import SecondLookCore
 
 struct Invitation: Encodable, Sendable {
@@ -57,11 +58,15 @@ struct PrivateSpaceService: Sendable {
 
     func execute(_ envelope: SharedCommandEnvelope, actor: UUID) async throws -> SharedCommandResult {
         let digest = Self.digest(try SharedWireCodec.encode(envelope))
-        if let receipt = try await store.receipt(actor: actor, envelope: envelope, digest: digest) {
+        let preparation = try await store.prepare(actor: actor, envelope: envelope, digest: digest)
+        let snapshot: SharedSnapshot
+        switch preparation {
+        case .receipt(let receipt):
             try validateAcceptedResult(receipt, actor: actor, envelope: envelope)
             return receipt
+        case .snapshot(let preparedSnapshot):
+            snapshot = preparedSnapshot
         }
-        let snapshot = try await store.read(actor: actor, space: envelope.spaceID)
         try validateSnapshot(snapshot, actor: actor, expectedSpaceID: envelope.spaceID)
         let result: SharedCommandResult
         do {
@@ -104,7 +109,9 @@ struct PrivateSpaceService: Sendable {
 }
 
 func configure(_ app: Application, configuration: ServerConfiguration,
-               verifier: (any AccountVerifier)? = nil, store: (any SpaceStore)? = nil) throws {
+               verifier: (any AccountVerifier)? = nil, store: (any SpaceStore)? = nil,
+               admission injectedAdmission: PrivateRequestAdmission? = nil) throws {
+    let admission = injectedAdmission ?? PrivateRequestAdmission(limit: 4, logger: app.logger)
     // Never emit a request body, Authorization header, invite, email or database error payload.
     app.middleware = .init()
     // Framework errors (including an absent route) still need an HTTP response.
@@ -125,15 +132,31 @@ func configure(_ app: Application, configuration: ServerConfiguration,
                                       configuration: configuration)
     app.get("health") { _ in Response(status: .ok, body: .init(string: "ok")) }
     app.get("v1", "space") { request async -> Response in
-        await respond {
+        await respond(admission: admission) {
             let actor = try await service.actor(request)
             let snapshot = try await service.store.read(actor: actor, space: nil)
             try service.validateSnapshot(snapshot, actor: actor)
-            return try json(snapshot)
+            let known = try conditionalValidator(request)
+            let data = try SharedWireCodec.encode(snapshot)
+            let token = PrivateSpaceService.digest(data)
+            let validator = SharedSnapshotValidator(spaceID: snapshot.spaceID,
+                revision: snapshot.revision, token: token)
+            let etag = "\"\(token)\""
+            if known == validator {
+                let unchanged = try SharedWireCodec.encode(SharedUnchangedReply(unchanged: validator))
+                await admission.recordRefresh(unchanged: true)
+                return Response(status: .ok,
+                    headers: ["Content-Type": "application/json", "Cache-Control": "no-store", "ETag": etag],
+                    body: .init(data: unchanged))
+            }
+            await admission.recordRefresh(unchanged: false)
+            return Response(status: .ok,
+                headers: ["Content-Type": "application/json", "Cache-Control": "no-store", "ETag": etag],
+                body: .init(data: data))
         }
     }
     app.post("v1", "spaces") { request async -> Response in
-        await respond {
+        await respond(admission: admission) {
             let actor = try await service.actor(request)
             let body = try decode(CreateSpaceBody.self, request: request,
                                   allowedKeys: [[], ["expectedSpaceRevision"]])
@@ -183,7 +206,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
         }
     }
     app.post("v1", "pairing", "join") { request async -> Response in
-        await respond {
+        await respond(admission: admission) {
             let actor = try await service.actor(request)
             let body = try decode(JoinBody.self, request: request, keys: ["inviteToken"])
             guard body.inviteToken.utf8.count == 72 else { throw SharedStateFailure.invalidInvite }
@@ -197,7 +220,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
         }
     }
     app.get("v1", "spaces", ":space") { request async -> Response in
-        await respond {
+        await respond(admission: admission) {
             let actor = try await service.actor(request)
             let requestedSpace = try spaceID(request)
             let snapshot = try await service.store.read(actor: actor, space: requestedSpace)
@@ -206,7 +229,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
         }
     }
     app.post("v1", "spaces", ":space", "commands") { request async -> Response in
-        await respond {
+        await respond(admission: admission) {
             let actor = try await service.actor(request)
             let envelope = try decode(SharedCommandEnvelope.self, request: request,
                 keys: ["spaceID", "commandID", "expectedSpaceRevision", "command"])
@@ -218,7 +241,7 @@ func configure(_ app: Application, configuration: ServerConfiguration,
     if configuration.testEvidence {
         guard configuration.localDevelopment, app.environment != .production else { throw ConfigurationFailure.invalid }
         app.post("_testing", "synthetic-evidence") { request async -> Response in
-            await respond {
+            await respond(admission: admission) {
                 let actor = try await service.actor(request)
                 let body = try decode(SyntheticEvidence.self, request: request,
                     keys: ["spaceID", "runID", "itemID", "expectedSpaceRevision", "expectedRunRevision"])
@@ -258,6 +281,82 @@ func configure(_ app: Application, configuration: ServerConfiguration,
 private struct CreateSpaceBody: Decodable { let expectedSpaceRevision: Int? }
 private struct JoinBody: Decodable { let inviteToken: String }
 private enum MalformedClientRequest: Error { case invalid }
+
+/// A single process-wide ceiling on private work. Counters have fixed labels and
+/// contain neither request identity nor private content; no background sampler runs.
+actor PrivateRequestAdmission {
+    let limit: Int
+    private let logger: Logger?
+    private var lastReport: Date?
+    private(set) var active = 0
+    private(set) var peak = 0
+    private(set) var requests = 0
+    private(set) var rejected = 0
+    private(set) var full = 0
+    private(set) var unchanged = 0
+    private(set) var responseBytes = 0
+
+    init(limit: Int, logger: Logger? = nil) {
+        self.limit = limit
+        self.logger = logger
+    }
+
+    func acquire() -> Bool {
+        requests &+= 1
+        guard active < limit else {
+            rejected &+= 1
+            return false
+        }
+        active += 1
+        peak = max(peak, active)
+        return true
+    }
+
+    func release() {
+        active -= 1
+        reportIfDue()
+    }
+
+    func recordRefresh(unchanged isUnchanged: Bool) {
+        if isUnchanged { unchanged &+= 1 } else { full &+= 1 }
+    }
+
+    func recordResponse(bytes: Int) {
+        guard bytes >= 0 else { return }
+        responseBytes = responseBytes > Int.max - bytes ? Int.max : responseBytes + bytes
+        reportIfDue()
+    }
+
+    private func reportIfDue() {
+        guard let logger else { return }
+        let now = Date()
+        guard lastReport.map({ now.timeIntervalSince($0) >= 60 }) ?? true else { return }
+        lastReport = now
+        logger.info("private_api_metrics requests=\(requests) rejected=\(rejected) full=\(full) unchanged=\(unchanged) bytes=\(responseBytes) peak=\(peak)")
+    }
+}
+
+private func conditionalValidator(_ request: Request) throws -> SharedSnapshotValidator? {
+    let names = ["knownSpaceID", "knownRevision"]
+    let components = URLComponents(string: request.url.string)
+    let items = components?.queryItems ?? []
+    let values = items.filter { names.contains($0.name) }
+    let header = request.headers.first(name: "If-None-Match")
+    guard !values.isEmpty || header != nil else { return nil }
+    guard values.count == 2, Set(values.map(\.name)).count == 2,
+          let rawSpace = values.first(where: { $0.name == "knownSpaceID" })?.value,
+          let space = UUID(uuidString: rawSpace),
+          let rawRevision = values.first(where: { $0.name == "knownRevision" })?.value,
+          !rawRevision.isEmpty, rawRevision.utf8.allSatisfy({ (48...57).contains($0) }),
+          let revision = Int(rawRevision),
+          let header, header.count == 66, header.first == "\"", header.last == "\"" else {
+        throw MalformedClientRequest.invalid
+    }
+    let token = String(header.dropFirst().dropLast())
+    let validator = SharedSnapshotValidator(spaceID: space, revision: revision, token: token)
+    guard validator.isValid else { throw MalformedClientRequest.invalid }
+    return validator
+}
 private struct SyntheticEvidence: Codable {
     let spaceID: UUID; let runID: UUID; let itemID: UUID
     let expectedSpaceRevision: Int; let expectedRunRevision: Int
@@ -291,8 +390,20 @@ private func json<T: Encodable>(_ value: T) throws -> Response {
              body: .init(data: try SharedWireCodec.encode(value)))
 }
 
-private func respond(_ operation: () async throws -> Response) async -> Response {
-    do { return try await operation() }
+private func respond(admission: PrivateRequestAdmission,
+                     _ operation: () async throws -> Response) async -> Response {
+    guard await admission.acquire() else {
+        let rejected = Response(status: .tooManyRequests,
+            headers: ["Content-Type": "application/json", "Cache-Control": "no-store", "Retry-After": "1"],
+            body: .init(string: "{\"code\":\"rateLimited\"}"))
+        await admission.recordResponse(bytes: rejected.body.count)
+        return rejected
+    }
+    let response: Response
+    do {
+        try Task.checkCancellation()
+        response = try await operation()
+    }
     catch {
         let status: HTTPResponseStatus
         let code: String
@@ -304,6 +415,7 @@ private func respond(_ operation: () async throws -> Response) async -> Response
         case SharedStateFailure.pairingUnavailable: status = .conflict; code = "pairingUnavailable"
         case SharedStateFailure.staleState: status = .conflict; code = "staleState"
         case SharedStateFailure.capacityExceeded: status = .conflict; code = "capacityExceeded"
+        case SharedStateFailure.rateLimited: status = .tooManyRequests; code = "rateLimited"
         case let SharedStateFailure.domain(domain): status = .badRequest; code = String(describing: domain)
         case let domain as SecondLookError: status = .badRequest; code = String(describing: domain)
         case SharedStateFailure.scopeMismatch: status = .badRequest; code = "scopeMismatch"
@@ -311,7 +423,10 @@ private func respond(_ operation: () async throws -> Response) async -> Response
         case SharedStateFailure.invalidResponse: status = .serviceUnavailable; code = "serviceUnavailable"
         default: status = .serviceUnavailable; code = "serviceUnavailable"
         }
-        return Response(status: status, headers: ["Content-Type": "application/json", "Cache-Control": "no-store"],
+        response = Response(status: status, headers: ["Content-Type": "application/json", "Cache-Control": "no-store"],
                         body: .init(string: "{\"code\":\"\(code)\"}"))
     }
+    await admission.recordResponse(bytes: response.body.count)
+    await admission.release()
+    return response
 }

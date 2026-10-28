@@ -14,8 +14,56 @@ protocol SpaceStore: Sendable {
                 expectedRevision: Int?) async throws -> SharedSnapshot
     func join(actor: UUID, inviteHash: String) async throws -> SharedSnapshot
     func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult?
+    func prepare(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> CommandPreparation
     func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String,
                 result: SharedCommandResult) async throws -> SharedCommandResult
+}
+
+enum CommandPreparation: Sendable {
+    case snapshot(SharedSnapshot)
+    case receipt(SharedCommandResult)
+}
+
+extension SpaceStore {
+    func prepare(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> CommandPreparation {
+        if let result = try await receipt(actor: actor, envelope: envelope, digest: digest) {
+            return .receipt(result)
+        }
+        return .snapshot(try await read(actor: actor, space: envelope.spaceID))
+    }
+}
+
+private struct PreparationReply: Decodable {
+    let snapshot: SharedSnapshot?
+    let receipt: SharedCommandResult?
+
+    private struct Key: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Key.self)
+        let keys = Set(container.allKeys.map(\.stringValue))
+        guard keys == ["snapshot"] || keys == ["receipt"] else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
+                debugDescription: "Preparation must have exactly one result"))
+        }
+        snapshot = keys == ["snapshot"]
+            ? try container.decode(SharedSnapshot.self, forKey: Key(stringValue: "snapshot")) : nil
+        receipt = keys == ["receipt"]
+            ? try container.decode(SharedCommandResult.self, forKey: Key(stringValue: "receipt")) : nil
+    }
+
+    var preparation: CommandPreparation? {
+        switch (snapshot, receipt) {
+        case let (.some(snapshot), .none): return .snapshot(snapshot)
+        case let (.none, .some(receipt)): return .receipt(receipt)
+        default: return nil
+        }
+    }
 }
 
 /// Verification contacts Auth with the bearer token. No JWT claim is trusted before this request.
@@ -97,6 +145,13 @@ struct SupabaseProvider: AccountVerifier, SpaceStore, Sendable {
     func receipt(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> SharedCommandResult? {
         try await rpc("sl_receipt", parameters: Receipt(p_actor: actor, p_space: envelope.spaceID,
             p_command_id: envelope.commandID, p_digest: digest))
+    }
+
+    func prepare(actor: UUID, envelope: SharedCommandEnvelope, digest: String) async throws -> CommandPreparation {
+        let reply: PreparationReply = try await rpc("sl_prepare", parameters: Receipt(p_actor: actor,
+            p_space: envelope.spaceID, p_command_id: envelope.commandID, p_digest: digest))
+        guard let preparation = reply.preparation else { throw SharedStateFailure.invalidResponse }
+        return preparation
     }
 
     func commit(actor: UUID, envelope: SharedCommandEnvelope, digest: String,

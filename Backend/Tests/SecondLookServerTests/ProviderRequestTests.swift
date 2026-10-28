@@ -63,6 +63,41 @@ import SecondLookCore
         #expect(rpc.value(forHTTPHeaderField: "Authorization") == "Bearer \(legacyKey)")
     }
 
+    @Test func preparationUsesOneRPCAndRejectsMalformedUnion() async throws {
+        let session = Self.session()
+        defer { session.invalidateAndCancel() }
+        let provider = try provider(serviceKey: "sb_secret_synthetic", session: session)
+        let space = UUID(uuidString: "10000000-0000-0000-0000-000000000004")!
+        let envelope = SharedCommandEnvelope(spaceID: space, commandID: UUID(),
+            expectedSpaceRevision: 0,
+            command: .startOneOff(title: "Synthetic", items: [RoutineItem(title: "Step")],
+                settings: .init()))
+        for (marker, expectReceipt) in [("a", false), ("b", true)] {
+            let outcome = try await provider.prepare(actor: owner, envelope: envelope,
+                digest: String(repeating: marker, count: 64))
+            switch outcome {
+            case .snapshot(let snapshot):
+                #expect(!expectReceipt)
+                #expect(snapshot.spaceID == space)
+            case .receipt(let receipt):
+                #expect(expectReceipt)
+                #expect(receipt.snapshot.spaceID == space)
+            }
+            let request = try #require(ProviderRequestRecorder.shared.take().only)
+            #expect(request.url?.path == "/rest/v1/rpc/sl_prepare")
+        }
+        for marker in ["c", "d", "e"] {
+            do {
+                _ = try await provider.prepare(actor: owner, envelope: envelope,
+                    digest: String(repeating: marker, count: 64))
+                Issue.record("Malformed preparation union must be rejected")
+            } catch {
+                #expect(error as? SharedStateFailure == .invalidResponse)
+            }
+            #expect(ProviderRequestRecorder.shared.take().count == 1)
+        }
+    }
+
     @Test func invitationRPCAlwaysCarriesConditionalRevision() async throws {
         let session = Self.session()
         defer { session.invalidateAndCancel() }
@@ -249,6 +284,21 @@ private final class ProviderRequestProtocol: URLProtocol {
                         UUID(uuidString: "10000000-0000-0000-0000-000000000099")! : proposed
                     body = try SharedWireCodec.encode(SharedSnapshot(spaceID: returnedID,
                         revision: renewal ? 5 : 0, members: [owner], state: .init()))
+                } else if url.path == "/rest/v1/rpc/sl_prepare" {
+                    let parameters = try JSONSerialization.jsonObject(with: requestBody)
+                        as? [String: Any] ?? [:]
+                    let space = UUID(uuidString: parameters["p_space"] as? String ?? "") ?? UUID()
+                    let snapshot = SharedSnapshot(spaceID: space, revision: 1,
+                        members: [owner, peer], state: .init())
+                    let marker = (parameters["p_digest"] as? String)?.first
+                    switch marker {
+                    case "a": body = try SharedWireCodec.encode(["snapshot": snapshot])
+                    case "b": body = try SharedWireCodec.encode(["receipt": SharedCommandResult(snapshot: snapshot)])
+                    case "c": body = Data("{}".utf8)
+                    case "e": body = try SharedWireCodec.encode(PreparationBoth(
+                        snapshot: snapshot, receipt: SharedCommandResult(snapshot: snapshot)))
+                    default: body = Data("{\"snapshot\":null,\"receipt\":null}".utf8)
+                    }
                 } else {
                     body = try SharedWireCodec.encode(SharedSnapshot(spaceID: UUID(), revision: 0,
                                                                      members: [owner, peer], state: .init()))
@@ -280,4 +330,9 @@ private final class ProviderRequestProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private struct PreparationBoth: Encodable {
+    let snapshot: SharedSnapshot
+    let receipt: SharedCommandResult
 }

@@ -286,6 +286,8 @@ public struct SecondLookState: Codable, Equatable, Sendable {
               Set(archives.map(\.id)).count == archives.count else {
             throw SecondLookError.corruptDocument
         }
+        let archivesByID = Dictionary(uniqueKeysWithValues: archives.map { ($0.id, $0) })
+        let closedRunIDs = Set(runs.lazy.filter { !$0.isOpen }.map(\.id))
         for routine in routines {
             do {
                 try Self.validate(title: routine.title, items: routine.items)
@@ -309,7 +311,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
             for item in run.items {
                 try Self.validateRestoredEvidence(item, reviewerID: run.reviewerID)
             }
-            let archive = archives.first(where: { $0.id == run.id })
+            let archive = archivesByID[run.id]
             if run.isOpen {
                 guard !run.isSatisfied,
                       run.closedAt == nil, run.cleanupStatus == nil,
@@ -333,7 +335,7 @@ public struct SecondLookState: Codable, Equatable, Sendable {
                 }
             }
         }
-        guard archives.allSatisfy({ archive in runs.contains { $0.id == archive.id && !$0.isOpen } }) else {
+        guard archives.allSatisfy({ closedRunIDs.contains($0.id) }) else {
             throw SecondLookError.corruptDocument
         }
     }

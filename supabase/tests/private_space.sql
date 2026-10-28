@@ -24,6 +24,7 @@ begin
             'public.sl_create(uuid,uuid,uuid,jsonb,text,timestamptz,bigint)',
             'public.sl_join(uuid,text)', 'public.sl_read(uuid,uuid)',
             'public.sl_receipt(uuid,uuid,uuid,text)',
+            'public.sl_prepare(uuid,uuid,uuid,text)',
             'public.sl_commit(uuid,uuid,bigint,uuid,text,jsonb,uuid)'] loop
             if has_function_privilege(role_name,function_name,'execute') then
                 raise exception 'private RPC exposed';
@@ -32,6 +33,10 @@ begin
     end loop;
     if has_table_privilege('service_role','secondlook_private.spaces','select,insert,update,delete') then
         raise exception 'service direct table access exposed';
+    end if;
+    if not has_function_privilege('service_role',
+        'public.sl_prepare(uuid,uuid,uuid,text)','execute') then
+        raise exception 'server preparation RPC privilege missing';
     end if;
     if not has_function_privilege('service_role',
         'public.sl_create(uuid,uuid,uuid,jsonb,text,timestamptz,bigint)','execute')
@@ -124,6 +129,13 @@ begin
     if (joined->>'revision')::int <> 2 or jsonb_array_length(joined->'members') <> 2 then
         raise exception 'pairing transaction invalid';
     end if;
+    if public.sl_prepare(owner,space,command,repeat('c',64))
+       <> pg_catalog.jsonb_build_object('snapshot', joined) then
+        raise exception 'preparation did not return the current snapshot';
+    end if;
+    if (select count(*) from secondlook_private.command_receipts) <> 0 then
+        raise exception 'preparation wrote a receipt';
+    end if;
     begin
         perform public.sl_join(peer,repeat('b',64));
         raise exception 'replayed invitation accepted';
@@ -140,6 +152,10 @@ begin
         raise exception 'failed commit left receipt';
     end if;
     committed := public.sl_commit(owner,space,2,command,repeat('c',64),state,command);
+    if public.sl_prepare(owner,space,command,repeat('c',64))
+       <> pg_catalog.jsonb_build_object('receipt', committed) then
+        raise exception 'preparation did not preserve the bound receipt';
+    end if;
     if (committed->'snapshot'->>'revision')::int <> 3 then raise exception 'commit revision invalid'; end if;
     if public.sl_commit(owner,space,2,command,repeat('c',64),state,command) <> committed then
         raise exception 'duplicate receipt changed result';
@@ -166,8 +182,26 @@ begin
         if sqlerrm <> 'staleState' then raise; end if;
     end;
     begin
+        perform public.sl_prepare(peer,space,command,repeat('c',64));
+        raise exception 'other actor prepared a receipt';
+    exception when raise_exception then
+        if sqlerrm <> 'staleState' then raise; end if;
+    end;
+    begin
+        perform public.sl_prepare(owner,space,command,repeat('d',64));
+        raise exception 'changed request prepared a receipt';
+    exception when raise_exception then
+        if sqlerrm <> 'staleState' then raise; end if;
+    end;
+    begin
         perform public.sl_read(outsider,space);
         raise exception 'third account read state';
+    exception when raise_exception then
+        if sqlerrm <> 'forbidden' then raise; end if;
+    end;
+    begin
+        perform public.sl_prepare(outsider,space,gen_random_uuid(),repeat('c',64));
+        raise exception 'third account prepared private state';
     exception when raise_exception then
         if sqlerrm <> 'forbidden' then raise; end if;
     end;
@@ -269,6 +303,12 @@ begin
        or (select count(*) from secondlook_private.command_receipts) <> 8191
        or (select state from secondlook_private.spaces) <> one_closed_state then
         raise exception 'first terminal closure failed to use its reserved receipt';
+    end if;
+    if public.sl_prepare(owner,space,admitted,digest)->'receipt'->>'createdID'
+       is distinct from admitted::text
+       or (public.sl_prepare(owner,space,admitted,digest)->'receipt'->'snapshot'->>'revision')::bigint
+          <> 8191 then
+        raise exception 'preparation lost original creation identity after newer state';
     end if;
     if public.sl_commit(peer,space,1,closure,digest,'{"forged":true}'::jsonb,outsider)
        <> close_result then

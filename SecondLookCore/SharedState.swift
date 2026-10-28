@@ -131,7 +131,7 @@ public struct SharedCommandResult: Codable, Equatable, Sendable {
 
 public enum SharedStateFailure: Error, Equatable, Sendable {
     case unauthenticated, forbidden, notPaired, invalidInvite, pairingUnavailable
-    case staleState, scopeMismatch, sessionChanged, invalidResponse, serviceUnavailable, capacityExceeded
+    case staleState, scopeMismatch, sessionChanged, invalidResponse, serviceUnavailable, capacityExceeded, rateLimited
     case domain(SecondLookError)
 }
 

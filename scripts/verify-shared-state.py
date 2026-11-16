@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 import uuid
 from shared_stack_diagnostics import startup_failure_message
+from process_lifecycle import Cancelled, cancellation_guard
 from ephemeral_stack import (Scope, REQUIRED_SERVICES, prepare, metadata_matches,
                              inspected_mounts_are_approved, approved_volume)
 
@@ -129,6 +130,10 @@ def run_owned(command, timeout, phase, *, grace=5, check=True, capture_output=Fa
     except subprocess.TimeoutExpired:
         stop_owned_process(process, grace=grace)
         raise VerifierFailure(phase + "_timeout") from None
+    except BaseException:
+        # An interrupt must stop the detached group before server/stack teardown.
+        stop_owned_process(process, grace=max(grace, 20) if phase == "native" else grace)
+        raise
     if check and process.returncode != 0:
         raise VerifierFailure(phase + "_failed")
     return subprocess.CompletedProcess(command, process.returncode, output, error)
@@ -620,7 +625,11 @@ def safe_failure_message(error):
 
 if __name__ == "__main__":
     try:
-        main()
+        with cancellation_guard():
+            main()
+    except Cancelled as error:
+        print("Shared-state verification cancelled; owned local cleanup attempted.", flush=True)
+        raise SystemExit(128 + error.signum)
     except Exception as error:
         print("Shared-state verification failed: " + safe_failure_message(error), flush=True)
         raise SystemExit(1)

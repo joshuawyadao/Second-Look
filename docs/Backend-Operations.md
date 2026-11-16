@@ -2,6 +2,10 @@
 
 This M2 implementation has verified localhost behavior and a separate [Supabase Free setup guide](Supabase-Free-Setup.md). The hosted Supabase project/private schema and Render Free Swift command server are configured. Authenticated hosted simulator checks pass on the existing deployed source; final PR review and current-source checks remain tracked in [Verification](Verification.md). Use generated synthetic accounts only in the local integration script; never use household photos, participant data or hosted credentials there.
 
+## Interrupted local native smoke
+
+The source-matched generator and its shared-state and native runners handle Ctrl-C and SIGTERM by stopping only their owned process groups. The native runner stops xcodebuild before the shared verifier stops its Swift server and checks the exact ephemeral Docker scope for cleanup. A second interrupt during cleanup is deferred. The generator gives the shared verifier up to 120 seconds to finish its bounded teardown, then force-stops its own group. Cancellation before receipt publication is a failed run and writes no new receipt. Its fixed console message points to the mode-0600 private log. If bounded cleanup reports failure or the outer fallback fires, inspect the exact generated scope before another run; no foreign Docker project or process group is selected for removal.
+
 ## Structure and protocol
 
 `Backend/` is a separately pinned Swift package. `SupabaseProvider` verifies bearer tokens through Auth and calls privileged SQL RPCs. `PrivateSpaceService` applies `SecondLookCore` commands. The initial private-space migration supplies transactional persistence; append-only `202610120001_conditional_invitation.sql` adds conditional renewal and `202610220001_receipt_capacity.sql` bounds durable receipts. Apply checked-in migrations in order for a new installation. The root package also exports the exact Foundation transport sources compiled by the iPhone app as `SecondLookTransport` for tests.

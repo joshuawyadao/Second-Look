@@ -9,9 +9,11 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import tempfile
+from process_lifecycle import Cancelled, cancellation_guard
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +30,30 @@ CASES = {
 
 class EvidenceError(Exception):
     pass
+
+
+def stop_owned_verifier(process: subprocess.Popen) -> None:
+    """Give nested native, server, and scoped Docker teardown time to unwind."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.communicate(timeout=120)
+    except subprocess.TimeoutExpired:
+        pass
+    # Descendants can remain after the wrapper exits; only this owned group is targeted.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            raise EvidenceError("Local connected native smoke cleanup did not complete") from None
 
 
 def git(*args: str) -> bytes:
@@ -153,11 +179,17 @@ def generate() -> None:
                 tempfile.TemporaryDirectory(prefix="secondlook-native-evidence-", dir=temp_root) as directory:
             environment = dict(os.environ, SECONDLOOK_NATIVE_EVIDENCE_DIR=directory)
             try:
-                result = subprocess.run([str(ROOT / "scripts/verify-shared-state.sh"), "--modern-keys", "--native-smoke", "--ephemeral"],
-                                        cwd=ROOT, env=environment, stdout=outer_log, stderr=subprocess.STDOUT)
+                process = subprocess.Popen([str(ROOT / "scripts/verify-shared-state.sh"), "--modern-keys", "--native-smoke", "--ephemeral"],
+                                           cwd=ROOT, env=environment, stdout=outer_log,
+                                           stderr=subprocess.STDOUT, start_new_session=True)
             except OSError as error:
                 raise EvidenceError("Local connected native smoke unavailable") from error
-            if result.returncode:
+            try:
+                process.communicate()
+            except BaseException:
+                stop_owned_verifier(process)
+                raise
+            if process.returncode:
                 raise EvidenceError("Local connected native smoke failed")
             observed = {}
             for scenario, cases in CASES.items():
@@ -184,7 +216,9 @@ def generate() -> None:
         temporary.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
         validate_receipt(temporary, after)
         temporary.replace(RECEIPT)
-    except EvidenceError as error:
+    except (EvidenceError, Cancelled, KeyboardInterrupt) as error:
+        if isinstance(error, (Cancelled, KeyboardInterrupt)):
+            error = EvidenceError("Local connected native smoke cancelled")
         raise EvidenceError(f"{error}; private verifier log: {log_path}") from None
     log_path.unlink()
     print("Connected native operator evidence generated for current source.")
@@ -210,7 +244,11 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        with cancellation_guard():
+            main()
+    except Cancelled:
+        print("Connected native evidence check cancelled; inspect private verifier log if created.", file=sys.stderr)
+        raise SystemExit(1)
     except EvidenceError as error:
         print("Connected native evidence check failed: " + str(error), file=sys.stderr)
         raise SystemExit(1)

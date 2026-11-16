@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "verify-connected-native.py"
+sys.path.insert(0, str(SCRIPT.parent))
 CONFIG_NAME = "SecondLook_iphonesimulator28.0-arm64.xctestrun"
 RUN_CONFIG = {"TestConfigurations": [{"TestTargets": [
     {"BlueprintName": "SecondLookUITests", "EnvironmentVariables": {}}

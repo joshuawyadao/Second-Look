@@ -4,16 +4,20 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone, timedelta
 import io
 import json
+import os
 from pathlib import Path
+import signal
 import subprocess
 import stat
 import sys
 import tempfile
+import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 SCRIPT = ROOT / "scripts/check-connected-native-evidence.py"
 NATIVE_SCRIPT = ROOT / "scripts/verify-connected-native.py"
 
@@ -30,6 +34,40 @@ def run_git(root, *args):
 
 
 class ConnectedEvidenceTests(unittest.TestCase):
+    def test_cancelled_generator_waits_for_owned_verifier_cleanup_and_never_writes_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / "scripts" / "verify-shared-state.sh"
+            script.parent.mkdir()
+            ready, ended = root / "ready", root / "ended"
+            script.write_text(
+                "#!/usr/bin/env python3\n"
+                "import pathlib,signal,sys,time\n"
+                f"pathlib.Path({str(ready)!r}).write_text('ready')\n"
+                "def finish(*_):\n"
+                f"    pathlib.Path({str(ended)!r}).write_text('terminated')\n"
+                "    sys.exit(0)\n"
+                "signal.signal(signal.SIGTERM, finish)\n"
+                "time.sleep(30)\n")
+            script.chmod(0o755)
+            receipt = root / "docs" / "connected-native-evidence.json"
+            timer = threading.Timer(.5, lambda: os.kill(os.getpid(), signal.SIGINT))
+            try:
+                timer.start()
+                with patch.object(self.checker, "ROOT", root), \
+                        patch.object(self.checker, "RECEIPT", receipt), \
+                        patch.object(self.checker, "source_fingerprint", return_value="a" * 64):
+                    with self.checker.cancellation_guard():
+                        with self.assertRaisesRegex(self.checker.EvidenceError, "cancelled") as caught:
+                            self.checker.generate()
+                self.assertTrue(ready.exists())
+                self.assertEqual(ended.read_text(), "terminated")
+                self.assertFalse(receipt.exists())
+                Path(str(caught.exception).split("private verifier log: ", 1)[1]).unlink()
+            finally:
+                timer.cancel()
+                timer.join()
+
     def setUp(self):
         self.checker = load_checker()
 
@@ -114,17 +152,17 @@ class ConnectedEvidenceTests(unittest.TestCase):
     def test_generation_rejects_source_change_after_local_runner(self):
         with patch.object(self.checker, "source_fingerprint", side_effect=["a" * 64, "b" * 64]), \
                 patch.object(self.checker, "tool_version", return_value="Test toolchain"), \
-                patch.object(self.checker.subprocess, "run") as runner:
+                patch.object(self.checker.subprocess, "Popen") as runner:
             runner.return_value.returncode = 0
 
-            def produce_cases(_command, **kwargs):
-                directory = Path(kwargs["env"]["SECONDLOOK_NATIVE_EVIDENCE_DIR"])
+            def produce_cases():
+                directory = Path(runner.call_args.kwargs["env"]["SECONDLOOK_NATIVE_EVIDENCE_DIR"])
                 for scenario, cases in self.checker.CASES.items():
                     (directory / f"{scenario}.json").write_text(json.dumps({
                         "scenario": scenario, "cases": {case: "passed" for case in cases}}))
-                return runner.return_value
+                return (None, None)
 
-            runner.side_effect = produce_cases
+            runner.return_value.communicate.side_effect = produce_cases
             with self.assertRaisesRegex(self.checker.EvidenceError, "Source changed") as caught:
                 self.checker.generate()
             Path(str(caught.exception).split("private verifier log: ", 1)[1]).unlink()
@@ -138,11 +176,11 @@ class ConnectedEvidenceTests(unittest.TestCase):
             def fail_runner(_command, **kwargs):
                 self.assertEqual(_command[-3:], ["--modern-keys", "--native-smoke", "--ephemeral"])
                 kwargs["stdout"].write("Synthetic verifier phase: Docker inventory unavailable; secret sentinel\n")
-                return subprocess.CompletedProcess(_command, 1)
+                return Mock(returncode=1, communicate=Mock(return_value=(None, None)))
 
             with patch.object(self.checker, "RECEIPT", receipt), \
                     patch.object(self.checker, "source_fingerprint", return_value="a" * 64), \
-                    patch.object(self.checker.subprocess, "run", side_effect=fail_runner), \
+                    patch.object(self.checker.subprocess, "Popen", side_effect=fail_runner), \
                     redirect_stdout(output), redirect_stderr(output):
                 with self.assertRaisesRegex(self.checker.EvidenceError, "Local connected native smoke failed") as caught:
                     self.checker.generate()

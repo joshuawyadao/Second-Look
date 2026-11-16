@@ -7,6 +7,7 @@ from pathlib import Path
 import plistlib
 import re
 import signal
+from process_lifecycle import Cancelled, cancellation_guard
 import subprocess
 import tempfile
 from urllib.parse import urlsplit
@@ -64,9 +65,7 @@ def run_owned(command: list[str], timeout: float, *, output=None,
                                    stderr=subprocess.DEVNULL if output is None else subprocess.STDOUT)
     except OSError:
         raise NativeFailure(failure) from None
-    try:
-        result, _ = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    def stop_group():
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
@@ -88,7 +87,15 @@ def run_owned(command: list[str], timeout: float, *, output=None,
                 process.wait(timeout=grace)
             except subprocess.TimeoutExpired:
                 raise NativeFailure("cleanup") from None
+
+    try:
+        result, _ = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        stop_group()
         raise NativeFailure(timed_out) from None
+    except BaseException:
+        stop_group()
+        raise
     if process.returncode != 0:
         raise NativeFailure(failure)
     return result or b""
@@ -274,7 +281,11 @@ if __name__ == "__main__":
         "evidence": "required connected native test pass evidence was unavailable",
     }
     try:
-        main()
+        with cancellation_guard():
+            main()
+    except Cancelled as error:
+        print("Native connected acceptance cancelled; owned process cleanup attempted")
+        raise SystemExit(128 + error.signum)
     except NativeFailure as error:
         print("Native connected acceptance failed: " + messages.get(error.code, "unavailable"))
         raise SystemExit(1)

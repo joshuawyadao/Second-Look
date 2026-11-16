@@ -37,10 +37,12 @@ None.
 
 ## PR review correction — cancellation safety
 
-- [ ] Reproduce the Brooks cancellation gap with synthetic children and record failing cleanup before changes.
-- [ ] Handle SIGINT/SIGTERM at all three CLI boundaries, preserve/restore handlers and make bounded teardown resistant to repeat cancellation.
-- [ ] Stop and reap only owned process groups on interruption in generator/shared/native wrappers; let nested wrappers complete cleanup before forced fallback, then verify exact owned Docker teardown. Preserve nonzero failure and no new receipt.
-- [ ] Add meaningful cancellation/descendant/ordering/unrelated-process regressions alongside existing timeout tests; run the complete repository suite and native build checks where applicable.
+- [x] Reproduce the Brooks cancellation gap with synthetic children and record failing cleanup before changes.
+- [x] Handle SIGINT/SIGTERM at all three CLI boundaries, preserve/restore handlers and make bounded teardown resistant to repeat cancellation.
+- [x] Stop and reap only owned process groups on interruption in generator/shared/native wrappers; let nested wrappers complete cleanup before forced fallback, then verify exact owned Docker teardown. Preserve nonzero failure and no new receipt.
+- [x] Add meaningful cancellation/descendant/ordering/unrelated-process regressions alongside existing timeout tests; run the complete repository suite and native build checks where applicable.
 - [ ] Regenerate current-source four-case evidence, validate the receipt and cleanup, save/push, open the PR and obtain current-head Codex review and all required CI.
 
 No open questions. Cancellation cleanup is a scoped safety correction to this PR's disposable synthetic smoke; no domain or provider semantics change.
+
+Cancellation validation on the corrected working tree: two synthetic descendant-heartbeat regressions failed before the fix; focused18 and complete88 tests pass afterwards. Repository verification, Python compilation, shell syntax and whitespace checks pass. Unix-socket fixtures require a normal local process outside sandbox; their initial sandbox PermissionError is environmental and the same full suite passes outside. Source is frozen; regenerate native evidence after saving this code.

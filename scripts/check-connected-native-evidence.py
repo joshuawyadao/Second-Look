@@ -59,6 +59,8 @@ def source_fingerprint() -> str:
         if path.is_symlink() or not path.is_file():
             raise EvidenceError("Source input unavailable")
         digest.update(relative.encode() + b"\0")
+        # Git's executable flag affects whether the smoke wrapper can run.
+        digest.update(b"x\0" if path.stat().st_mode & 0o100 else b"-\0")
         digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
 

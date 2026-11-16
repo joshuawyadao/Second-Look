@@ -11,6 +11,7 @@ Require local, source-matched connected-native smoke evidence when a change touc
 - [x] Confirm existing CI Verify enforcement and map supported hosted versus local native-stack execution.
 - [x] Add a bounded connected-native smoke/evidence gate using existing wrappers and synthetic services without relying on an unsupported hosted Docker/Xcode combination.
 - [x] Test that missing, stale, skipped, failed or wrong-source evidence cannot satisfy the affected-boundary gate.
+- [x] Include Git's executable flag in the source fingerprint and test mode-only changes, so changing how a runner can execute invalidates old evidence.
 - [x] Validate repository and orchestration regressions: all 65 repository tests pass outside sandbox socket restrictions. Connected smoke remains blocked by local service startup; no passing receipt is claimed.
 - [ ] Run the four-case connected smoke and commit a matching receipt: blocked by an initial 300-second Supabase database-backup startup timeout, then a failed separate CLI status check after a bounded Docker restart.
 - [x] Document runner-provisioning limitations and manual acceptance; save the scoped branch with evidence generation explicitly pending.

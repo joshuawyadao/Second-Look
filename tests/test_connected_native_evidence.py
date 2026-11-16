@@ -85,6 +85,11 @@ class ConnectedEvidenceTests(unittest.TestCase):
             with patch.object(self.checker, "ROOT", root):
                 self.assertFalse(self.checker.changed_inputs("pull_request", "main", None))
                 initial = self.checker.source_fingerprint()
+                source.chmod(0o755)
+                self.assertNotEqual(initial, self.checker.source_fingerprint())
+                self.assertTrue(self.checker.changed_inputs("pull_request", "main", None))
+                source.chmod(0o644)
+                self.assertEqual(initial, self.checker.source_fingerprint())
                 generated = root / "build" / "generated.swift"
                 generated.parent.mkdir()
                 generated.write_text("generated")

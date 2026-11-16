@@ -136,6 +136,7 @@ class ConnectedEvidenceTests(unittest.TestCase):
             output = io.StringIO()
 
             def fail_runner(_command, **kwargs):
+                self.assertEqual(_command[-3:], ["--modern-keys", "--native-smoke", "--ephemeral"])
                 kwargs["stdout"].write("Synthetic verifier phase: Docker inventory unavailable; secret sentinel\n")
                 return subprocess.CompletedProcess(_command, 1)
 

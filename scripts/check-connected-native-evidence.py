@@ -153,7 +153,7 @@ def generate() -> None:
                 tempfile.TemporaryDirectory(prefix="secondlook-native-evidence-", dir=temp_root) as directory:
             environment = dict(os.environ, SECONDLOOK_NATIVE_EVIDENCE_DIR=directory)
             try:
-                result = subprocess.run([str(ROOT / "scripts/verify-shared-state.sh"), "--modern-keys", "--native-smoke"],
+                result = subprocess.run([str(ROOT / "scripts/verify-shared-state.sh"), "--modern-keys", "--native-smoke", "--ephemeral"],
                                         cwd=ROOT, env=environment, stdout=outer_log, stderr=subprocess.STDOUT)
             except OSError as error:
                 raise EvidenceError("Local connected native smoke unavailable") from error

@@ -1,5 +1,11 @@
 # Verification
 
+## Connected native source evidence gate — November 2026
+
+The proposed `CI Verify` now includes a required source-evidence job for connected-boundary changes. Local generation is limited to the existing modern-key synthetic backend/restart workflow and three native scenarios: paired owner/peer/outsider isolation plus command acceptance, fresh owner/peer joining, and one-member access loss. Each of the four named XCTest methods must print an actual pass line; xcodebuild exit 0 or fixture-gated skips alone do not qualify. The checker hashes repository source/config/tests and the runner/discovery policy before and after the run. The committed receipt contains only a fingerprint, four case outcomes, toolchain versions and UTC time. CI compares PRs to their target merge base, pushes to the event's before SHA, and manual branch dispatches to main's merge base; a main dispatch checks the current receipt. Missing, malformed or wrong-source evidence fails the required aggregate check. See [Backend Operations](Backend-Operations.md) for the command and privacy boundary.
+
+This implementation has **no generated passing receipt yet**. Docker Desktop was started, but its container inventory timed out; the connected smoke has not been executed on this source. All 64 repository regressions pass locally outside sandbox socket restrictions. Hosted Ubuntu and macOS jobs continue their existing separate checks; no runner provides the combined localhost Docker/Xcode environment. The evidence record is reviewable operator testimony rather than cryptographic attestation. Full connected recovery coverage, hosted server acceptance, physical-device checks and release checks remain separate.
+
 ## October 26 resource-efficiency branch
 
 Feature branch `codex/resource-efficiency` starts at merged main `416d70a`. Checkpoints `3ace567` (plan), `a89d33a` (CI/dependency reuse), `22c3bd5` (Core/native/transport), `9dd1663` (Backend/SQL) and `758e51c` (foreground-only periodic task) identify implementation slices. No hosted migration, deployment, account/allowlist change or paid resource is part of this work. Current-source local/remote evidence below must not be relabeled hosted acceptance.

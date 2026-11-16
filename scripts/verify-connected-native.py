@@ -18,6 +18,18 @@ TEST_TIMEOUT_SECONDS = 420
 GENERATED_TEST_RUN = re.compile(
     r"SecondLook_iphonesimulator\d+(?:\.\d+)*-(?:arm64|x86_64)\.xctestrun"
 )
+CASE_RESULT = re.compile(
+    r"Test Case ['\"]?-\[SecondLookUITests\.([A-Za-z_][A-Za-z_0-9]*) "
+    r"([A-Za-z_][A-Za-z_0-9]*)\]['\"]? (passed|failed|skipped)\b"
+)
+SMOKE_CASES = {
+    "paired": (
+        "ConnectedSharedStateUITests.testAuthenticatedOwnerPeerAndOutsiderIsolation",
+        "SharedCommandAcceptanceUITests.testPairedOwnerSharedCommandAcceptance",
+    ),
+    "fresh": ("ConnectedSharedStateUITests.testFreshOwnerInvitationPeerJoinAndOwnerReopen",),
+    "access-loss": ("SharedInvitationAccessLossUITests.testInvitationActionClearsProtectedStateAfterAccessLoss",),
+}
 
 
 class NativeFailure(Exception):
@@ -28,6 +40,19 @@ class NativeFailure(Exception):
 class QuietParser(argparse.ArgumentParser):
     def error(self, _message):
         raise NativeFailure("arguments")
+
+
+def required_smoke_passes(scenario: str, private_test_output: str) -> dict[str, str]:
+    """Require actual named XCTest pass lines; xcodebuild exit zero can mean all skipped."""
+    if scenario not in SMOKE_CASES:
+        raise NativeFailure("evidence")
+    observed = {}
+    for suite, method, result in CASE_RESULT.findall(private_test_output):
+        observed.setdefault(f"{suite}.{method}", []).append(result)
+    required = SMOKE_CASES[scenario]
+    if any(observed.get(case) != ["passed"] for case in required):
+        raise NativeFailure("evidence")
+    return {name: "passed" for name in required}
 
 
 def run_owned(command: list[str], timeout: float, *, output=None,
@@ -84,6 +109,7 @@ def clear_generated_test_runs(products: Path) -> None:
 def main():
     parser = QuietParser()
     parser.add_argument("--fixture", required=True)
+    parser.add_argument("--evidence-out", help="Private per-scenario pass record for the bounded local smoke wrapper.")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--only-shared-commands", action="store_true",
                            help="Run command checks against an already-paired synthetic localhost fixture.")
@@ -130,10 +156,10 @@ def main():
             "fresh" if fixture.get("freshPairing") else "paired")
     log_path = fixture_path.parent / ("native-" + mode + ".private.log")
     products = derived / "Build" / "Products"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    flags = os.O_RDWR | os.O_CREAT | os.O_TRUNC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    with os.fdopen(os.open(log_path, flags, 0o600), "w") as log:
+    with os.fdopen(os.open(log_path, flags, 0o600), "w+") as log:
         os.fchmod(log.fileno(), 0o600)
         clear_generated_test_runs(products)
         run_owned(["xcodebuild", "-project", "SecondLook.xcodeproj", "-scheme", "SecondLook",
@@ -211,6 +237,17 @@ def main():
             run_owned(["xcodebuild", "-xctestrun", str(temporary), *common, *selected_tests,
                        "test-without-building"], TEST_TIMEOUT_SECONDS,
                       output=log, failure="test", timed_out="test_timeout")
+            if args.evidence_out:
+                scenario_key = ("access-loss" if args.only_invitation_access_loss else
+                                "fresh" if fixture.get("freshPairing") else "paired")
+                if args.only_pairing_recovery or args.only_shared_commands:
+                    raise NativeFailure("evidence")
+                log.flush()
+                log.seek(0)
+                cases = required_smoke_passes(scenario_key, log.read())
+                destination = Path(args.evidence_out)
+                with os.fdopen(os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as record:
+                    json.dump({"scenario": scenario_key, "cases": cases}, record, sort_keys=True)
         finally:
             temporary.unlink(missing_ok=True)
     scenario = ("pairing recovery " + args.recovery_case if args.only_pairing_recovery else
@@ -234,6 +271,7 @@ if __name__ == "__main__":
         "test": "acceptance failed; inspect the private native log",
         "test_timeout": "test timed out; owned process group stopped; remote runner cleanup may be needed",
         "cleanup": "owned process cleanup did not complete",
+        "evidence": "required connected native test pass evidence was unavailable",
     }
     try:
         main()

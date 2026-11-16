@@ -184,9 +184,19 @@ def apply_pending_local_migrations():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--native", action="store_true", help="Also run paired and fresh-pairing iPhone simulator acceptance (macOS/Xcode).")
+    native_selection = parser.add_mutually_exclusive_group()
+    native_selection.add_argument("--native", action="store_true", help="Run the full connected iPhone simulator acceptance matrix (macOS/Xcode).")
+    native_selection.add_argument("--native-smoke", action="store_true", help="Run bounded paired, fresh-pairing, and access-loss iPhone acceptance (macOS/Xcode).")
     parser.add_argument("--modern-keys", action="store_true", help="Use this localhost stack's modern publishable/secret keys instead of legacy JWT API keys.")
     args = parser.parse_args()
+    run_native = args.native or args.native_smoke
+    evidence_dir_value = os.environ.get("SECONDLOOK_NATIVE_EVIDENCE_DIR")
+    if evidence_dir_value and not args.native_smoke:
+        parser.error("evidence output requires --native-smoke")
+    evidence_dir = Path(evidence_dir_value) if evidence_dir_value else None
+
+    def evidence_args(scenario):
+        return ["--evidence-out", str(evidence_dir / (scenario + ".json"))] if evidence_dir else []
     os.umask(0o077)
     directory = Path(tempfile.mkdtemp(prefix="secondlook-m2-"))
     env = dict(os.environ, SUPABASE_TELEMETRY_DISABLED="1")
@@ -301,9 +311,10 @@ def main():
             run(test_command + ["--skip", "testPrivateSharedState"],
                 env=dict(test_env, SECONDLOOK_RESTART_CHECK="1"),
                 stdout=integration_log, stderr=subprocess.STDOUT)
-            if args.native:
+            if run_native:
                 print("Running native write/convergence/foreground acceptance against the synthetic server.", flush=True)
-                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(ui_fixture_path)],
+                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(ui_fixture_path),
+                     *evidence_args("paired")],
                     stdout=integration_log, stderr=subprocess.STDOUT)
                 run(["docker", "exec", f"supabase_db_{PROJECT}", "psql", "-U", "postgres", "-d", "postgres",
                      "-v", "ON_ERROR_STOP=1", "-c",
@@ -311,7 +322,8 @@ def main():
                 fresh_path = directory / "ui-fresh.private.json"
                 fresh_path.write_text(json.dumps(dict(ui_fixture, freshPairing=True)))
                 print("Running native owner creation and invited-peer join against an empty synthetic space.", flush=True)
-                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(fresh_path)],
+                run(["python3", "scripts/verify-connected-native.py", "--fixture", str(fresh_path),
+                     *evidence_args("fresh")],
                     stdout=integration_log, stderr=subprocess.STDOUT)
                 run(["docker", "exec", f"supabase_db_{PROJECT}", "psql", "-U", "postgres", "-d", "postgres",
                      "-v", "ON_ERROR_STOP=1", "-c",
@@ -320,7 +332,11 @@ def main():
                 access_loss_path.write_text(json.dumps(dict(ui_fixture, invitationAccessLoss=True)))
                 print("Running native invitation access-loss acceptance against an empty synthetic space.", flush=True)
                 run(["python3", "scripts/verify-connected-native.py", "--fixture", str(access_loss_path),
-                     "--only-invitation-access-loss"], stdout=integration_log, stderr=subprocess.STDOUT)
+                     "--only-invitation-access-loss", *evidence_args("access-loss")],
+                    stdout=integration_log, stderr=subprocess.STDOUT)
+                if args.native_smoke:
+                    print("Bounded connected native smoke passed; recovery matrix remains a separate full-run check.", flush=True)
+                    return
                 recovery_cases = (
                     ("invitation", "committed invitation renewal with a lost reply"),
                     ("invitation-expiry", "expired invitation display during paused same-revision refresh"),

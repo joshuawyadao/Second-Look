@@ -1,0 +1,21 @@
+{
+  "cases": {
+    "access-loss": {
+      "SharedInvitationAccessLossUITests.testInvitationActionClearsProtectedStateAfterAccessLoss": "passed"
+    },
+    "fresh": {
+      "ConnectedSharedStateUITests.testFreshOwnerInvitationPeerJoinAndOwnerReopen": "passed"
+    },
+    "paired": {
+      "ConnectedSharedStateUITests.testAuthenticatedOwnerPeerAndOutsiderIsolation": "passed",
+      "SharedCommandAcceptanceUITests.testPairedOwnerSharedCommandAcceptance": "passed"
+    }
+  },
+  "fingerprint": "8aae05c5529e07bda4daf0a670f60444ef85250d4a6133f39fe8c81ecdd71f95",
+  "generated_at": "2026-11-16T22:31:38+00:00",
+  "schema": 1,
+  "toolchain": {
+    "swift": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)",
+    "xcode": "Xcode 27.2"
+  }
+}

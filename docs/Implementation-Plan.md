@@ -14,7 +14,7 @@ Require source-matched local connected-native smoke evidence from a fresh UUID-s
 - [x] Require exact scoped db/kong/auth/rest names, labels, network and approved mounts, with no published Auth/PostgREST ports; inspect ownership before SQL and before cleanup.
 - [x] Test source-copy integrity, invalid scopes, foreign mounts/volumes, stopped/disconnected resources, cleanup failure and diagnostic redaction: 84 repository tests pass.
 - [x] Add fixed Debug-only final-refresh refusal/error categories and preserve the command runner's first failed fixed step in its failure label. Keep refresh/network/admission behavior and all assertions unchanged.
-- [ ] Run the required four-case connected smoke and commit its source-matched receipt only after all cases and owned cleanup pass.
+- [x] Run the required four-case connected smoke and commit its source-matched receipt only after all cases and owned cleanup pass.
 - [ ] Revalidate the saved source in hosted CI, then update canonical docs and save the branch.
 
 ## Discovery notes
@@ -30,3 +30,5 @@ Require source-matched local connected-native smoke evidence from a fresh UUID-s
 None.
 
 - The Debug diagnostic slice compiles with `build-for-testing` (Xcode 27.2/iOS 26.5). It adds only fixed failure labels and retains existing guards, network calls, deadlines and native assertions; no new mirror tests were added. The existing live command assertion is the meaningful validation, and a complete fresh source-matched run follows.
+
+- At `f210190`, all four required native cases pass: paired isolation (141.032s), paired commands (16.084s), fresh pairing/reopen (63.408s), invitation access loss (58.217s). Database checks, HTTP integration before/after restart, exact-case evidence parsing, stable source fingerprint and owned-resource cleanup all pass. Receipt generated 2026-11-16T22:31:38Z with Xcode 27.2 / Swift 6.4.2. An earlier post-run refresh failure remains an observed intermittent issue with unconfirmed cause; no network/admission behavior was changed to obtain this pass.

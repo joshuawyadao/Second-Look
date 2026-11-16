@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "local-docker-binding.py"
+sys.path.insert(0, str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location("local_docker_binding", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -50,14 +51,15 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         self.assertEqual(result, 0)
         return markers.getvalue()
 
-    def test_unrelated_container_is_refused_with_only_fixed_scope_marker(self):
+    def test_unrelated_container_is_refused_with_only_fixed_scope_and_reason_markers(self):
         with tempfile.TemporaryDirectory(prefix="sl-adapter-test-", dir="/tmp") as directory:
             secret = b"sb_secret_SYNTHETIC_ONLY"
             request = (b"POST /v1.48/containers/create?name=another-project HTTP/1.1\r\n"
                        b"Host: docker\r\nX-Secret: " + secret +
                        b"\r\nContent-Length: 2\r\n\r\n{}")
             markers = self._failed_proxy_request(str(Path(directory) / "unused.sock"), request, directory)
-        self.assertEqual(markers, module.ADAPTER_PHASE_MARKERS["container_scope"] + "\n")
+        self.assertEqual(markers, module.ADAPTER_PHASE_MARKERS["container_scope"] + "\n" +
+                         module.REFUSAL_MARKERS["create_name"] + "\n")
         self.assertNotIn(secret.decode(), markers)
         self.assertNotIn("another-project", markers)
 
@@ -69,7 +71,8 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
                        b"Host: docker\r\nContent-Length: " + str(len(body)).encode() +
                        b"\r\n\r\n" + body)
             markers = self._failed_proxy_request(str(Path(directory) / "unused.sock"), request, directory)
-        self.assertEqual(markers, module.ADAPTER_PHASE_MARKERS["container_scope"] + "\n")
+        self.assertEqual(markers, module.ADAPTER_PHASE_MARKERS["container_scope"] + "\n" +
+                         module.REFUSAL_MARKERS["create_name"] + "\n")
         self.assertNotIn("SYNTHETIC_SECRET", markers)
         self.assertNotIn("another-project", markers)
 
@@ -421,6 +424,15 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         payload = self._unnamed_bootstrap_payload()
         with self.assertRaises(module.UnrelatedContainerError):
             module.bind_create("/v1.48/containers/create?name=another-project", json.dumps(payload).encode())
+
+    def test_refusal_reason_is_from_closed_set(self):
+        with self.assertRaises(ValueError):
+            module.UnrelatedContainerError("SYNTHETIC_SECRET=private")
+        self.assertEqual(set(module.REFUSAL_MARKERS), {
+            "create_name", "create_service_rest", "create_payload", "create_labels", "create_network",
+            "create_mount", "create_port", "volume_name", "volume_labels",
+            "volume_driver",
+        })
 
     def test_refuses_unrelated_creation_and_preserves_other_requests(self):
         with self.assertRaises(ValueError):

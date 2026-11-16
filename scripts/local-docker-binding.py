@@ -36,10 +36,23 @@ ADAPTER_PHASE_MARKERS = {
     "response_read": "Local Docker adapter phase: response_read",
     "downstream_write": "Local Docker adapter phase: downstream_write",
 }
+REFUSAL_MARKERS = {
+    reason: "Local Docker adapter refusal: " + reason for reason in (
+        "create_name", "create_service_rest", "create_payload", "create_labels", "create_network",
+        "create_mount", "create_port", "volume_name", "volume_labels",
+        "volume_driver",
+    )
+}
 
 
 class UnrelatedContainerError(ValueError):
     """A container-create request escaped this synthetic project's scope."""
+
+    def __init__(self, reason: str):
+        if reason not in REFUSAL_MARKERS:
+            raise ValueError("Invalid Docker adapter refusal reason")
+        self.reason = reason
+        super().__init__("Local test launcher refused an unrelated Docker resource.")
 
 
 def report_adapter_phase(phase: str) -> None:
@@ -83,30 +96,37 @@ def bind_create(path: str, data: bytes, scope: Scope | None = None) -> bytes:
     name = parse_qs(parts.query).get("name", [""])[0]
     if not parts.path.endswith("/containers/create"):
         return data
+    if scope is not None and name == f"supabase_rest_{project}":
+        # Report this one known excluded-service gap without admitting it.
+        raise UnrelatedContainerError("create_service_rest")
     if name and not (name.startswith("supabase_") and name.endswith("_" + project)):
-        raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
-    payload = json.loads(data)
+        raise UnrelatedContainerError("create_name")
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        raise UnrelatedContainerError("create_payload") from None
     if scope is not None and name not in ("", *(f"supabase_{service}_{project}" for service in ("db", "kong", "auth"))):
-        raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
+        raise UnrelatedContainerError("create_name")
     if not name:
         if not isinstance(payload, dict):
-            raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
+            raise UnrelatedContainerError("create_payload")
         labels = payload.get("Labels")
         host_config = payload.get("HostConfig")
-        if (not isinstance(labels, dict) or
-                not all(labels.get(label) == project for label in PROJECT_LABELS) or
-                not isinstance(host_config, dict) or
-                host_config.get("NetworkMode") != network):
-            raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
+        if not isinstance(labels, dict) or not all(labels.get(label) == project for label in PROJECT_LABELS):
+            raise UnrelatedContainerError("create_labels")
+        if not isinstance(host_config, dict) or host_config.get("NetworkMode") != network:
+            raise UnrelatedContainerError("create_network")
     elif scope is not None:
+        if not isinstance(payload, dict):
+            raise UnrelatedContainerError("create_payload")
         labels = payload.get("Labels")
         host_config = payload.get("HostConfig")
-        if (not isinstance(labels, dict) or
-                not all(labels.get(label) == project for label in PROJECT_LABELS) or
-                not isinstance(host_config, dict) or host_config.get("NetworkMode") != network):
-            raise UnrelatedContainerError("Local test launcher refused an unrelated container creation.")
+        if not isinstance(labels, dict) or not all(labels.get(label) == project for label in PROJECT_LABELS):
+            raise UnrelatedContainerError("create_labels")
+        if not isinstance(host_config, dict) or host_config.get("NetworkMode") != network:
+            raise UnrelatedContainerError("create_network")
     if scope is not None and not create_mounts_are_approved(scope, payload):
-        raise UnrelatedContainerError("Local test launcher refused an unrelated mount.")
+        raise UnrelatedContainerError("create_mount")
     for bindings in payload.get("HostConfig", {}).get("PortBindings", {}).values():
         for binding in bindings:
             if scope is not None:
@@ -115,7 +135,7 @@ def bind_create(path: str, data: bytes, scope: Scope | None = None) -> bytes:
                              set() if name == f"supabase_auth_{project}" else
                              {db_port, shadow_port})
                 if binding.get("HostPort") not in permitted:
-                    raise UnrelatedContainerError("Local test launcher refused an unrelated port binding.")
+                    raise UnrelatedContainerError("create_port")
             binding["HostIp"] = "127.0.0.1"
     return json.dumps(payload, separators=(",", ":")).encode()
 
@@ -123,12 +143,17 @@ def bind_create(path: str, data: bytes, scope: Scope | None = None) -> bytes:
 def bind_volume_create(path: str, data: bytes, scope: Scope | None = None) -> bytes:
     if scope is None or not re.fullmatch(r"/(?:v\d+\.\d+/)?volumes/create", urlsplit(path).path):
         return data
-    payload = json.loads(data)
-    labels = payload.get("Labels") if isinstance(payload, dict) else None
-    if not isinstance(labels, dict) or not approved_volume(scope, payload.get("Name")) or \
-            not all(labels.get(label) == scope.project for label in PROJECT_LABELS) or \
-            payload.get("Driver", "local") != "local":
-        raise UnrelatedContainerError("Local test launcher refused an unrelated volume creation.")
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        raise UnrelatedContainerError("volume_name") from None
+    if not isinstance(payload, dict) or not approved_volume(scope, payload.get("Name")):
+        raise UnrelatedContainerError("volume_name")
+    labels = payload.get("Labels")
+    if not isinstance(labels, dict) or not all(labels.get(label) == scope.project for label in PROJECT_LABELS):
+        raise UnrelatedContainerError("volume_labels")
+    if payload.get("Driver", "local") != "local":
+        raise UnrelatedContainerError("volume_driver")
     return data
 
 
@@ -307,6 +332,8 @@ def main(arguments: list[str]) -> int:
             except (ValueError, OSError) as error:
                 # Static message only. Never echo a Docker request or response.
                 report_adapter_phase("container_scope" if isinstance(error, UnrelatedContainerError) else phase)
+                if isinstance(error, UnrelatedContainerError):
+                    print(REFUSAL_MARKERS[error.reason], file=sys.stderr, flush=True)
                 if not response_started:
                     try:
                         self.send_error(502, "Local Docker adapter failed")

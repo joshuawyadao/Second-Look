@@ -89,6 +89,10 @@ class EphemeralStackTests(unittest.TestCase):
         def created(name, value):
             return adapter.bind_create("/v1.52/containers/create?name=" + name,
                                        json.dumps(value).encode(), selected)
+        def refused(reason, call):
+            with self.assertRaises(adapter.UnrelatedContainerError) as caught:
+                call()
+            self.assertEqual(caught.exception.reason, reason)
         rewritten = json.loads(created("supabase_db_" + project, payload))
         self.assertEqual(rewritten["HostConfig"]["PortBindings"]["5432/tcp"][0]["HostIp"], "127.0.0.1")
         self.assertTrue(created("", payload))  # exact-label unnamed migration bootstrap
@@ -97,26 +101,35 @@ class EphemeralStackTests(unittest.TestCase):
             "NetworkMode": network, "Binds": [private_config + ":/etc/config:ro"]}}))
         self.assertTrue(adapter.bind_volume_create("/v1.52/volumes/create", json.dumps({
             "Name": "supabase_db_" + project, "Labels": payload["Labels"], "Driver": "local"}).encode(), selected))
-        with self.assertRaises(adapter.UnrelatedContainerError):
-            adapter.bind_volume_create("/v1.52/volumes/create", json.dumps({
-                "Name": "supabase_db_secondlook-m2-local", "Labels": payload["Labels"]}).encode(), selected)
-        for name, value in (("supabase_db_secondlook-m2-local", payload),
-                            ("supabase_studio_" + project, payload),
-                            ("supabase_db_" + project, {**payload, "Labels": {}}),
-                            ("supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": "bridge"}}),
-                            ("supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
-                                "Binds": ["supabase_db_secondlook-m2-local:/var/lib/postgresql/data"]}}),
-                            ("supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
-                                "Binds": [private_config + ":/etc/config:rw"]}}),
-                            ("supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
-                                "Mounts": [{"Type": "volume", "Source": "supabase_db_secondlook-m2-local",
-                                            "Target": "/var/lib/postgresql/data"}]}}),
-                            ("supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
-                                "PortBindings": {"5432/tcp": [{"HostIp": "0.0.0.0", "HostPort": "43001"}]}}}),
-                            ("supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
-                                "PortBindings": {"5432/tcp": [{"HostIp": "0.0.0.0", "HostPort": "56322"}]}}})):
-            with self.subTest(name=name, value=value), self.assertRaises(adapter.UnrelatedContainerError):
-                created(name, value)
+        refused("volume_name", lambda: adapter.bind_volume_create(
+            "/v1.52/volumes/create", json.dumps({
+                "Name": "supabase_db_secondlook-m2-local", "Labels": payload["Labels"]}).encode(), selected))
+        refused("volume_labels", lambda: adapter.bind_volume_create(
+            "/v1.52/volumes/create", json.dumps({
+                "Name": "supabase_db_" + project, "Labels": {}}).encode(), selected))
+        refused("volume_driver", lambda: adapter.bind_volume_create(
+            "/v1.52/volumes/create", json.dumps({
+                "Name": "supabase_db_" + project, "Labels": payload["Labels"],
+                "Driver": "foreign"}).encode(), selected))
+        for reason, name, value in (("create_name", "supabase_db_secondlook-m2-local", payload),
+                                    ("create_name", "supabase_studio_" + project, payload),
+                                    ("create_service_rest", "supabase_rest_" + project, payload),
+                                    ("create_payload", "supabase_db_" + project, []),
+                                    ("create_labels", "supabase_db_" + project, {**payload, "Labels": {}}),
+                                    ("create_network", "supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": "bridge"}}),
+                                    ("create_mount", "supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
+                                        "Binds": ["supabase_db_secondlook-m2-local:/var/lib/postgresql/data"]}}),
+                                    ("create_mount", "supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
+                                        "Binds": [private_config + ":/etc/config:rw"]}}),
+                                    ("create_mount", "supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
+                                        "Mounts": [{"Type": "volume", "Source": "supabase_db_secondlook-m2-local",
+                                                    "Target": "/var/lib/postgresql/data"}]}}),
+                                    ("create_port", "supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
+                                        "PortBindings": {"5432/tcp": [{"HostIp": "0.0.0.0", "HostPort": "43001"}]}}}),
+                                    ("create_port", "supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": network,
+                                        "PortBindings": {"5432/tcp": [{"HostIp": "0.0.0.0", "HostPort": "56322"}]}}})):
+            with self.subTest(reason=reason, name=name, value=value):
+                refused(reason, lambda: created(name, value))
         for changed in ({**environment, "SECONDLOOK_EPHEMERAL_TOKEN": "bad"},
                         {**environment, "SECONDLOOK_EPHEMERAL_NETWORK": "secondlook_m2_local"},
                         {**environment, "SECONDLOOK_EPHEMERAL_PORTS": "43001,43001,43003"}):

@@ -34,3 +34,13 @@ None.
 - At `f210190`, all four required native cases pass: paired isolation (141.032s), paired commands (16.084s), fresh pairing/reopen (63.408s), invitation access loss (58.217s). Database checks, HTTP integration before/after restart, exact-case evidence parsing, stable source fingerprint and owned-resource cleanup all pass. Receipt generated 2026-11-16T22:31:38Z with Xcode 27.2 / Swift 6.4.2. An earlier post-run refresh failure remains an observed intermittent issue with unconfirmed cause; no network/admission behavior was changed to obtain this pass.
 
 - Complete hosted CI passes at `ea09ce3`: repository checks, native foundation, Debug/Release backend boundaries, legacy/modern API key integration with restart, source evidence and CI Verify. Run: https://github.com/joshuawyadao/Second-Look/actions/runs/43971087775 . Later documentation-only completion records do not alter the receipt fingerprint. Disposable Docker resources and simulators are removed; Docker Desktop is restored to its initially stopped state.
+
+## PR review correction — cancellation safety
+
+- [ ] Reproduce the Brooks cancellation gap with synthetic children and record failing cleanup before changes.
+- [ ] Handle SIGINT/SIGTERM at all three CLI boundaries, preserve/restore handlers and make bounded teardown resistant to repeat cancellation.
+- [ ] Stop and reap only owned process groups on interruption in generator/shared/native wrappers; let nested wrappers complete cleanup before forced fallback, then verify exact owned Docker teardown. Preserve nonzero failure and no new receipt.
+- [ ] Add meaningful cancellation/descendant/ordering/unrelated-process regressions alongside existing timeout tests; run the complete repository suite and native build checks where applicable.
+- [ ] Regenerate current-source four-case evidence, validate the receipt and cleanup, save/push, open the PR and obtain current-head Codex review and all required CI.
+
+No open questions. Cancellation cleanup is a scoped safety correction to this PR's disposable synthetic smoke; no domain or provider semantics change.

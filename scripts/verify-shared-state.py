@@ -167,11 +167,12 @@ def wait_server(process, url):
     raise RuntimeError("Local Swift server did not become ready.")
 
 
-def start_stack(directory, env):
+def start_stack(directory, env, *, ephemeral=False):
+    excluded = EXCLUDED + ",postgrest" if ephemeral else EXCLUDED
     stack_log = directory / "stack.private.log"
     with stack_log.open("w") as log:
         try:
-            run(["python3", "scripts/local-docker-binding.py"] + cli_command("start", "--debug", "--network-id", NETWORK, "--exclude", EXCLUDED), env=env,
+            run(["python3", "scripts/local-docker-binding.py"] + cli_command("start", "--debug", "--network-id", NETWORK, "--exclude", excluded), env=env,
                 stdout=log, stderr=subprocess.STDOUT)
         except VerifierFailure as failure:
             log.flush()
@@ -389,7 +390,7 @@ def run_verification(args, directory, env, run_native, evidence_args, scope):
         if options.get("com.docker.network.bridge.host_binding_ipv4") != "127.0.0.1":
             raise RuntimeError("Local test network is not bound to loopback.")
     print("Starting isolated localhost Supabase services; output stays in a private temporary directory.", flush=True)
-    start_stack(directory, env)
+    start_stack(directory, env, ephemeral=scope is not None)
     names = [f"supabase_db_{PROJECT}", f"supabase_kong_{PROJECT}"]
     if scope:
         names.append(f"supabase_auth_{PROJECT}")

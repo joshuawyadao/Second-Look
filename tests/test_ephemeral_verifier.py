@@ -34,6 +34,19 @@ class EphemeralVerifierTests(unittest.TestCase):
         with patch("ephemeral_stack.selected_ports", return_value=(43001, 43002, 43003, 43004)):
             return prepare(SCRIPTS.parent, Path(directory))
 
+    def test_only_ephemeral_smoke_excludes_unused_postgrest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for ephemeral in (False, True):
+                with self.subTest(ephemeral=ephemeral), patch.object(verifier, "run") as run:
+                    verifier.start_stack(Path(directory), {}, ephemeral=ephemeral)
+                    command = run.call_args.args[0]
+                    excluded = command[command.index("--exclude") + 1].split(",")
+                    self.assertEqual(excluded, verifier.EXCLUDED.split(",") +
+                                     (["postgrest"] if ephemeral else []))
+                    for required in ("gotrue", "kong"):
+                        self.assertNotIn(required, excluded)
+                    self.assertNotIn("--ignore-health-check", command)
+
     def test_invalid_flag_refuses_scope_before_any_mutation(self):
         with patch.object(sys, "argv", ["verify-shared-state.py", "--ephemeral"]), \
                 patch.object(verifier, "prepare") as prepare_scope:

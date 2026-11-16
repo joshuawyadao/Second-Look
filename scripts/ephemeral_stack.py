@@ -15,6 +15,7 @@ import uuid
 TOKEN = re.compile(r"[0-9a-f]{16}\Z")
 PROJECT_PREFIX = "secondlook-m2-smoke-"
 NETWORK_PREFIX = "secondlook_m2_smoke_"
+REQUIRED_SERVICES = ("db", "kong", "auth", "rest")
 
 
 @dataclass(frozen=True)

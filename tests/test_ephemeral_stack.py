@@ -99,6 +99,8 @@ class EphemeralStackTests(unittest.TestCase):
         private_config = str(scope.workdir / "supabase/config.toml")
         self.assertTrue(created("supabase_db_" + project, {**payload, "HostConfig": {
             "NetworkMode": network, "Binds": [private_config + ":/etc/config:ro"]}}))
+        rest = {"Labels": payload["Labels"], "HostConfig": {"NetworkMode": network}}
+        self.assertTrue(created("supabase_rest_" + project, rest))
         self.assertTrue(adapter.bind_volume_create("/v1.52/volumes/create", json.dumps({
             "Name": "supabase_db_" + project, "Labels": payload["Labels"], "Driver": "local"}).encode(), selected))
         refused("volume_name", lambda: adapter.bind_volume_create(
@@ -113,7 +115,12 @@ class EphemeralStackTests(unittest.TestCase):
                 "Driver": "foreign"}).encode(), selected))
         for reason, name, value in (("create_name", "supabase_db_secondlook-m2-local", payload),
                                     ("create_name", "supabase_studio_" + project, payload),
-                                    ("create_service_rest", "supabase_rest_" + project, payload),
+                                    ("create_port", "supabase_rest_" + project, payload),
+                                    ("create_name", "supabase_rest_secondlook-m2-local", rest),
+                                    ("create_labels", "supabase_rest_" + project, {**rest, "Labels": {}}),
+                                    ("create_network", "supabase_rest_" + project, {**rest, "HostConfig": {"NetworkMode": "bridge"}}),
+                                    ("create_mount", "supabase_rest_" + project, {**rest, "HostConfig": {
+                                        "NetworkMode": network, "Binds": ["supabase_db_secondlook-m2-local:/var/lib/postgresql/data"]}}),
                                     ("create_payload", "supabase_db_" + project, []),
                                     ("create_labels", "supabase_db_" + project, {**payload, "Labels": {}}),
                                     ("create_network", "supabase_db_" + project, {**payload, "HostConfig": {"NetworkMode": "bridge"}}),

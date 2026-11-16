@@ -429,7 +429,7 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         with self.assertRaises(ValueError):
             module.UnrelatedContainerError("SYNTHETIC_SECRET=private")
         self.assertEqual(set(module.REFUSAL_MARKERS), {
-            "create_name", "create_service_rest", "create_payload", "create_labels", "create_network",
+            "create_name", "create_payload", "create_labels", "create_network",
             "create_mount", "create_port", "volume_name", "volume_labels",
             "volume_driver",
         })

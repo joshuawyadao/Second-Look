@@ -18,7 +18,8 @@ import urllib.error
 import urllib.request
 import uuid
 from shared_stack_diagnostics import startup_failure_message
-from ephemeral_stack import Scope, prepare, metadata_matches, inspected_mounts_are_approved, approved_volume
+from ephemeral_stack import (Scope, REQUIRED_SERVICES, prepare, metadata_matches,
+                             inspected_mounts_are_approved, approved_volume)
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ["npx", "--yes", "supabase@2.119.0"]
@@ -59,8 +60,7 @@ def deadline_for(command):
     elif command[:3] == ["docker", "volume", "inspect"] and command[3:] == [f"supabase_db_{PROJECT}"]:
         phase = "inventory"
     elif command[:2] == ["docker", "inspect"] and command[2:] and all(
-            item in {f"supabase_db_{PROJECT}", f"supabase_kong_{PROJECT}",
-                     f"supabase_auth_{PROJECT}"} | INSPECTABLE_IDS for item in command[2:]):
+            item in {f"supabase_{service}_{PROJECT}" for service in REQUIRED_SERVICES} | INSPECTABLE_IDS for item in command[2:]):
         phase = "inventory"
     elif command[:2] == ["docker", "exec"] and len(command) > 3 and command[2 + (command[2] == "-i")] == f"supabase_db_{PROJECT}":
         phase = "schema"
@@ -167,12 +167,11 @@ def wait_server(process, url):
     raise RuntimeError("Local Swift server did not become ready.")
 
 
-def start_stack(directory, env, *, ephemeral=False):
-    excluded = EXCLUDED + ",postgrest" if ephemeral else EXCLUDED
+def start_stack(directory, env):
     stack_log = directory / "stack.private.log"
     with stack_log.open("w") as log:
         try:
-            run(["python3", "scripts/local-docker-binding.py"] + cli_command("start", "--debug", "--network-id", NETWORK, "--exclude", excluded), env=env,
+            run(["python3", "scripts/local-docker-binding.py"] + cli_command("start", "--debug", "--network-id", NETWORK, "--exclude", EXCLUDED), env=env,
                 stdout=log, stderr=subprocess.STDOUT)
         except VerifierFailure as failure:
             log.flush()
@@ -249,7 +248,7 @@ def cleanup_ephemeral(scope: Scope) -> None:
             networks = inspected.get("NetworkSettings", {}).get("Networks", {})
             if labels.get("com.supabase.cli.project") != scope.project or \
                     labels.get("com.docker.compose.project") != scope.project or \
-                    (name not in {f"supabase_{service}_{scope.project}" for service in ("db", "kong", "auth")} and
+                    (name not in {f"supabase_{service}_{scope.project}" for service in REQUIRED_SERVICES} and
                      container_id not in (details.get("Containers") or {})) or \
                     any(key != scope.network for key in networks) or \
                     not inspected_mounts_are_approved(scope, inspected.get("Mounts")):
@@ -390,10 +389,10 @@ def run_verification(args, directory, env, run_native, evidence_args, scope):
         if options.get("com.docker.network.bridge.host_binding_ipv4") != "127.0.0.1":
             raise RuntimeError("Local test network is not bound to loopback.")
     print("Starting isolated localhost Supabase services; output stays in a private temporary directory.", flush=True)
-    start_stack(directory, env, ephemeral=scope is not None)
+    start_stack(directory, env)
     names = [f"supabase_db_{PROJECT}", f"supabase_kong_{PROJECT}"]
     if scope:
-        names.append(f"supabase_auth_{PROJECT}")
+        names.extend(f"supabase_{service}_{PROJECT}" for service in REQUIRED_SERVICES if service not in ("db", "kong"))
     bindings = json.loads(run(["docker", "inspect", *names],
                               capture_output=True).stdout)
     for container in bindings:
@@ -402,7 +401,7 @@ def run_verification(args, directory, env, run_native, evidence_args, scope):
             name = container.get("Name", "").removeprefix("/")
             if labels.get("com.supabase.cli.project") != PROJECT or \
                     labels.get("com.docker.compose.project") != PROJECT or \
-                    NETWORK not in container.get("NetworkSettings", {}).get("Networks", {}) or \
+                    set(container.get("NetworkSettings", {}).get("Networks", {})) != {NETWORK} or \
                     name not in names or not inspected_mounts_are_approved(scope, container.get("Mounts")):
                 raise RuntimeError("Ephemeral container ownership could not be proved.")
             allowed_ports = ({str(scope.api_port)} if name == f"supabase_kong_{PROJECT}" else

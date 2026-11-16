@@ -19,7 +19,8 @@ import tempfile
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
-from ephemeral_stack import Scope, metadata_matches, create_mounts_are_approved, approved_volume
+from ephemeral_stack import (Scope, REQUIRED_SERVICES, metadata_matches,
+                             create_mounts_are_approved, approved_volume)
 
 PROJECT = "secondlook-m2-local"
 NETWORK = "secondlook_m2_local"
@@ -38,7 +39,7 @@ ADAPTER_PHASE_MARKERS = {
 }
 REFUSAL_MARKERS = {
     reason: "Local Docker adapter refusal: " + reason for reason in (
-        "create_name", "create_service_rest", "create_payload", "create_labels", "create_network",
+        "create_name", "create_payload", "create_labels", "create_network",
         "create_mount", "create_port", "volume_name", "volume_labels",
         "volume_driver",
     )
@@ -96,16 +97,13 @@ def bind_create(path: str, data: bytes, scope: Scope | None = None) -> bytes:
     name = parse_qs(parts.query).get("name", [""])[0]
     if not parts.path.endswith("/containers/create"):
         return data
-    if scope is not None and name == f"supabase_rest_{project}":
-        # Report this one known excluded-service gap without admitting it.
-        raise UnrelatedContainerError("create_service_rest")
     if name and not (name.startswith("supabase_") and name.endswith("_" + project)):
         raise UnrelatedContainerError("create_name")
     try:
         payload = json.loads(data)
     except ValueError:
         raise UnrelatedContainerError("create_payload") from None
-    if scope is not None and name not in ("", *(f"supabase_{service}_{project}" for service in ("db", "kong", "auth"))):
+    if scope is not None and name not in ("", *(f"supabase_{service}_{project}" for service in REQUIRED_SERVICES)):
         raise UnrelatedContainerError("create_name")
     if not name:
         if not isinstance(payload, dict):
@@ -132,8 +130,8 @@ def bind_create(path: str, data: bytes, scope: Scope | None = None) -> bytes:
             if scope is not None:
                 api_port, db_port, shadow_port = map(str, (scope.api_port, scope.db_port, scope.shadow_port))
                 permitted = ({api_port} if name == f"supabase_kong_{project}" else
-                             set() if name == f"supabase_auth_{project}" else
-                             {db_port, shadow_port})
+                             {db_port, shadow_port} if name in ("", f"supabase_db_{project}") else
+                             set())
                 if binding.get("HostPort") not in permitted:
                     raise UnrelatedContainerError("create_port")
             binding["HostIp"] = "127.0.0.1"

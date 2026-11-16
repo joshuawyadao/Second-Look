@@ -34,18 +34,16 @@ class EphemeralVerifierTests(unittest.TestCase):
         with patch("ephemeral_stack.selected_ports", return_value=(43001, 43002, 43003, 43004)):
             return prepare(SCRIPTS.parent, Path(directory))
 
-    def test_only_ephemeral_smoke_excludes_unused_postgrest(self):
+    def test_both_stack_modes_keep_postgrest_for_swift_rpc(self):
         with tempfile.TemporaryDirectory() as directory:
-            for ephemeral in (False, True):
-                with self.subTest(ephemeral=ephemeral), patch.object(verifier, "run") as run:
-                    verifier.start_stack(Path(directory), {}, ephemeral=ephemeral)
-                    command = run.call_args.args[0]
-                    excluded = command[command.index("--exclude") + 1].split(",")
-                    self.assertEqual(excluded, verifier.EXCLUDED.split(",") +
-                                     (["postgrest"] if ephemeral else []))
-                    for required in ("gotrue", "kong"):
-                        self.assertNotIn(required, excluded)
-                    self.assertNotIn("--ignore-health-check", command)
+            with patch.object(verifier, "run") as run:
+                verifier.start_stack(Path(directory), {})
+                command = run.call_args.args[0]
+                excluded = command[command.index("--exclude") + 1].split(",")
+                self.assertEqual(excluded, verifier.EXCLUDED.split(","))
+                for required in ("gotrue", "kong", "postgrest"):
+                    self.assertNotIn(required, excluded)
+                self.assertNotIn("--ignore-health-check", command)
 
     def test_invalid_flag_refuses_scope_before_any_mutation(self):
         with patch.object(sys, "argv", ["verify-shared-state.py", "--ephemeral"]), \
@@ -91,17 +89,20 @@ class EphemeralVerifierTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             scope = self.scope(directory)
             network_id = "a" * 64
-            container_id = "b" * 64
+            container_ids = {service: letter * 64 for service, letter in
+                             zip(verifier.REQUIRED_SERVICES, "bcde")}
             attached = {"Id": network_id, "Name": scope.network,
                         "Labels": {"com.secondlook.smoke": scope.token},
-                        "Containers": {container_id: {}}}
+                        "Containers": {identity: {} for identity in container_ids.values()}}
             empty = {**attached, "Containers": {}}
-            container = {"Name": "/supabase_db_" + scope.project,
-                         "Mounts": [{"Type": "volume", "Name": "supabase_db_" + scope.project,
-                                     "RW": True}],
-                         "Config": {"Labels": {"com.supabase.cli.project": scope.project,
-                                               "com.docker.compose.project": scope.project}},
-                         "NetworkSettings": {"Networks": {scope.network: {}}}}
+            containers = {identity: {
+                "Name": f"/supabase_{service}_{scope.project}",
+                "Mounts": ([{"Type": "volume", "Name": "supabase_db_" + scope.project,
+                             "RW": True}] if service == "db" else []),
+                "Config": {"Labels": {"com.supabase.cli.project": scope.project,
+                                      "com.docker.compose.project": scope.project}},
+                "NetworkSettings": {"Networks": {scope.network: {}}},
+            } for service, identity in container_ids.items()}
             calls = []
             def fake_run(command, **_kwargs):
                 calls.append(command)
@@ -109,7 +110,7 @@ class EphemeralVerifierTests(unittest.TestCase):
                     value = attached if len([c for c in calls if c[:3] == ["docker", "network", "inspect"]]) == 1 else empty
                     return subprocess.CompletedProcess(command, 0, json.dumps([value]).encode())
                 if command[:2] == ["docker", "inspect"]:
-                    return subprocess.CompletedProcess(command, 0, json.dumps([container]).encode())
+                    return subprocess.CompletedProcess(command, 0, json.dumps([containers[command[2]]]).encode())
                 return subprocess.CompletedProcess(command, 0, b"")
             with patch.object(verifier, "OWNED_NETWORK_ID", network_id), \
                     patch.object(verifier, "NETWORK_CREATE_ATTEMPTED", True), \
@@ -119,6 +120,8 @@ class EphemeralVerifierTests(unittest.TestCase):
                 verifier.cleanup_ephemeral(scope)
             stop = [command for command in calls if command[:4] == [*verifier.CLI, "stop"]]
             self.assertEqual(len(stop), 1)
+            self.assertEqual({command[2] for command in calls if command[:2] == ["docker", "inspect"]},
+                             set(container_ids.values()))
             self.assertIn(["--project-id", scope.project, "--no-backup"],
                           [stop[0][index:index + 3] for index in range(len(stop[0]) - 2)])
             self.assertIn("--workdir", stop[0])
@@ -201,7 +204,7 @@ class EphemeralVerifierTests(unittest.TestCase):
                     return subprocess.CompletedProcess(command, 0, network_id.encode())
                 if command[:2] == ["docker", "inspect"]:
                     containers = []
-                    for name in ("db", "kong", "auth"):
+                    for name in verifier.REQUIRED_SERVICES:
                         containers.append({
                             "Name": f"/supabase_{name}_{scope.project}",
                             "Config": {"Labels": {"com.supabase.cli.project": scope.project,
@@ -224,6 +227,64 @@ class EphemeralVerifierTests(unittest.TestCase):
                     verifier.run_verification(SimpleNamespace(), Path(directory), {}, True, lambda _: [], scope)
             self.assertFalse(any(command[:2] == ["docker", "exec"] for command in calls))
             self.assertFalse(any(command[:4] == [*verifier.CLI, "status"] for command in calls))
+
+    def test_rest_ownership_and_unpublished_port_are_checked_before_sql(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scope = self.scope(directory)
+            network_id = "a" * 64
+            network = {"Id": network_id, "Name": scope.network,
+                       "Labels": {"com.secondlook.smoke": scope.token},
+                       "Options": {"com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}}
+            for fault in ("label", "network", "additional-network", "mount", "port"):
+                with self.subTest(fault=fault):
+                    calls = []
+                    def fake_run(command, **_kwargs):
+                        calls.append(command)
+                        if command[:3] == ["docker", "network", "inspect"]:
+                            first = sum(c[:3] == ["docker", "network", "inspect"] for c in calls) == 1
+                            return subprocess.CompletedProcess(command, 1 if first else 0,
+                                                               b"" if first else json.dumps([network]).encode())
+                        if command[:3] == ["docker", "network", "create"]:
+                            return subprocess.CompletedProcess(command, 0, network_id.encode())
+                        if command[:2] == ["docker", "inspect"]:
+                            containers = []
+                            for service in verifier.REQUIRED_SERVICES:
+                                labels = {"com.supabase.cli.project": scope.project,
+                                          "com.docker.compose.project": scope.project}
+                                networks = {scope.network: {}}
+                                mounts = ([{"Type": "volume", "Name": "supabase_db_" + scope.project,
+                                            "RW": True}] if service == "db" else [])
+                                ports = {}
+                                if service == "rest":
+                                    if fault == "label": labels["com.supabase.cli.project"] = "secondlook-m2-local"
+                                    if fault == "network": networks = {"bridge": {}}
+                                    if fault == "additional-network": networks["bridge"] = {}
+                                    if fault == "mount": mounts = [{"Type": "volume", "Name": "supabase_db_secondlook-m2-local", "RW": True}]
+                                    if fault == "port": ports = {"3000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "43001"}]}
+                                containers.append({
+                                    "Name": f"/supabase_{service}_{scope.project}",
+                                    "Config": {"Labels": labels},
+                                    "NetworkSettings": {"Networks": networks, "Ports": ports},
+                                    "Mounts": mounts,
+                                })
+                            return subprocess.CompletedProcess(command, 0, json.dumps(containers).encode())
+                        raise AssertionError("Unexpected command after REST ownership refusal")
+                    with patch.object(verifier, "PROJECT", scope.project), \
+                            patch.object(verifier, "NETWORK", scope.network), \
+                            patch.object(verifier, "WORKDIR", scope.workdir), \
+                            patch.object(verifier, "OWNED_NETWORK_ID", None), \
+                            patch.object(verifier, "NETWORK_CREATE_ATTEMPTED", False), \
+                            patch.object(verifier, "preflight_ephemeral"), \
+                            patch.object(verifier, "start_stack"), \
+                            patch.object(verifier, "run", side_effect=fake_run):
+                        with self.assertRaisesRegex(RuntimeError, "ownership|binding"):
+                            verifier.run_verification(SimpleNamespace(), Path(directory), {}, True,
+                                                      lambda _: [], scope)
+                    inspected = [c for c in calls if c[:2] == ["docker", "inspect"]]
+                    self.assertEqual(len(inspected), 1)
+                    self.assertIn(f"supabase_rest_{scope.project}", inspected[0])
+                    self.assertFalse(any(c[:2] == ["docker", "exec"] for c in calls))
+                    self.assertFalse(any(c[:4] == [*verifier.CLI, "status"] for c in calls))
 
     def test_cleanup_failure_prevents_success_even_after_smoke_returns(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -139,40 +139,52 @@ def tool_version(command: list[str]) -> str:
 
 def generate() -> None:
     before = source_fingerprint()
-    with tempfile.TemporaryDirectory(prefix="secondlook-native-evidence-") as directory:
-        environment = dict(os.environ, SECONDLOOK_NATIVE_EVIDENCE_DIR=directory)
-        try:
-            result = subprocess.run([str(ROOT / "scripts/verify-shared-state.sh"), "--modern-keys", "--native-smoke"],
-                                    cwd=ROOT, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError as error:
-            raise EvidenceError("Local connected native smoke unavailable") from error
-        if result.returncode:
-            raise EvidenceError("Local connected native smoke failed; inspect its private logs")
-        observed = {}
-        for scenario, cases in CASES.items():
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if temp_root == ROOT or ROOT in temp_root.parents:
+        raise EvidenceError("Task temporary directory must be outside the repository")
+    log_fd, log_name = tempfile.mkstemp(prefix="secondlook-native-evidence-", suffix=".private.log",
+                                        dir=temp_root)
+    log_path = Path(log_name)
+    os.fchmod(log_fd, 0o600)
+    try:
+        with os.fdopen(log_fd, "w") as outer_log, \
+                tempfile.TemporaryDirectory(prefix="secondlook-native-evidence-", dir=temp_root) as directory:
+            environment = dict(os.environ, SECONDLOOK_NATIVE_EVIDENCE_DIR=directory)
             try:
-                record = json.loads((Path(directory) / f"{scenario}.json").read_text(),
-                                    object_pairs_hook=no_duplicate_keys)
-            except (OSError, ValueError) as error:
-                raise EvidenceError("Required native scenario evidence missing") from error
-            if record != {"scenario": scenario, "cases": {case: "passed" for case in cases}}:
-                raise EvidenceError("Required native scenario evidence invalid")
-            observed[scenario] = record["cases"]
-    versions = {"xcode": tool_version(["xcodebuild", "-version"]),
-                "swift": tool_version(["swift", "--version"])}
-    after = source_fingerprint()
-    if before != after:
-        raise EvidenceError("Source changed during connected native smoke")
-    receipt = {
-        "schema": 1, "fingerprint": after,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "toolchain": versions,
-        "cases": observed,
-    }
-    temporary = RECEIPT.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
-    validate_receipt(temporary, after)
-    temporary.replace(RECEIPT)
+                result = subprocess.run([str(ROOT / "scripts/verify-shared-state.sh"), "--modern-keys", "--native-smoke"],
+                                        cwd=ROOT, env=environment, stdout=outer_log, stderr=subprocess.STDOUT)
+            except OSError as error:
+                raise EvidenceError("Local connected native smoke unavailable") from error
+            if result.returncode:
+                raise EvidenceError("Local connected native smoke failed")
+            observed = {}
+            for scenario, cases in CASES.items():
+                try:
+                    record = json.loads((Path(directory) / f"{scenario}.json").read_text(),
+                                        object_pairs_hook=no_duplicate_keys)
+                except (OSError, ValueError) as error:
+                    raise EvidenceError("Required native scenario evidence missing") from error
+                if record != {"scenario": scenario, "cases": {case: "passed" for case in cases}}:
+                    raise EvidenceError("Required native scenario evidence invalid")
+                observed[scenario] = record["cases"]
+        versions = {"xcode": tool_version(["xcodebuild", "-version"]),
+                    "swift": tool_version(["swift", "--version"])}
+        after = source_fingerprint()
+        if before != after:
+            raise EvidenceError("Source changed during connected native smoke")
+        receipt = {
+            "schema": 1, "fingerprint": after,
+            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "toolchain": versions,
+            "cases": observed,
+        }
+        temporary = RECEIPT.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        validate_receipt(temporary, after)
+        temporary.replace(RECEIPT)
+    except EvidenceError as error:
+        raise EvidenceError(f"{error}; private verifier log: {log_path}") from None
+    log_path.unlink()
     print("Connected native operator evidence generated for current source.")
 
 

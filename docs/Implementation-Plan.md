@@ -18,4 +18,4 @@ Require local, source-matched connected-native smoke evidence when a change touc
 - Baseline: `03f8f7b5ab3ec469cdcc324e3603cd13a3f44fc7` (`origin/main`), isolated from the original checkout.
 - Existing in-progress changes in original project folders remain untouched.
 - Missing hosting/account capabilities are reported as concrete limitations; they are not permission to weaken required checks.
-- Docker Desktop was started but its container inventory did not respond within a bounded 20-second probe. The source-matched native receipt has not been generated; affected-source CI is expected to fail until the bounded smoke passes on a responsive local host.
+- Docker Desktop was started but its container inventory did not respond within a bounded 20-second probe. The first generator discarded outer output and left no phase diagnostic; the corrected generator now retains a private log path on failure. A new run has not yet diagnosed the cause. The source-matched native receipt remains absent; affected-source CI is expected to fail until the bounded smoke passes on a responsive local host.

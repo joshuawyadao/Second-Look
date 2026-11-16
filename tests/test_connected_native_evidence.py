@@ -1,9 +1,12 @@
 """Source matching and required-case proof for the bounded local native smoke."""
 import importlib.util
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone, timedelta
+import io
 import json
 from pathlib import Path
 import subprocess
+import stat
 import sys
 import tempfile
 import unittest
@@ -117,8 +120,37 @@ class ConnectedEvidenceTests(unittest.TestCase):
                 return runner.return_value
 
             runner.side_effect = produce_cases
-            with self.assertRaisesRegex(self.checker.EvidenceError, "Source changed"):
+            with self.assertRaisesRegex(self.checker.EvidenceError, "Source changed") as caught:
                 self.checker.generate()
+            Path(str(caught.exception).split("private verifier log: ", 1)[1]).unlink()
+
+    def test_failed_generator_retains_private_outer_log_without_receipt_or_console_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "docs" / "connected-native-evidence.json"
+            receipt.parent.mkdir()
+            output = io.StringIO()
+
+            def fail_runner(_command, **kwargs):
+                kwargs["stdout"].write("Synthetic verifier phase: Docker inventory unavailable; secret sentinel\n")
+                return subprocess.CompletedProcess(_command, 1)
+
+            with patch.object(self.checker, "RECEIPT", receipt), \
+                    patch.object(self.checker, "source_fingerprint", return_value="a" * 64), \
+                    patch.object(self.checker.subprocess, "run", side_effect=fail_runner), \
+                    redirect_stdout(output), redirect_stderr(output):
+                with self.assertRaisesRegex(self.checker.EvidenceError, "Local connected native smoke failed") as caught:
+                    self.checker.generate()
+
+            self.assertFalse(receipt.exists())
+            self.assertNotIn("secret sentinel", str(caught.exception) + output.getvalue())
+            private_log = Path(str(caught.exception).split("private verifier log: ", 1)[1])
+            try:
+                self.assertTrue(private_log.is_file())
+                self.assertNotIn(self.checker.ROOT, private_log.parents)
+                self.assertEqual(stat.S_IMODE(private_log.stat().st_mode), 0o600)
+                self.assertIn("Docker inventory unavailable; secret sentinel", private_log.read_text())
+            finally:
+                private_log.unlink(missing_ok=True)
 
     def test_pr_merge_tree_rejects_receipt_after_base_source_advances(self):
         with tempfile.TemporaryDirectory() as directory:

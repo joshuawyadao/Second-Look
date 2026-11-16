@@ -11,11 +11,13 @@ Require local, source-matched connected-native smoke evidence when a change touc
 - [x] Confirm existing CI Verify enforcement and map supported hosted versus local native-stack execution.
 - [x] Add a bounded connected-native smoke/evidence gate using existing wrappers and synthetic services without relying on an unsupported hosted Docker/Xcode combination.
 - [x] Test that missing, stale, skipped, failed or wrong-source evidence cannot satisfy the affected-boundary gate.
-- [x] Validate repository and orchestration regressions: all 64 repository tests pass outside sandbox socket restrictions. Connected smoke remains blocked by local Docker readiness; no passing receipt is claimed.
+- [x] Validate repository and orchestration regressions: all 65 repository tests pass outside sandbox socket restrictions. Connected smoke remains blocked by local service startup; no passing receipt is claimed.
+- [ ] Run the four-case connected smoke and commit a matching receipt: blocked by an initial 300-second Supabase database-backup startup timeout, then a failed separate CLI status check after a bounded Docker restart.
 - [x] Document runner-provisioning limitations and manual acceptance; save the scoped branch with evidence generation explicitly pending.
 
 ## Discovery notes
 - Baseline: `03f8f7b5ab3ec469cdcc324e3603cd13a3f44fc7` (`origin/main`), isolated from the original checkout.
 - Existing in-progress changes in original project folders remain untouched.
 - Missing hosting/account capabilities are reported as concrete limitations; they are not permission to weaken required checks.
-- Docker Desktop was started but its container inventory did not respond within a bounded 20-second probe. The first generator discarded outer output and left no phase diagnostic; the corrected generator now retains a private log path on failure. A new run has not yet diagnosed the cause. The source-matched native receipt remains absent; affected-source CI is expected to fail until the bounded smoke passes on a responsive local host.
+- Docker Desktop inventory initially timed out, then became responsive. The corrected generator retained a private outer log identifying a 300-second Supabase startup timeout. Its stack log last reported database-backup startup. After a bounded engine restart, a retry completed the start command but failed the separate local Supabase status check. Direct probes reported an unhealthy synthetic database and intermittent Docker/pg_isready timeouts. No required native case ran and no receipt was produced. All three disposable simulators were removed; no physical device was used. The underlying local engine/database cause remains unconfirmed; no volumes were deleted.
+- Hosted native foundation and repository jobs passed at source `4cf5e2c`; the source evidence job failed on the absent receipt as intended. The full hosted backend job also passed, including both local API key modes and restart checks; CI Verify fails only because the connected receipt is absent.

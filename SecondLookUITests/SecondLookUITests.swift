@@ -6,10 +6,14 @@ final class SecondLookUITests: XCTestCase {
 
     // XCTest's synchronous setup override is nonisolated in Xcode 16.
     // Keep UI setup on the main actor with the test methods on every toolchain.
-    private func launchFreshDemo() {
+    private func launchFreshDemo(rightToLeft: Bool = false) {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-ui-testing", "-reset-demo"]
+        if rightToLeft {
+            // Mirror control placement without changing the date-formatting locale.
+            app.launchArguments += ["-AppleTextDirection", "YES", "-NSForceRightToLeftWritingDirection", "YES"]
+        }
         app.launch()
         XCTAssertTrue(app.buttons["createRoutine"].waitForExistence(timeout: 10))
     }
@@ -116,7 +120,15 @@ final class SecondLookUITests: XCTestCase {
     }
 
     func testSnoozeStartsInFutureAndPersistsWithRoutine() throws {
-        launchFreshDemo()
+        try assertSnoozeStartsInFutureAndPersists(rightToLeft: false)
+    }
+
+    func testSnoozeStartsInFutureAndPersistsWithRoutineRightToLeft() throws {
+        try assertSnoozeStartsInFutureAndPersists(rightToLeft: true)
+    }
+
+    private func assertSnoozeStartsInFutureAndPersists(rightToLeft: Bool) throws {
+        launchFreshDemo(rightToLeft: rightToLeft)
         tap("createRoutine")
         enter("routineTitle", text: "Snooze check")
         enter("stepTitle-0", text: "Pack lunch")
@@ -140,13 +152,21 @@ final class SecondLookUITests: XCTestCase {
         XCTAssertGreaterThan(snooze.frame.height, 0)
         XCTAssertLessThan(snooze.frame.maxY, visibleBottom())
         XCTAssertTrue(snooze.isHittable)
-        // SwiftUI exposes the full row; its trailing control must clear the keyboard.
-        snooze.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        // SwiftUI exposes a full-width row containing the actual native switch.
+        // Target that control instead of assuming which side of the row contains it.
+        let nativeSwitch = snooze.switches.firstMatch
+        XCTAssertTrue(nativeSwitch.waitForExistence(timeout: 5), "Missing native Snooze control")
+        XCTAssertTrue(nativeSwitch.isHittable, "Native Snooze control is not reachable")
+        if rightToLeft {
+            XCTAssertLessThan(nativeSwitch.frame.midX, snooze.frame.midX,
+                              "The mirrored regression must place the actual switch on the left")
+        }
+        nativeSwitch.tap()
         let enabled = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == %@", "1"), object: snooze
         )
         XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed,
-                       "Snooze did not enable after tapping the switch at \(snooze.frame)")
+                       "Snooze did not enable after tapping native control at \(nativeSwitch.frame) within row \(snooze.frame)")
         XCTAssertEqual(snooze.value as? String, "1")
 
         let deadline = app.staticTexts["snoozeDeadline"]

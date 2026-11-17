@@ -46,3 +46,5 @@ None.
 No open questions. Cancellation cleanup is a scoped safety correction to this PR's disposable synthetic smoke; no domain or provider semantics change.
 
 Cancellation validation on the corrected working tree: two synthetic descendant-heartbeat regressions failed before the fix; focused18 and complete88 tests pass afterwards. Repository verification, Python compilation, shell syntax and whitespace checks pass. Unix-socket fixtures require a normal local process outside sandbox; their initial sandbox PermissionError is environmental and the same full suite passes outside. Source is frozen; regenerate native evidence after saving this code.
+
+Fresh corrected-source acceptance at7b5b2c1: all four required native cases passed, database/HTTP/restart checks passed, source fingerprint was stable, and exact owned cleanup succeeded. Receipt generated2026-11-17T00:00:28Z with fingerprintfe197a0107785b2771015bf54fcc7f879e1c3c731483422a98d9bca0494cc7f1. `check-connected-native-evidence.py check --event workflow_dispatch --base-ref main` passes. Only documentation and this excluded receipt change after the frozen code; PR Codex/hosted checks follow the save.

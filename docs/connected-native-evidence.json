@@ -11,8 +11,8 @@
       "SharedCommandAcceptanceUITests.testPairedOwnerSharedCommandAcceptance": "passed"
     }
   },
-  "fingerprint": "fe197a0107785b2771015bf54fcc7f879e1c3c731483422a98d9bca0494cc7f1",
-  "generated_at": "2026-11-17T00:00:28+00:00",
+  "fingerprint": "a2bc5d4af3b2a9b107bc12b1044de8dc020f75070e67a3c200585dba0656f0d2",
+  "generated_at": "2026-11-17T21:29:08+00:00",
   "schema": 1,
   "toolchain": {
     "swift": "Apple Swift version 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)",

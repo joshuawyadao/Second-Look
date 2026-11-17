@@ -152,6 +152,7 @@ final class ConnectedAppModel {
     @ObservationIgnored private var pauseNextDraftRevalidation = false
     @ObservationIgnored private var draftRevalidationContinuation: CheckedContinuation<Void, Never>?
     private(set) var commandAcceptanceStatus: String?
+    @ObservationIgnored private var commandAcceptanceRefreshFailure: String?
     private(set) var accessInvalidatedForAcceptance = false
     private(set) var simulatedMembershipFailure = false
     private(set) var simulatedForbiddenRestore = false
@@ -1116,9 +1117,13 @@ final class ConnectedAppModel {
             guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
             let refreshed = await self.refreshInstalledSpace()
             guard !Task.isCancelled, self.currentForegroundSession(epoch) else { return }
-            self.commandAcceptanceStatus = !refreshed ? "Shared command checks failed: postRunRefresh" :
-                report.allPassed ? "Shared command checks passed" :
-                "Shared command checks failed: " + (report.firstFailedStepID?.rawValue ?? "incomplete")
+            let commandStep = report.allPassed ? "passed" :
+                (report.firstFailedStepID?.rawValue ?? "incomplete")
+            self.commandAcceptanceStatus = !refreshed
+                ? "Shared command checks failed: postRunRefresh."
+                    + (self.commandAcceptanceRefreshFailure ?? "unavailable") + "; commands." + commandStep
+                : report.allPassed ? "Shared command checks passed" :
+                    "Shared command checks failed: " + commandStep
             self.busy = false
         }
     }
@@ -1139,9 +1144,22 @@ final class ConnectedAppModel {
     /// Foreground and command recovery already own busy; keep their refresh in that operation.
     @discardableResult
     private func refreshInstalledSpace(quietly: Bool = false) async -> Bool {
-        guard canUseForeground, let client, let accountID, let configuration else { return false }
+        #if SECONDLOOK_DEMO
+        commandAcceptanceRefreshFailure = nil
+        #endif
+        guard canUseForeground, let client, let accountID, let configuration else {
+            #if SECONDLOOK_DEMO
+            commandAcceptanceRefreshFailure = "missingContext"
+            #endif
+            return false
+        }
         let epoch = generation
-        guard activeRefreshEpoch != epoch else { return false }
+        guard activeRefreshEpoch != epoch else {
+            #if SECONDLOOK_DEMO
+            commandAcceptanceRefreshFailure = "refreshAlreadyInFlight"
+            #endif
+            return false
+        }
         activeRefreshEpoch = epoch
         defer { if activeRefreshEpoch == epoch { activeRefreshEpoch = nil } }
         if !quietly {
@@ -1232,10 +1250,27 @@ final class ConnectedAppModel {
             busy = false
             return true
         } catch SharedStateFailure.notPaired {
+            #if SECONDLOOK_DEMO
+            commandAcceptanceRefreshFailure = "notPaired"
+            #endif
             if currentForegroundSession(epoch) {
                 purgeConnectedScope(confirmedAbsentFromLookup: !membershipLookupReturnedSpace)
             }
         } catch {
+            #if SECONDLOOK_DEMO
+            // Fixed categories only; never include error text or a server payload.
+            switch error as? SharedStateFailure {
+            case .invalidResponse: commandAcceptanceRefreshFailure = "invalidResponse"
+            case .staleState: commandAcceptanceRefreshFailure = "staleState"
+            case .serviceUnavailable: commandAcceptanceRefreshFailure = "serviceUnavailable"
+            case .rateLimited: commandAcceptanceRefreshFailure = "rateLimited"
+            case .capacityExceeded: commandAcceptanceRefreshFailure = "capacityExceeded"
+            case .unauthenticated: commandAcceptanceRefreshFailure = "unauthenticated"
+            case .forbidden: commandAcceptanceRefreshFailure = "forbidden"
+            case .sessionChanged, .scopeMismatch: commandAcceptanceRefreshFailure = "sessionChanged"
+            default: commandAcceptanceRefreshFailure = "rejected"
+            }
+            #endif
             if currentForegroundSession(epoch) {
                 let message = Self.safeMessage(error)
                 if handleSessionOrScopeLoss(error) { return false }

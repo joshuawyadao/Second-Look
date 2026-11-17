@@ -81,10 +81,28 @@ jobs:
       - name: Stop synthetic services
         if: always()
         run: npx --yes supabase@2.119.0 stop > "$RUNNER_TEMP/secondlook-stop.private.log" 2>&1
+  connected_evidence:
+    name: Connected native source evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository and comparison history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require current local connected native smoke when relevant
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          python3 scripts/check-connected-native-evidence.py check \
+            --event "$EVENT_NAME" --base-ref "$BASE_REF" --before "$BEFORE_SHA"
   verify:
     name: CI Verify
     if: always()
-    needs: [repository, native, backend]
+    needs: [repository, native, backend, connected_evidence]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -93,4 +111,5 @@ jobs:
           REPOSITORY_RESULT: ${{ needs.repository.result }}
           NATIVE_RESULT: ${{ needs.native.result }}
           BACKEND_RESULT: ${{ needs.backend.result }}
-        run: test "$REPOSITORY_RESULT" = success && test "$NATIVE_RESULT" = success && test "$BACKEND_RESULT" = success
+          EVIDENCE_RESULT: ${{ needs.connected_evidence.result }}
+        run: test "$REPOSITORY_RESULT" = success && test "$NATIVE_RESULT" = success && test "$BACKEND_RESULT" = success && test "$EVIDENCE_RESULT" = success

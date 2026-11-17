@@ -42,11 +42,11 @@ class CIEfficiencyContracts(unittest.TestCase):
     def test_required_gate_retains_all_expensive_boundaries(self):
         jobs = top_level_block(WORKFLOW, "jobs")
         self.assertEqual(
-            set(re.findall(r"(?m)^  ([a-z]+):$", jobs)),
-            {"repository", "native", "backend", "verify"},
+            set(re.findall(r"(?m)^  ([a-z_]+):$", jobs)),
+            {"repository", "native", "backend", "connected_evidence", "verify"},
         )
-        self.assertIn("    needs: [repository, native, backend]", jobs)
-        for job in ("repository", "native", "backend"):
+        self.assertIn("    needs: [repository, native, backend, connected_evidence]", jobs)
+        for job in ("repository", "native", "backend", "connected_evidence"):
             self.assertIn(f"${{{{ needs.{job}.result }}}}", jobs)
         self.assertIn("    if: always()", jobs)
         self.assertIn("    name: CI Verify", jobs)

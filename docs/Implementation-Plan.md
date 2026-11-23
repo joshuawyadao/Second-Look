@@ -1,18 +1,18 @@
 # Plan
 
-Revalidate the cache 6.1.0 update on current main with an independent branch and fresh connected native evidence.
+Refresh Second Look’s Swiftly PR against the merged cache upgrade and verify the combined workflow before merging.
 
 ## Scope
-- In: Replace the backend CI cache pin from Dependabot PR #5 and regenerate the source-matched receipt through the existing isolated smoke runner.
-- Out: Swift toolchain changes, cache scope/key changes, cloud or device operations, and branch protection changes.
+- In: Sync PR #8 with the merged #9 cache change, preserve both workflow changes, refresh the connected-source receipt, and verify PR and post-merge CI.
+- Out: Application or assertion changes, gate changes, deployments, real services, and physical devices.
 
 ## Action items
-- [x] Confirm the cache update's required failure is the stale source fingerprint; its backend job passed.
-- [x] Apply only the reviewed cache action pin to current main.
-- [x] Keep cache paths and the lockfile-derived key unchanged and verify the existing cache-boundary test.
-- [x] Generate a receipt on an owned iPhone simulator against the disposable localhost stack, then validate it with the required CI checker.
-- [x] Run repository checks, record the evidence in Verification, and confirm the source remains stable.
-- [x] Publish the scoped branch and start required hosted checks and Codex review.
+- [x] Confirm PR #9 merged at `68bf349` and its main push CI started.
+- [x] Merge the new `main` into the existing Swiftly feature ref and preserve both upgrade records and exact pins.
+- [x] Generate a receipt using the repository’s four-case smoke on an owned iOS simulator and an ephemeral localhost stack. Keep the existing assertions and checked fingerprint.
+- [x] Run `./scripts/verify-repository.sh` and `check-connected-native-evidence.py check`. Use the existing workflow contract, signing-key, native and backend tests because executable changes are limited to the previously reviewed pins and signing bootstrap.
+- [ ] Record actual combined-source evidence in `docs/Verification.md`, publish the branch and verify its fresh review and CI.
+- [ ] Merge the verified Swiftly PR, verify the exact merge commit’s main push CI and confirm both merged feature refs are absent.
 
 ## Open questions
 - None

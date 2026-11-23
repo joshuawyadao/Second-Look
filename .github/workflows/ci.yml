@@ -49,10 +49,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Import the verified Swiftly installer signing key
+        run: |
+          keyring="$(mktemp -d "$RUNNER_TEMP/secondlook-swiftly-gnupg.XXXXXXXX")"
+          GNUPGHOME="$keyring" bash scripts/import-swiftly-signing-key.sh
+          printf 'GNUPGHOME=%s\n' "$keyring" >> "$GITHUB_ENV"
       - name: Install pinned Swift server toolchain
-        uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
+        uses: swift-actions/setup-swift@364295d9c23900ce04d4e5cc708387921b4e50f9 # v3.0.0-beta.1
         with:
           swift-version: '6.2.1'
+          skip-verify-signature: false
       # Cache only pinned public package sources. Never persist compiled output,
       # local databases, private fixtures, or logs from the shared-state tests.
       - name: Cache resolved Swift server dependencies

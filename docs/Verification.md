@@ -880,3 +880,20 @@ The earlier cache upgrade passed its backend job, including the cache step, but 
 Use `python3 scripts/check-connected-native-evidence.py generate` on the disposable localhost stack and an owned simulator whenever a reviewed source change invalidates the receipt. Run `python3 scripts/check-connected-native-evidence.py check --event pull_request --base-ref main` before pushing. If another source change lands on `main` first, sync with that base and regenerate the receipt for the combined source.
 
 On November 23 all 88 repository tests passed. The connected smoke passed all four cases on a disposable iOS 26.5 simulator after local Docker recovery. Earlier isolated attempts failed separate simulator assertions and produced no receipt. The same app, fixture and assertion code ran successfully on the recovered stack. The fresh receipt covers the cache action diff and verifies owner/peer/outsider isolation, paired commands, fresh pairing and owner reopening, and invitation access loss.
+
+### Swiftly installer signature verification
+
+The Swift setup action's v3 beta requires Swift.org Automatic Signing Key #4 to verify the Swiftly 1.1.0 installer. Import the HTTPS-served key only after checking its complete primary fingerprint, using a new runner-owned `GNUPGHOME`. The workflow enables signature verification explicitly and selects Swift 6.2.1. The previous dependency PR failed during verification because the public key was missing. The verified import and Swift installer steps completed on the GitHub Ubuntu runner. [Earlier failure](https://github.com/joshuawyadao/Second-Look/actions/runs/43993592712), [corrected installer run](https://github.com/joshuawyadao/Second-Look/actions/runs/45245027093), [Swift signing keys](https://www.swift.org/keys/active/)
+
+`python3 -B -m unittest discover -s tests -p test_swiftly_signing_key.py` exercises the shell bootstrap with isolated command shims, including missing, incorrect and extra primary keys and download failure. The normal repository check discovers these cases. If the toolchain update needs to be reverted, restore the previous action pin and remove the key bootstrap step together. Any workflow change needs a receipt generated on that source before the connected evidence check can pass.
+
+On November 23 the repository check passed all 91 tests. Following recovery from a local Docker inventory timeout, the unchanged connected smoke passed owner/peer/outsider isolation, paired commands, fresh pairing and owner reopening, and invitation access loss on a disposable iOS 26.5 simulator and localhost stack. The committed receipt matches the reviewed source. The required GitHub evidence job verifies the receipt on the pull request; the smoke provides local synthetic evidence.
+
+
+### Combined cache and Swiftly verification
+
+Cache PR #9 merged at `68bf349`. Its [main push CI](https://github.com/joshuawyadao/Second-Look/actions/runs/45263783838) passed all five jobs. Swiftly PR #8 was synced against that commit with the existing cache paths and key, action pins, Swift 6.2.1 and installer signature verification intact.
+
+The November 23 combined-source run produced a new receipt on Xcode 27.2 with a disposable iOS 26.5 simulator and ephemeral loopback stack. The local SQL, HTTP and restart checks passed. All four bounded native cases passed: owner/peer/outsider isolation, paired commands, fresh pairing and owner reopening, and invitation access loss. Both PR and push checker modes matched the generated source fingerprint. The first local attempt stopped before starting its stack because the shell found an Intel Node executable. Selecting the installed arm64 Node brought the pinned CLI up without any repository, fixture or test changes. Only the first attempt’s empty task-owned network required manual cleanup.
+
+The 91-case repository suite passed on the isolated rerun after the simulator and Docker shut down. The first run during teardown timed out waiting for the synthetic cancellation fixture’s ready marker. No assertion, timeout or executable source changed between these attempts.

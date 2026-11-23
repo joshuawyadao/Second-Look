@@ -888,3 +888,12 @@ The Swift setup action's v3 beta requires Swift.org Automatic Signing Key #4 to 
 `python3 -B -m unittest discover -s tests -p test_swiftly_signing_key.py` exercises the shell bootstrap with isolated command shims, including missing, incorrect and extra primary keys and download failure. The normal repository check discovers these cases. If the toolchain update needs to be reverted, restore the previous action pin and remove the key bootstrap step together. Any workflow change needs a receipt generated on that source before the connected evidence check can pass.
 
 On November 23 the repository check passed all 91 tests. Following recovery from a local Docker inventory timeout, the unchanged connected smoke passed owner/peer/outsider isolation, paired commands, fresh pairing and owner reopening, and invitation access loss on a disposable iOS 26.5 simulator and localhost stack. The committed receipt matches the reviewed source. The required GitHub evidence job verifies the receipt on the pull request; the smoke provides local synthetic evidence.
+
+
+### Combined cache and Swiftly verification
+
+Cache PR #9 merged at `68bf349`. Its [main push CI](https://github.com/joshuawyadao/Second-Look/actions/runs/45263783838) passed all five jobs. Swiftly PR #8 was synced against that commit with the existing cache paths and key, action pins, Swift 6.2.1 and installer signature verification intact.
+
+The November 23 combined-source run produced a new receipt on Xcode 27.2 with a disposable iOS 26.5 simulator and ephemeral loopback stack. The local SQL, HTTP and restart checks passed. All four bounded native cases passed: owner/peer/outsider isolation, paired commands, fresh pairing and owner reopening, and invitation access loss. Both PR and push checker modes matched the generated source fingerprint. The first local attempt stopped before starting its stack because the shell found an Intel Node executable. Selecting the installed arm64 Node brought the pinned CLI up without any repository, fixture or test changes. Only the first attempt’s empty task-owned network required manual cleanup.
+
+The 91-case repository suite passed on the isolated rerun after the simulator and Docker shut down. The first run during teardown timed out waiting for the synthetic cancellation fixture’s ready marker. No assertion, timeout or executable source changed between these attempts.

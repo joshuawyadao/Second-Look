@@ -873,6 +873,14 @@ The subsequent cancellation safety change is verified with synthetic process gro
 
 Complete current-source CI passes at `ea09ce3` in [run43971087775](https://github.com/joshuawyadao/Second-Look/actions/runs/43971087775): repository checks, native foundation, backend Debug/Release boundaries, both API key modes/restart, connected source evidence and aggregate CI Verify. Documentation-only completion records retain the same receipt fingerprint.
 
+### Cache action 6.1.0
+
+The earlier cache upgrade passed its backend job, including the cache step, but the required connected evidence check rejected its stale source fingerprint. This upgrade pins the same action revision. The existing cache contract test checks that the paths contain only SwiftPM's checked-out public dependencies and repository metadata, that the key includes Swift 6.2.1 plus the OS and architecture, and that the package files determine the cache key. [Earlier CI run](https://github.com/joshuawyadao/Second-Look/actions/runs/43993598077)
+
+Use `python3 scripts/check-connected-native-evidence.py generate` on the disposable localhost stack and an owned simulator whenever a reviewed source change invalidates the receipt. Run `python3 scripts/check-connected-native-evidence.py check --event pull_request --base-ref main` before pushing. If another source change lands on `main` first, sync with that base and regenerate the receipt for the combined source.
+
+On November 23 all 88 repository tests passed. The connected smoke passed all four cases on a disposable iOS 26.5 simulator after local Docker recovery. Earlier isolated attempts failed separate simulator assertions and produced no receipt. The same app, fixture and assertion code ran successfully on the recovered stack. The fresh receipt covers the cache action diff and verifies owner/peer/outsider isolation, paired commands, fresh pairing and owner reopening, and invitation access loss.
+
 ### Swiftly installer signature verification
 
 The Swift setup action's v3 beta requires Swift.org Automatic Signing Key #4 to verify the Swiftly 1.1.0 installer. Import the HTTPS-served key only after checking its complete primary fingerprint, using a new runner-owned `GNUPGHOME`. The workflow enables signature verification explicitly and selects Swift 6.2.1. The previous dependency PR failed during verification because the public key was missing. The verified import and Swift installer steps completed on the GitHub Ubuntu runner. [Earlier failure](https://github.com/joshuawyadao/Second-Look/actions/runs/43993592712), [corrected installer run](https://github.com/joshuawyadao/Second-Look/actions/runs/45245027093), [Swift signing keys](https://www.swift.org/keys/active/)

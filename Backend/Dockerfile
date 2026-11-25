@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build from the repository root: docker build -f Backend/Dockerfile .
-# Official Swift 6.2.1 image, matching the supported CI server toolchain.
-FROM swift:6.2.1-noble@sha256:0e4716bd34384d22963a63afbdbc93be3129dfd0753185aa1ded27755abdcae8 AS build
+# Official Swift 6.2.3 image, matching the supported CI server toolchain.
+FROM swift:6.2.3-noble@sha256:6dd90eb2359663a2cde8f03e9951f488b23134b3b8fce20e9dcb6cada75dd803 AS build
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
@@ -11,11 +11,11 @@ COPY SecondLookCoreTests/ SecondLookCoreTests/
 COPY SecondLookTransportTests/ SecondLookTransportTests/
 COPY SecondLook/Services/Transport/ SecondLook/Services/Transport/
 COPY Backend/Package.swift Backend/Package.resolved Backend/
-RUN --mount=type=cache,id=secondlook-swiftpm-6.2.1,target=/root/.cache/org.swift.swiftpm,sharing=locked \
+RUN --mount=type=cache,id=secondlook-swiftpm-6.2.3,target=/root/.cache/org.swift.swiftpm,sharing=locked \
     swift package --package-path Backend --cache-path /root/.cache/org.swift.swiftpm resolve --force-resolved-versions
 COPY Backend/Sources/ Backend/Sources/
 COPY Backend/Tests/ Backend/Tests/
-RUN --mount=type=cache,id=secondlook-swiftpm-6.2.1,target=/root/.cache/org.swift.swiftpm,sharing=locked \
+RUN --mount=type=cache,id=secondlook-swiftpm-6.2.3,target=/root/.cache/org.swift.swiftpm,sharing=locked \
     swift build --package-path Backend --cache-path /root/.cache/org.swift.swiftpm -c release --product SecondLookServer \
       --static-swift-stdlib -Xlinker -ljemalloc -j 4 \
     && mkdir /staging \

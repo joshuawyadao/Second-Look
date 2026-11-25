@@ -72,7 +72,7 @@ The skipped-revision regression adds seven cases to the existing five controls. 
 
 ## Commands and requirements
 
-Repository checks require Git, Python 3.10+, and a POSIX shell. The core package requires Swift 6; the pinned server dependencies require Swift 6.2+ (CI uses 6.2.1). Native checks require macOS, Xcode 16+, and an installed iOS Simulator runtime. The app provisionally targets iOS 17; no device signing or service credentials are needed for a simulator.
+Repository checks require Git, Python 3.10+, and a POSIX shell. The core package requires Swift 6. The pinned server dependencies require Swift 6.2.3 or later, and CI uses 6.2.3. Native checks require macOS, Xcode 16+, and an installed iOS Simulator runtime. The app provisionally targets iOS 17; no device signing or service credentials are needed for a simulator.
 
 ```sh
 ./scripts/verify-repository.sh

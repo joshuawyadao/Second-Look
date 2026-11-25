@@ -65,9 +65,17 @@ class CIEfficiencyContracts(unittest.TestCase):
             "${{ runner.temp }}/secondlook-backend/checkouts",
             "${{ runner.temp }}/secondlook-backend/repositories",
         })
-        self.assertIn("${{ runner.os }}-${{ runner.arch }}-6.2.1-", cache_step)
         self.assertIn("hashFiles('Backend/Package.resolved', 'Backend/Package.swift', 'Package.swift')", cache_step)
         self.assertNotIn("restore-keys:", cache_step)
+
+    def test_backend_compiler_and_dependency_cache_versions_agree(self):
+        version = re.search(r"(?m)^\s+swift-version: '([0-9]+\.[0-9]+\.[0-9]+)'$", WORKFLOW)
+        self.assertIsNotNone(version)
+        swift_version = version.group(1)
+        self.assertGreaterEqual(tuple(map(int, swift_version.split("."))), (6, 2, 3))
+        self.assertIn("key: swiftpm-${{ runner.os }}-${{ runner.arch }}-" + swift_version + "-", WORKFLOW)
+        self.assertRegex(DOCKERFILE, rf"(?m)^FROM swift:{re.escape(swift_version)}-noble@sha256:[0-9a-f]{{64}} AS build$")
+        self.assertEqual(DOCKERFILE.count(f"id=secondlook-swiftpm-{swift_version},"), 2)
 
     def test_docker_dependency_cache_does_not_enter_runtime_image(self):
         self.assertIn("# syntax=docker/dockerfile:1", DOCKERFILE.splitlines()[0])

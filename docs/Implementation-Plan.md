@@ -1,18 +1,22 @@
 # Plan
 
-Refresh Second Look’s Swiftly PR against the merged cache upgrade and verify the combined workflow before merging.
+Update the Swift server’s crypto dependency to 5.1.2 with the compatible Vapor and SwiftNIO Extras patches, then verify the combined source and prepare it for review.
 
 ## Scope
-- In: Sync PR #8 with the merged #9 cache change, preserve both workflow changes, refresh the connected-source receipt, and verify PR and post-merge CI.
-- Out: Application or assertion changes, gate changes, deployments, real services, and physical devices.
+
+- In: The backend dependency graph, minimum compatible Linux compiler patch, generated connected native receipt, and verification record.
+- Out: Application and API behavior changes, provider or schema changes, hosted deployment, and physical-device acceptance.
 
 ## Action items
-- [x] Confirm PR #9 merged at `68bf349` and its main push CI started.
-- [x] Merge the new `main` into the existing Swiftly feature ref and preserve both upgrade records and exact pins.
-- [x] Generate a receipt using the repository’s four-case smoke on an owned iOS simulator and an ephemeral localhost stack. Keep the existing assertions and checked fingerprint.
-- [x] Run `./scripts/verify-repository.sh` and `check-connected-native-evidence.py check`. Use the existing workflow contract, signing-key, native and backend tests because executable changes are limited to the previously reviewed pins and signing bootstrap.
-- [ ] Record actual combined-source evidence in `docs/Verification.md`, publish the branch and verify its fresh review and CI.
-- [ ] Merge the verified Swiftly PR, verify the exact merge commit’s main push CI and confirm both merged feature refs are absent.
+
+- [x] Confirm current main, official tag constraints, and the backend Debug/Release and integration checks in Backend Operations.
+- [x] Pin Vapor 4.122.3 and Swift Crypto 5.1.2, declare the server's existing direct Crypto dependency, and resolve SwiftNIO Extras 1.35.2 through the backend lockfile. Verify tag revisions and retained package pins.
+- [ ] Use Swift 6.2.3 in CI and the Docker builder because the signed 6.2.1 Linux build rejected the new package's enum annotation. Verify matching cache versions, official image provenance, and the Release build.
+- [ ] Use existing server hashing, receipt, snapshot, and Auth/SQL/HTTP/restart tests for compatibility. Retain the existing test assertions and add cases only if an uncovered behavior change appears.
+- [ ] Regenerate the receipt with all four connected cases on an owned iOS simulator and an ephemeral localhost stack. Verify both PR and push modes and record the evidence in Verification.
+- [ ] Save the dependency update and source receipt together as the rollback boundary. Push the reviewed branch and open a PR.
+- [ ] Complete exact-head Brooks and Codex review and required CI, preserving signature verification and the connected-source gate.
 
 ## Open questions
-- None
+
+None.

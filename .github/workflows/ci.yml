@@ -57,7 +57,7 @@ jobs:
       - name: Install pinned Swift server toolchain
         uses: swift-actions/setup-swift@364295d9c23900ce04d4e5cc708387921b4e50f9 # v3.0.0-beta.1
         with:
-          swift-version: '6.2.1'
+          swift-version: '6.2.3'
           skip-verify-signature: false
       # Cache only pinned public package sources. Never persist compiled output,
       # local databases, private fixtures, or logs from the shared-state tests.
@@ -67,7 +67,7 @@ jobs:
           path: |
             ${{ runner.temp }}/secondlook-backend/checkouts
             ${{ runner.temp }}/secondlook-backend/repositories
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-6.2.1-${{ hashFiles('Backend/Package.resolved', 'Backend/Package.swift', 'Package.swift') }}
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-6.2.3-${{ hashFiles('Backend/Package.resolved', 'Backend/Package.swift', 'Package.swift') }}
       - name: Verify server boundaries
         env:
           SECONDLOOK_BACKEND_SCRATCH: ${{ runner.temp }}/secondlook-backend
